@@ -15,11 +15,20 @@ import 'package:fllama/fllama.dart';
 
 import 'local_model_stub.dart' if (dart.library.io) 'local_model_io.dart';
 
+const _minSplashDuration = Duration(milliseconds: 1200);
+
 void main() async {
+  final startedAt = DateTime.now();
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   final app = AppState(prefs);
   await app.load();
+
+  final elapsed = DateTime.now().difference(startedAt);
+  if (elapsed < _minSplashDuration) {
+    await Future.delayed(_minSplashDuration - elapsed);
+  }
+
   runApp(
     ChangeNotifierProvider.value(value: app, child: const AliceApp()),
   );
