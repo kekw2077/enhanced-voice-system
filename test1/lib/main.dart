@@ -49,6 +49,11 @@ const Map<String, Map<String, String>> _i18n = {
     'listening': 'Внимательно слушаю…',
     'preparingMic': 'Подключение микрофона…',
     'muted': 'Микрофон выключен',
+    'micSettingsTitle': 'Настройки микрофона',
+    'micAutoSend': 'Автоотправка после паузы',
+    'micAutoSendDesc':
+        'Сообщение отправится само, как только вы замолчите',
+    'micPauseDuration': 'Длительность паузы перед отправкой',
     'speakNaturally':
         'Говорите свободно. Alice ответит, как только вы сделаете паузу.',
     'conversations': 'Беседы',
@@ -207,6 +212,10 @@ const Map<String, Map<String, String>> _i18n = {
     'listening': 'Listening carefully…',
     'preparingMic': 'Connecting microphone…',
     'muted': 'Muted',
+    'micSettingsTitle': 'Microphone settings',
+    'micAutoSend': 'Auto-send after pause',
+    'micAutoSendDesc': 'The message sends itself as soon as you go quiet',
+    'micPauseDuration': 'Pause duration before sending',
     'speakNaturally':
         'Speak naturally. Alice will respond as soon as you pause.',
     'conversations': 'Conversations',
@@ -652,6 +661,8 @@ class AppState extends ChangeNotifier {
   bool showKeyboardOnLaunch = false;
   bool showPromptChips = true;
   double fontSize = 1.0;
+  bool micAutoSend = true;
+  int micPauseSeconds = 3;
 
   String serverUrl = '192.168.1.100:11434';
   String apiKey = '';
@@ -699,6 +710,8 @@ class AppState extends ChangeNotifier {
     showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
     showPromptChips = prefs.getBool('showPromptChips') ?? true;
     fontSize = prefs.getDouble('fontSize') ?? 1.0;
+    micAutoSend = prefs.getBool('micAutoSend') ?? true;
+    micPauseSeconds = prefs.getInt('micPauseSeconds') ?? 3;
     serverUrl = prefs.getString('serverUrl') ?? '192.168.1.100:11434';
     apiKey = prefs.getString('apiKey') ?? '';
     models = prefs.getStringList('models') ?? ['Alice Nano'];
@@ -739,6 +752,8 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('showKeyboardOnLaunch', showKeyboardOnLaunch);
     await prefs.setBool('showPromptChips', showPromptChips);
     await prefs.setDouble('fontSize', fontSize);
+    await prefs.setBool('micAutoSend', micAutoSend);
+    await prefs.setInt('micPauseSeconds', micPauseSeconds);
     await prefs.setString('serverUrl', serverUrl);
     await prefs.setString('apiKey', apiKey);
     await prefs.setStringList('models', models);
@@ -786,6 +801,18 @@ class AppState extends ChangeNotifier {
 
   void setFontSize(double v) {
     fontSize = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setMicAutoSend(bool v) {
+    micAutoSend = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setMicPauseSeconds(int v) {
+    micPauseSeconds = v;
     _save();
     notifyListeners();
   }
@@ -2080,7 +2107,9 @@ class _VoiceScreenState extends State<VoiceScreen> {
     }
     final stoppedNaturally = wasListening && !_listening && !_manualStop;
     _manualStop = false;
-    if (stoppedNaturally && _recognized.trim().isNotEmpty) {
+    if (stoppedNaturally &&
+        _recognized.trim().isNotEmpty &&
+        context.read<AppState>().micAutoSend) {
       _scheduleAutoSend();
     }
   }
@@ -2105,7 +2134,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
           },
           listenOptions: stt.SpeechListenOptions(
             listenMode: stt.ListenMode.dictation,
-            pauseFor: const Duration(seconds: 3),
+            pauseFor: Duration(seconds: app.micPauseSeconds),
             localeId: app.lang == 'ru' ? 'ru_RU' : 'en_US',
           ),
         )
@@ -2139,6 +2168,91 @@ class _VoiceScreenState extends State<VoiceScreen> {
       _listenRetries = 0;
       _listen();
     }
+  }
+
+  void _openMicSettings(BuildContext context) {
+    final app = context.read<AppState>();
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => Dialog(
+          backgroundColor: const Color(0xFF0E2C2F),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.tune, color: Color(0xFF2FE0C8)),
+                    const SizedBox(width: 10),
+                    Text(app.t('micSettingsTitle'),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: app.micAutoSend,
+                  activeThumbColor: const Color(0xFF2FE0C8),
+                  title: Text(app.t('micAutoSend'),
+                      style: const TextStyle(color: Colors.white)),
+                  subtitle: Text(app.t('micAutoSendDesc'),
+                      style:
+                          const TextStyle(color: Colors.white54, fontSize: 12)),
+                  onChanged: (v) {
+                    app.setMicAutoSend(v);
+                    setDialogState(() {});
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(app.t('micPauseDuration'),
+                    style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  children: [1, 2, 3, 5].map((s) {
+                    final selected = app.micPauseSeconds == s;
+                    return ChoiceChip(
+                      label: Text('${s}s'),
+                      selected: selected,
+                      selectedColor: const Color(0xFF2FE0C8),
+                      backgroundColor: Colors.white10,
+                      labelStyle: TextStyle(
+                          color: selected ? Colors.black : Colors.white70,
+                          fontWeight: FontWeight.w600),
+                      onSelected: (_) {
+                        app.setMicPauseSeconds(s);
+                        if (_speech.isListening) {
+                          _speech.changePauseFor(Duration(seconds: s));
+                        }
+                        setDialogState(() {});
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: Text(app.t('done'),
+                        style: const TextStyle(color: Color(0xFF2FE0C8))),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -2189,13 +2303,16 @@ class _VoiceScreenState extends State<VoiceScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.black38,
-                        borderRadius: BorderRadius.circular(24),
+                    GestureDetector(
+                      onTap: () => _openMicSettings(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.black38,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: const Icon(Icons.tune, color: Colors.white),
                       ),
-                      child: const Icon(Icons.tune, color: Colors.white),
                     ),
                     const Spacer(),
                     GestureDetector(
@@ -2642,12 +2759,6 @@ class SettingsSheet extends StatelessWidget {
                 controller: scrollCtrl,
                 padding: const EdgeInsets.all(20),
                 children: [
-                  Text(app.t('settings'),
-                      style: TextStyle(
-                          color: _txt(context),
-                          fontSize: 40,
-                          fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 8),
                   Text(app.t('settingsDesc'),
                       style: TextStyle(
                           color: _sub(context), fontSize: 16, height: 1.4)),
