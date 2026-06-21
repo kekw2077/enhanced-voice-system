@@ -4,7 +4,7 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.8.0 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -19,9 +19,27 @@ dependencies:
     sdk: flutter
   file_picker: ^11.0.2
   image_picker: ^1.2.2
+  fllama:
+    git:
+      url: https://github.com/Telosnex/fllama.git
+      ref: 3b1351a957920bf2a0df3709cce1e3a7195c479e
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.3
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  macos:
+    generate: true
+  windows:
+    generate: true
+  web:
+    generate: true

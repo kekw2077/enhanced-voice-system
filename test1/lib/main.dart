@@ -11,6 +11,9 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:uuid/uuid.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:fllama/fllama.dart';
+
+import 'local_model_stub.dart' if (dart.library.io) 'local_model_io.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +57,7 @@ const Map<String, Map<String, String>> _i18n = {
     'micAutoSendDesc':
         'Сообщение отправится само, как только вы замолчите',
     'micPauseDuration': 'Длительность паузы перед отправкой',
+    'send': 'Отправить',
     'speakNaturally':
         'Говорите свободно. Alice ответит, как только вы сделаете паузу.',
     'conversations': 'Беседы',
@@ -84,6 +88,22 @@ const Map<String, Map<String, String>> _i18n = {
     'sectionApp': 'Приложение',
     'sectionTheme': 'Оформление',
     'manageModelsItem': 'Управление моделями',
+    'localModelsItem': 'Локальные модели',
+    'localModelsTitle': 'Локальные модели',
+    'localModelsDesc':
+        'Скачайте модель прямо на устройство и общайтесь с ней без подключения к серверу.',
+    'onDevice': 'на устройстве',
+    'downloadModel': 'Скачать',
+    'downloadingModel': 'Загрузка…',
+    'cancelDownload': 'Отмена',
+    'useModel': 'Использовать',
+    'modelInUse': 'Используется',
+    'deleteModel': 'Удалить',
+    'localModelMissing':
+        'Файл модели не найден. Скачайте модель ещё раз в разделе «Локальные модели».',
+    'deleteLocalModelTitle': 'Удалить модель?',
+    'deleteLocalModelBody':
+        'Файл модели будет удалён с устройства. Скачать её снова можно в любой момент.',
     'personalization': 'Персонализация',
     'memory': 'Память',
     'language': 'Язык',
@@ -216,6 +236,7 @@ const Map<String, Map<String, String>> _i18n = {
     'micAutoSend': 'Auto-send after pause',
     'micAutoSendDesc': 'The message sends itself as soon as you go quiet',
     'micPauseDuration': 'Pause duration before sending',
+    'send': 'Send',
     'speakNaturally':
         'Speak naturally. Alice will respond as soon as you pause.',
     'conversations': 'Conversations',
@@ -246,6 +267,22 @@ const Map<String, Map<String, String>> _i18n = {
     'sectionApp': 'App',
     'sectionTheme': 'Theme',
     'manageModelsItem': 'Manage models',
+    'localModelsItem': 'Local models',
+    'localModelsTitle': 'Local models',
+    'localModelsDesc':
+        'Download a model straight to your device and chat with it without a server connection.',
+    'onDevice': 'on-device',
+    'downloadModel': 'Download',
+    'downloadingModel': 'Downloading…',
+    'cancelDownload': 'Cancel',
+    'useModel': 'Use',
+    'modelInUse': 'In use',
+    'deleteModel': 'Delete',
+    'localModelMissing':
+        'Model file not found. Download it again from the Local models screen.',
+    'deleteLocalModelTitle': 'Delete this model?',
+    'deleteLocalModelBody':
+        'The model file will be removed from your device. You can download it again anytime.',
     'personalization': 'Personalization',
     'memory': 'Memory',
     'language': 'Language',
@@ -643,6 +680,52 @@ class Personalization {
   }
 }
 
+/* ============================ ЛОКАЛЬНЫЕ МОДЕЛИ ============================ */
+
+class LocalModelSpec {
+  final String id;
+  final String displayName;
+  final int sizeBytes;
+  final String url;
+  final String fileName;
+
+  const LocalModelSpec({
+    required this.id,
+    required this.displayName,
+    required this.sizeBytes,
+    required this.url,
+    required this.fileName,
+  });
+
+  String get modelKey => 'local:$id';
+}
+
+const List<LocalModelSpec> kLocalModels = [
+  LocalModelSpec(
+    id: 'tinyllama-1.1b',
+    displayName: 'TinyLlama 1.1B Chat',
+    sizeBytes: 668788096,
+    url:
+        'https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?download=true',
+    fileName: 'tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
+  ),
+  LocalModelSpec(
+    id: 'qwen2.5-1.5b',
+    displayName: 'Qwen2.5 1.5B Instruct',
+    sizeBytes: 1117320736,
+    url:
+        'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true',
+    fileName: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
+  ),
+];
+
+String formatBytes(int bytes) {
+  const gb = 1024 * 1024 * 1024;
+  const mb = 1024 * 1024;
+  if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(2)} GB';
+  return '${(bytes / mb).toStringAsFixed(0)} MB';
+}
+
 /* ============================ СОСТОЯНИЕ ============================ */
 
 enum AppThemeMode { system, light, dark }
@@ -670,6 +753,10 @@ class AppState extends ChangeNotifier {
   String selectedModel = 'Alice Nano';
   bool loadingModels = false;
   String? modelsError;
+
+  Set<String> downloadedLocalModelIds = {};
+  final Map<String, double> localDownloadProgress = {};
+  final Set<String> _cancelledLocalDownloads = {};
 
   Personalization persona = Personalization();
 
@@ -717,6 +804,8 @@ class AppState extends ChangeNotifier {
     models = prefs.getStringList('models') ?? ['Alice Nano'];
     selectedModel = prefs.getString('selectedModel') ??
         (models.isNotEmpty ? models.first : '');
+    downloadedLocalModelIds =
+        (prefs.getStringList('downloadedLocalModelIds') ?? []).toSet();
 
     final pj = prefs.getString('persona');
     if (pj != null) {
@@ -758,6 +847,8 @@ class AppState extends ChangeNotifier {
     await prefs.setString('apiKey', apiKey);
     await prefs.setStringList('models', models);
     await prefs.setString('selectedModel', selectedModel);
+    await prefs.setStringList(
+        'downloadedLocalModelIds', downloadedLocalModelIds.toList());
     await prefs.setString('persona', jsonEncode(persona.toJson()));
     await prefs.setString(
       'conversations',
@@ -871,7 +962,8 @@ class AppState extends ChangeNotifier {
       }
 
       if (found.isNotEmpty) {
-        models = found;
+        final keptLocal = models.where(isLocalModel).toList();
+        models = [...found, ...keptLocal.where((m) => !found.contains(m))];
         if (!models.contains(selectedModel)) selectedModel = models.first;
         modelsError = null;
       } else {
@@ -902,6 +994,66 @@ class AppState extends ChangeNotifier {
   void removeModel(String m) {
     models.remove(m);
     if (selectedModel == m && models.isNotEmpty) selectedModel = models.first;
+    _save();
+    notifyListeners();
+  }
+
+  bool isLocalModel(String s) => s.startsWith('local:');
+
+  LocalModelSpec? localSpecFor(String modelKey) {
+    if (!isLocalModel(modelKey)) return null;
+    final id = modelKey.substring('local:'.length);
+    for (final spec in kLocalModels) {
+      if (spec.id == id) return spec;
+    }
+    return null;
+  }
+
+  String modelDisplayName(String modelKey) {
+    final spec = localSpecFor(modelKey);
+    if (spec == null) return modelKey;
+    return '${spec.displayName} (${t('onDevice')})';
+  }
+
+  Future<void> downloadLocalModel(LocalModelSpec spec) async {
+    if (localDownloadProgress.containsKey(spec.id)) return;
+    _cancelledLocalDownloads.remove(spec.id);
+    localDownloadProgress[spec.id] = 0;
+    notifyListeners();
+    try {
+      final dir = await localModelsDirPath();
+      final destPath = '$dir/${spec.fileName}';
+      await downloadFileWithProgress(
+        spec.url,
+        destPath,
+        (received, total) {
+          localDownloadProgress[spec.id] =
+              total > 0 ? received / total : 0;
+          notifyListeners();
+        },
+        () => _cancelledLocalDownloads.contains(spec.id),
+      );
+      downloadedLocalModelIds.add(spec.id);
+      addModel(spec.modelKey);
+    } catch (_) {
+      // Cancelled or failed; nothing left on disk thanks to downloadFileWithProgress cleanup.
+    } finally {
+      localDownloadProgress.remove(spec.id);
+      _cancelledLocalDownloads.remove(spec.id);
+      _save();
+      notifyListeners();
+    }
+  }
+
+  void cancelLocalModelDownload(String id) {
+    _cancelledLocalDownloads.add(id);
+  }
+
+  Future<void> deleteLocalModel(LocalModelSpec spec) async {
+    final dir = await localModelsDirPath();
+    await deleteLocalModelFile('$dir/${spec.fileName}');
+    downloadedLocalModelIds.remove(spec.id);
+    removeModel(spec.modelKey);
     _save();
     notifyListeners();
   }
@@ -966,6 +1118,45 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
+  Future<String> _sendLocalMessage(Conversation conv) async {
+    final spec = localSpecFor(selectedModel);
+    if (spec == null) return t('localModelMissing');
+    final dir = await localModelsDirPath();
+    final modelPath = '$dir/${spec.fileName}';
+    if (!await localModelFileExists(modelPath)) return t('localModelMissing');
+
+    final messages = <Message>[
+      Message(Role.system, persona.buildSystemPrompt()),
+      ...conv.messages.map((m) => Message(
+            m.role == 'user' ? Role.user : Role.assistant,
+            m.content.isNotEmpty
+                ? m.content
+                : '[Attached files: ${m.attachments.join(', ')}]',
+          )),
+    ];
+
+    final completer = Completer<String>();
+    try {
+      await fllamaChat(
+        OpenAiRequest(
+          messages: messages,
+          modelPath: modelPath,
+          contextSize: 2048,
+          maxTokens: 512,
+          temperature: 0.7,
+        ),
+        (response, openaiJson, done) {
+          if (done && !completer.isCompleted) completer.complete(response);
+        },
+      );
+    } catch (e) {
+      if (!completer.isCompleted) {
+        completer.complete('${t('unreachable')} ($e)');
+      }
+    }
+    return completer.future;
+  }
+
   Future<String> sendMessage(String text, {List<String> attachments = const []}) async {
     current ??= () {
       final c = Conversation(id: _uuid.v4(), title: t('newChat'));
@@ -988,46 +1179,50 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     String reply;
-    try {
-      final headers = {'Content-Type': 'application/json'};
-      if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
+    if (isLocalModel(selectedModel)) {
+      reply = await _sendLocalMessage(conv);
+    } else {
+      try {
+        final headers = {'Content-Type': 'application/json'};
+        if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
 
-      final msgs = <Map<String, dynamic>>[
-        {'role': 'system', 'content': persona.buildSystemPrompt()},
-        ...conv.messages.map((m) => {
-              'role': m.role,
-              'content': m.content.isNotEmpty ? m.content : '[Attached files: ${m.attachments.join(', ')}]',
-            }),
-      ];
+        final msgs = <Map<String, dynamic>>[
+          {'role': 'system', 'content': persona.buildSystemPrompt()},
+          ...conv.messages.map((m) => {
+                'role': m.role,
+                'content': m.content.isNotEmpty ? m.content : '[Attached files: ${m.attachments.join(', ')}]',
+              }),
+        ];
 
-      final res = await http
-          .post(
-            Uri.parse('$baseUrl/api/chat'),
-            headers: headers,
-            body: jsonEncode({
-              'model': selectedModel,
-              'stream': false,
-              'messages': msgs,
-            }),
-          )
-          .timeout(const Duration(seconds: 60));
+        final res = await http
+            .post(
+              Uri.parse('$baseUrl/api/chat'),
+              headers: headers,
+              body: jsonEncode({
+                'model': selectedModel,
+                'stream': false,
+                'messages': msgs,
+              }),
+            )
+            .timeout(const Duration(seconds: 60));
 
-      if (res.statusCode == 200) {
-        try {
-          final data = jsonDecode(res.body);
-          if (data is Map<String, dynamic>) {
-            reply = _extractContent(data) ?? '—';
-          } else {
+        if (res.statusCode == 200) {
+          try {
+            final data = jsonDecode(res.body);
+            if (data is Map<String, dynamic>) {
+              reply = _extractContent(data) ?? '—';
+            } else {
+              reply = '—';
+            }
+          } catch (_) {
             reply = '—';
           }
-        } catch (_) {
-          reply = '—';
+        } else {
+          reply = '${t('serverError')} ${res.statusCode}: ${res.body}';
         }
-      } else {
-        reply = '${t('serverError')} ${res.statusCode}: ${res.body}';
+      } catch (e) {
+        reply = '${t('unreachable')} $baseUrl.\n($e)\n\n${t('checkAddress')}';
       }
-    } catch (e) {
-      reply = '${t('unreachable')} $baseUrl.\n($e)\n\n${t('checkAddress')}';
     }
 
     conv.messages.add(ChatMessage(role: 'assistant', content: reply.trim()));
@@ -1553,7 +1748,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ] else ...[
                       Flexible(
                         child: Text(
-                          app.selectedModel,
+                          app.modelDisplayName(app.selectedModel),
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: _txt(context),
@@ -1999,7 +2194,7 @@ class _ModelMenu extends StatelessWidget {
                                     ),
                                     const SizedBox(width: 14),
                                     Expanded(
-                                      child: Text(m,
+                                      child: Text(app.modelDisplayName(m),
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                               color: Colors.white,
@@ -2067,7 +2262,7 @@ class _VoiceScreenState extends State<VoiceScreen> {
   Timer? _autoSendTimer;
   Timer? _listenWatchdog;
   int _listenRetries = 0;
-  static const _maxListenRetries = 3;
+  static const _maxListenRetries = 5;
 
   @override
   void initState() {
@@ -2143,16 +2338,22 @@ class _VoiceScreenState extends State<VoiceScreen> {
         // retry instead of leaving an unhandled rejection.
         .catchError((_) {});
     // The engine sometimes ignores the very first listen() call right after
-    // initialize() and never reports a 'listening' status. Restarting it
+    // initialize() and never reports a 'listening' status — on this device
+    // it depends on a network-based recognition service, so it can take a
+    // couple seconds to connect rather than failing outright. Restarting it
     // (the same recovery a manual mute/unmute toggle does) reliably kicks it
     // into gear, so do that automatically instead of making the user notice.
+    // The retry itself waits a beat before re-listening, mirroring the
+    // natural delay a human introduces when tapping mute then unmute.
     _listenWatchdog?.cancel();
-    _listenWatchdog = Timer(const Duration(milliseconds: 1200), () {
+    _listenWatchdog = Timer(const Duration(milliseconds: 2500), () {
       if (!mounted || _muted || _listening) return;
       if (_listenRetries >= _maxListenRetries) return;
       _listenRetries++;
       _speech.stop().then((_) {
-        if (mounted && !_muted) _listen();
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted && !_muted && !_listening) _listen();
+        });
       });
     });
   }
@@ -2369,14 +2570,57 @@ class _VoiceScreenState extends State<VoiceScreen> {
                 ),
               ),
               const Spacer(),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
-                child: Text(
-                  app.t('speakNaturally'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white54, fontSize: 16),
+              if (app.micAutoSend)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
+                  child: Text(
+                    app.t('speakNaturally'),
+                    textAlign: TextAlign.center,
+                    style:
+                        const TextStyle(color: Colors.white54, fontSize: 16),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
+                  child: GestureDetector(
+                    onTap: _recognized.trim().isEmpty
+                        ? null
+                        : () =>
+                            Navigator.pop(context, (_recognized, true)),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(28),
+                        color: _recognized.trim().isEmpty
+                            ? Colors.black38
+                            : const Color(0xFF2FE0C8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.arrow_upward,
+                              color: _recognized.trim().isEmpty
+                                  ? Colors.white38
+                                  : Colors.black,
+                              size: 22),
+                          const SizedBox(width: 8),
+                          Text(
+                            app.t('send'),
+                            style: TextStyle(
+                              color: _recognized.trim().isEmpty
+                                  ? Colors.white38
+                                  : Colors.black,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -2769,6 +3013,11 @@ class SettingsSheet extends StatelessWidget {
                         app.t('manageModelsItem'),
                         trailing: _badge('${app.models.length}'),
                         onTap: () => _openManageModels(context)),
+                    _nav(context, Icons.download_for_offline_outlined,
+                        app.t('localModelsItem'),
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const LocalModelsScreen()))),
                     _nav(context, Icons.language, app.t('language'),
                         trailing: Text(
                             app.lang == 'ru'
@@ -3134,15 +3383,23 @@ class SettingsSheet extends StatelessWidget {
                   child: LinearProgressIndicator(),
                 ),
               ...app.models.map((m) => ListTile(
-                    leading: Icon(Icons.inventory_2_outlined,
+                    leading: Icon(
+                        app.isLocalModel(m)
+                            ? Icons.download_for_offline_outlined
+                            : Icons.inventory_2_outlined,
                         color: _txt(ctx)),
-                    title:
-                        Text(m, style: TextStyle(color: _txt(ctx))),
+                    title: Text(app.modelDisplayName(m),
+                        style: TextStyle(color: _txt(ctx))),
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline,
                           color: Colors.red),
                       onPressed: () {
-                        app.removeModel(m);
+                        final spec = app.localSpecFor(m);
+                        if (spec != null) {
+                          app.deleteLocalModel(spec);
+                        } else {
+                          app.removeModel(m);
+                        }
                       },
                     ),
                   )),
@@ -3169,6 +3426,153 @@ class SettingsSheet extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/* ============================ ЛОКАЛЬНЫЕ МОДЕЛИ (ЭКРАН) ============================ */
+
+class LocalModelsScreen extends StatelessWidget {
+  const LocalModelsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Scaffold(
+      backgroundColor: _bg(context),
+      appBar: AppBar(
+        backgroundColor: _bg(context),
+        elevation: 0,
+        foregroundColor: _txt(context),
+        title: Text(app.t('localModelsTitle'),
+            style:
+                TextStyle(color: _txt(context), fontWeight: FontWeight.w700)),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(app.t('localModelsDesc'),
+              style: TextStyle(
+                  color: _sub(context), fontSize: 15, height: 1.4)),
+          const SizedBox(height: 20),
+          for (final spec in kLocalModels) _modelCard(context, app, spec),
+        ],
+      ),
+    );
+  }
+
+  Widget _modelCard(BuildContext context, AppState app, LocalModelSpec spec) {
+    final downloaded = app.downloadedLocalModelIds.contains(spec.id);
+    final progress = app.localDownloadProgress[spec.id];
+    final isSelected = app.selectedModel == spec.modelKey;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _card(context).withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.memory, color: _txt(context)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(spec.displayName,
+                    style: TextStyle(
+                        color: _txt(context),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(formatBytes(spec.sizeBytes),
+              style: TextStyle(color: _sub(context), fontSize: 14)),
+          const SizedBox(height: 14),
+          if (progress != null) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                  value: progress > 0 ? progress : null),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Text('${(progress * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(color: _sub(context))),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => app.cancelLocalModelDownload(spec.id),
+                  child: Text(app.t('cancelDownload')),
+                ),
+              ],
+            ),
+          ] else if (!downloaded) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => app.downloadLocalModel(spec),
+                icon: const Icon(Icons.download),
+                label: Text(app.t('downloadModel')),
+              ),
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: isSelected
+                      ? OutlinedButton.icon(
+                          onPressed: null,
+                          icon: const Icon(Icons.check),
+                          label: Text(app.t('modelInUse')),
+                        )
+                      : FilledButton.icon(
+                          onPressed: () {
+                            app.selectModel(spec.modelKey);
+                            Navigator.pop(context);
+                          },
+                          icon: const Icon(Icons.play_arrow),
+                          label: Text(app.t('useModel')),
+                        ),
+                ),
+                const SizedBox(width: 10),
+                IconButton(
+                  onPressed: () => _confirmDelete(context, app, spec),
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(
+      BuildContext context, AppState app, LocalModelSpec spec) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(app.t('deleteLocalModelTitle')),
+        content: Text(app.t('deleteLocalModelBody')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(app.t('cancel'))),
+          TextButton(
+            onPressed: () {
+              app.deleteLocalModel(spec);
+              Navigator.pop(ctx);
+            },
+            child: Text(app.t('deleteModel'),
+                style: const TextStyle(color: Colors.red)),
+          ),
+        ],
       ),
     );
   }
