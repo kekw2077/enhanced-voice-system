@@ -92,6 +92,12 @@ const Map<String, Map<String, String>> _i18n = {
     'localModelsTitle': 'Локальные модели',
     'localModelsDesc':
         'Скачайте модель прямо на устройство и общайтесь с ней без подключения к серверу.',
+    'tierLight': 'Лёгкие',
+    'tierLightDesc': 'Для слабых/старых телефонов (32-бит ARM, мало ОЗУ)',
+    'tierMid': 'Средние',
+    'tierMidDesc': 'Для современных смартфонов среднего класса (например, Honor 70)',
+    'tierHigh': 'Мощные',
+    'tierHighDesc': 'Для флагманов с большим запасом ОЗУ (например, iPhone 15 Pro Max)',
     'onDevice': 'на устройстве',
     'downloadModel': 'Скачать',
     'downloadingModel': 'Загрузка…',
@@ -271,6 +277,12 @@ const Map<String, Map<String, String>> _i18n = {
     'localModelsTitle': 'Local models',
     'localModelsDesc':
         'Download a model straight to your device and chat with it without a server connection.',
+    'tierLight': 'Light',
+    'tierLightDesc': 'For weak/older phones (32-bit ARM, low RAM)',
+    'tierMid': 'Mid-range',
+    'tierMidDesc': 'For modern mid-range smartphones (e.g. Honor 70)',
+    'tierHigh': 'High-end',
+    'tierHighDesc': 'For flagships with plenty of RAM (e.g. iPhone 15 Pro Max)',
     'onDevice': 'on-device',
     'downloadModel': 'Download',
     'downloadingModel': 'Downloading…',
@@ -682,12 +694,15 @@ class Personalization {
 
 /* ============================ ЛОКАЛЬНЫЕ МОДЕЛИ ============================ */
 
+enum LocalModelTier { light, mid, high }
+
 class LocalModelSpec {
   final String id;
   final String displayName;
   final int sizeBytes;
   final String url;
   final String fileName;
+  final LocalModelTier tier;
 
   const LocalModelSpec({
     required this.id,
@@ -695,12 +710,23 @@ class LocalModelSpec {
     required this.sizeBytes,
     required this.url,
     required this.fileName,
+    required this.tier,
   });
 
   String get modelKey => 'local:$id';
 }
 
 const List<LocalModelSpec> kLocalModels = [
+  // Лёгкие — слабые/старые телефоны (32-бит ARM, мало ОЗУ)
+  LocalModelSpec(
+    id: 'qwen2.5-0.5b',
+    displayName: 'Qwen2.5 0.5B Instruct',
+    sizeBytes: 491400032,
+    url:
+        'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf?download=true',
+    fileName: 'qwen2.5-0.5b-instruct-q4_k_m.gguf',
+    tier: LocalModelTier.light,
+  ),
   LocalModelSpec(
     id: 'tinyllama-1.1b',
     displayName: 'TinyLlama 1.1B Chat',
@@ -708,7 +734,18 @@ const List<LocalModelSpec> kLocalModels = [
     url:
         'https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?download=true',
     fileName: 'tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf',
+    tier: LocalModelTier.light,
   ),
+  LocalModelSpec(
+    id: 'llama-3.2-1b',
+    displayName: 'Llama 3.2 1B Instruct',
+    sizeBytes: 807694464,
+    url:
+        'https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf?download=true',
+    fileName: 'Llama-3.2-1B-Instruct-Q4_K_M.gguf',
+    tier: LocalModelTier.light,
+  ),
+  // Средние — современные смартфоны среднего класса (например, Honor 70)
   LocalModelSpec(
     id: 'qwen2.5-1.5b',
     displayName: 'Qwen2.5 1.5B Instruct',
@@ -716,6 +753,53 @@ const List<LocalModelSpec> kLocalModels = [
     url:
         'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf?download=true',
     fileName: 'qwen2.5-1.5b-instruct-q4_k_m.gguf',
+    tier: LocalModelTier.mid,
+  ),
+  LocalModelSpec(
+    id: 'qwen2.5-3b',
+    displayName: 'Qwen2.5 3B Instruct',
+    sizeBytes: 2104932768,
+    url:
+        'https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf?download=true',
+    fileName: 'qwen2.5-3b-instruct-q4_k_m.gguf',
+    tier: LocalModelTier.mid,
+  ),
+  LocalModelSpec(
+    id: 'phi-3-mini-4k',
+    displayName: 'Phi-3 Mini 4K Instruct',
+    sizeBytes: 2393231072,
+    url:
+        'https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf?download=true',
+    fileName: 'Phi-3-mini-4k-instruct-q4.gguf',
+    tier: LocalModelTier.mid,
+  ),
+  // Мощные — флагманы с большим запасом ОЗУ (например, iPhone 15 Pro Max)
+  LocalModelSpec(
+    id: 'mistral-7b-v0.3',
+    displayName: 'Mistral 7B Instruct v0.3',
+    sizeBytes: 4372812000,
+    url:
+        'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf?download=true',
+    fileName: 'Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
+    tier: LocalModelTier.high,
+  ),
+  LocalModelSpec(
+    id: 'qwen2.5-7b',
+    displayName: 'Qwen2.5 7B Instruct',
+    sizeBytes: 4683074240,
+    url:
+        'https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf?download=true',
+    fileName: 'Qwen2.5-7B-Instruct-Q4_K_M.gguf',
+    tier: LocalModelTier.high,
+  ),
+  LocalModelSpec(
+    id: 'llama-3.1-8b',
+    displayName: 'Llama 3.1 8B Instruct',
+    sizeBytes: 4920739232,
+    url:
+        'https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf?download=true',
+    fileName: 'Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf',
+    tier: LocalModelTier.high,
   ),
 ];
 
@@ -3456,7 +3540,52 @@ class LocalModelsScreen extends StatelessWidget {
               style: TextStyle(
                   color: _sub(context), fontSize: 15, height: 1.4)),
           const SizedBox(height: 20),
-          for (final spec in kLocalModels) _modelCard(context, app, spec),
+          for (final (i, tier) in LocalModelTier.values.indexed) ...[
+            if (kLocalModels.any((m) => m.tier == tier)) ...[
+              _tierHeader(context, app, tier, showDivider: i > 0),
+              for (final spec in kLocalModels.where((m) => m.tier == tier))
+                _modelCard(context, app, spec),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _tierHeader(BuildContext context, AppState app, LocalModelTier tier,
+      {required bool showDivider}) {
+    final (titleKey, descKey) = switch (tier) {
+      LocalModelTier.light => ('tierLight', 'tierLightDesc'),
+      LocalModelTier.mid => ('tierMid', 'tierMidDesc'),
+      LocalModelTier.high => ('tierHigh', 'tierHighDesc'),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (showDivider) ...[
+            Divider(color: _sub(context).withValues(alpha: 0.25), height: 17),
+          ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(app.t(titleKey),
+                  style: TextStyle(
+                      color: _txt(context),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(app.t(descKey),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: _sub(context), fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
         ],
       ),
     );
@@ -3468,84 +3597,81 @@ class LocalModelsScreen extends StatelessWidget {
     final isSelected = app.selectedModel == spec.modelKey;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: _card(context).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(Icons.memory, color: _txt(context)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(spec.displayName,
+          Icon(Icons.memory, color: _txt(context), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(spec.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         color: _txt(context),
-                        fontSize: 17,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(formatBytes(spec.sizeBytes),
-              style: TextStyle(color: _sub(context), fontSize: 14)),
-          const SizedBox(height: 14),
-          if (progress != null) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                  value: progress > 0 ? progress : null),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Text('${(progress * 100).toStringAsFixed(0)}%',
-                    style: TextStyle(color: _sub(context))),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => app.cancelLocalModelDownload(spec.id),
-                  child: Text(app.t('cancelDownload')),
-                ),
+                const SizedBox(height: 2),
+                if (progress != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                        value: progress > 0 ? progress : null,
+                        minHeight: 4),
+                  )
+                else
+                  Text(formatBytes(spec.sizeBytes),
+                      style: TextStyle(color: _sub(context), fontSize: 12)),
               ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (progress != null) ...[
+            Text('${(progress * 100).toStringAsFixed(0)}%',
+                style: TextStyle(color: _sub(context), fontSize: 12)),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: app.t('cancelDownload'),
+              onPressed: () => app.cancelLocalModelDownload(spec.id),
+              icon: const Icon(Icons.close, size: 18),
             ),
           ] else if (!downloaded) ...[
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => app.downloadLocalModel(spec),
-                icon: const Icon(Icons.download),
-                label: Text(app.t('downloadModel')),
-              ),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: app.t('downloadModel'),
+              onPressed: () => app.downloadLocalModel(spec),
+              icon: const Icon(Icons.download),
             ),
           ] else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: isSelected
-                      ? OutlinedButton.icon(
-                          onPressed: null,
-                          icon: const Icon(Icons.check),
-                          label: Text(app.t('modelInUse')),
-                        )
-                      : FilledButton.icon(
-                          onPressed: () {
-                            app.selectModel(spec.modelKey);
-                            Navigator.pop(context);
-                          },
-                          icon: const Icon(Icons.play_arrow),
-                          label: Text(app.t('useModel')),
-                        ),
-                ),
-                const SizedBox(width: 10),
-                IconButton(
-                  onPressed: () => _confirmDelete(context, app, spec),
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                ),
-              ],
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: isSelected ? app.t('modelInUse') : app.t('useModel'),
+              onPressed: isSelected
+                  ? null
+                  : () {
+                      app.selectModel(spec.modelKey);
+                      Navigator.pop(context);
+                    },
+              icon: Icon(isSelected ? Icons.check_circle : Icons.play_arrow,
+                  color: isSelected ? Colors.green : null),
+            ),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: app.t('deleteModel'),
+              onPressed: () => _confirmDelete(context, app, spec),
+              icon: const Icon(Icons.delete_outline,
+                  color: Colors.red, size: 20),
             ),
           ],
         ],
