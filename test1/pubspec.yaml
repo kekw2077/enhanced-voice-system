@@ -28,6 +28,7 @@ dependencies:
 dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
 
 flutter:
   uses-material-design: true
@@ -43,3 +44,20 @@ flutter_launcher_icons:
     generate: true
   web:
     generate: true
+
+flutter_native_splash:
+  background_image: "assets/splash/splash_light.png"
+  background_image_dark: "assets/splash/splash_dark.png"
+  fullscreen: true
+  android: true
+  ios: true
+  web: true
+
+  # Android 12+ enforces its own splash screen layout (a small icon on a
+  # solid color background, no full-bleed artwork), so it gets its own
+  # color-only config; it falls back to the app's launcher icon.
+  android_12:
+    color: "#ebf4fc"
+    color_dark: "#0f182f"
+    icon_background_color: "#ebf4fc"
+    icon_background_color_dark: "#0f182f"
