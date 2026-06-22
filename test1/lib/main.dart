@@ -929,6 +929,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.7.1', [
+    'Пузыри сообщений нейросети в чате окрашены тем же синим градиентом, что и акцентные кнопки.',
+  ]),
   ChangelogEntry('2.7.0', [
     'Голосовой ввод больше не "засыпает" молча после паузы — распознавание автоматически перезапускается, а уже распознанный текст не теряется.',
     'Если микрофон не удаётся подключить вообще, экран голосового ввода теперь явно показывает ошибку с кнопкой «Повторить» вместо бесконечного «Подключение микрофона…».',
@@ -2516,9 +2519,14 @@ class _ChatScreenState extends State<ChatScreen> {
           maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
         decoration: BoxDecoration(
-          color: isUser
-              ? Theme.of(context).colorScheme.primary
-              : _card(context),
+          color: isUser ? Theme.of(context).colorScheme.primary : null,
+          gradient: isUser
+              ? null
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: kAccentGradientColors,
+                ),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
@@ -2531,17 +2539,17 @@ class _ChatScreenState extends State<ChatScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.attach_file,
                         size: 14,
-                        color: isUser ? Colors.white70 : _sub(context),
+                        color: Colors.white70,
                       ),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
                           a.split('/').last,
-                          style: TextStyle(
-                            color: isUser ? Colors.white70 : _sub(context),
+                          style: const TextStyle(
+                            color: Colors.white70,
                             fontSize: 12,
                           ),
                         ),
@@ -2553,8 +2561,8 @@ class _ChatScreenState extends State<ChatScreen> {
             if (m.content.isNotEmpty)
               Text(
                 m.content,
-                style: TextStyle(
-                  color: isUser ? Colors.white : _txt(context),
+                style: const TextStyle(
+                  color: Colors.white,
                   fontSize: 14,
                   height: 1.4,
                 ),
