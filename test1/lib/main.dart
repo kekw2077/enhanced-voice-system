@@ -54,6 +54,7 @@ const Map<String, Map<String, String>> _i18n = {
         'Создание изображения — отправьте запрос модели изображений',
     'loadingModels': 'Загрузка моделей…',
     'noModelsFound': 'Модели не найдены',
+    'noModelsAvailable': 'Нет доступных моделей',
     'refreshModels': 'Обновить список моделей',
     'mute': 'Выкл. микрофон',
     'unmute': 'Вкл. микрофон',
@@ -247,6 +248,7 @@ const Map<String, Map<String, String>> _i18n = {
     'createImageHint': 'Create Image — send a request to an image model',
     'loadingModels': 'Loading models…',
     'noModelsFound': 'No models found',
+    'noModelsAvailable': 'No models available',
     'refreshModels': 'Refresh model list',
     'mute': 'Mute',
     'unmute': 'Unmute',
@@ -866,8 +868,8 @@ class AppState extends ChangeNotifier {
 
   String serverUrl = '192.168.1.100:11434';
   String apiKey = '';
-  List<String> models = ['Alice Nano'];
-  String selectedModel = 'Alice Nano';
+  List<String> models = [];
+  String selectedModel = '';
   bool loadingModels = false;
   String? modelsError;
 
@@ -924,7 +926,7 @@ class AppState extends ChangeNotifier {
     micPauseSeconds = prefs.getInt('micPauseSeconds') ?? 3;
     serverUrl = prefs.getString('serverUrl') ?? '192.168.1.100:11434';
     apiKey = prefs.getString('apiKey') ?? '';
-    models = prefs.getStringList('models') ?? ['Alice Nano'];
+    models = prefs.getStringList('models') ?? [];
     selectedModel =
         prefs.getString('selectedModel') ??
         (models.isNotEmpty ? models.first : '');
@@ -1119,7 +1121,9 @@ class AppState extends ChangeNotifier {
 
   void removeModel(String m) {
     models.remove(m);
-    if (selectedModel == m && models.isNotEmpty) selectedModel = models.first;
+    if (selectedModel == m) {
+      selectedModel = models.isNotEmpty ? models.first : '';
+    }
     _save();
     notifyListeners();
   }
@@ -1136,6 +1140,7 @@ class AppState extends ChangeNotifier {
   }
 
   String modelDisplayName(String modelKey) {
+    if (modelKey.isEmpty) return t('noModelsAvailable');
     final spec = localSpecFor(modelKey);
     if (spec == null) return modelKey;
     return '${spec.displayName} (${t('onDevice')})';
@@ -1391,7 +1396,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     String reply;
-    if (isLocalModel(selectedModel)) {
+    if (selectedModel.isEmpty) {
+      reply = t('noModelsAvailable');
+    } else if (isLocalModel(selectedModel)) {
       reply = await _sendLocalMessage(conv);
     } else {
       try {
