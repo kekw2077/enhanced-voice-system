@@ -61,6 +61,10 @@ const Map<String, Map<String, String>> _i18n = {
     'unmute': 'Вкл. микрофон',
     'listening': 'Внимательно слушаю…',
     'preparingMic': 'Подключение микрофона…',
+    'micUnavailable': 'Не удалось подключить микрофон',
+    'micUnavailableDesc':
+        'Проверьте разрешение на запись звука и подключение к интернету, затем попробуйте снова.',
+    'retry': 'Повторить',
     'muted': 'Микрофон выключен',
     'micSettingsTitle': 'Настройки микрофона',
     'micAutoSend': 'Автоотправка после паузы',
@@ -263,6 +267,10 @@ const Map<String, Map<String, String>> _i18n = {
     'unmute': 'Unmute',
     'listening': 'Listening carefully…',
     'preparingMic': 'Connecting microphone…',
+    'micUnavailable': 'Couldn\'t connect to the microphone',
+    'micUnavailableDesc':
+        'Check the microphone permission and your internet connection, then try again.',
+    'retry': 'Retry',
     'muted': 'Muted',
     'micSettingsTitle': 'Microphone settings',
     'micAutoSend': 'Auto-send after pause',
@@ -921,6 +929,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.7.0', [
+    'Голосовой ввод больше не "засыпает" молча после паузы — распознавание автоматически перезапускается, а уже распознанный текст не теряется.',
+    'Если микрофон не удаётся подключить вообще, экран голосового ввода теперь явно показывает ошибку с кнопкой «Повторить» вместо бесконечного «Подключение микрофона…».',
+  ]),
   ChangelogEntry('2.6.1', [
     'Вкладки «Личность»/«Память» в настройках персонализации перенесены с левой боковой панели наверх, под заголовок экрана.',
   ]),
@@ -2949,9 +2961,14 @@ class _VoiceScreenState extends State<VoiceScreen>
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _muted = false;
   bool _available = false;
+  bool _initFailed = false;
   bool _listening = false;
   bool _manualStop = false;
   String _recognized = '';
+  // Text already confirmed by a previous listen session (before an
+  // automatic or manual restart); the live session's words are appended
+  // to this so a restart never silently drops what was already said.
+  String _committedText = '';
   Timer? _autoSendTimer;
   Timer? _listenWatchdog;
   int _listenRetries = 0;
@@ -2977,7 +2994,9 @@ class _VoiceScreenState extends State<VoiceScreen>
     if (mounted) setState(() => _listening = false);
   }
 
-  Future<void> _init() async {
+  Future<void> _init({int attempt = 0}) async {
+    if (!mounted) return;
+    if (attempt == 0) setState(() => _initFailed = false);
     _available = await _speech.initialize(
       onStatus: _onStatus,
       onError: _onSpeechError,
@@ -2991,8 +3010,26 @@ class _VoiceScreenState extends State<VoiceScreen>
     // the engine.
     _speech.statusListener = _onStatus;
     _speech.errorListener = _onSpeechError;
-    if (_available && !_muted) _listen();
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (_available) {
+      if (!_muted) _listen();
+      setState(() {});
+    } else if (attempt < 2) {
+      // initialize() can fail transiently right when the screen opens (mic
+      // permission grant still propagating, recognition service not yet
+      // bound) — retry a couple of times before surfacing an error instead
+      // of giving up on the very first try.
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (mounted) _init(attempt: attempt + 1);
+    } else {
+      setState(() => _initFailed = true);
+    }
+  }
+
+  void _retryInit() {
+    if (!mounted) return;
+    _listenRetries = 0;
+    _init();
   }
 
   void _onStatus(String status) {
@@ -3007,10 +3044,17 @@ class _VoiceScreenState extends State<VoiceScreen>
     }
     final stoppedNaturally = wasListening && !_listening && !_manualStop;
     _manualStop = false;
-    if (stoppedNaturally &&
-        _recognized.trim().isNotEmpty &&
-        context.read<AppState>().micAutoSend) {
+    if (!stoppedNaturally) return;
+    final willAutoSend =
+        _recognized.trim().isNotEmpty && context.read<AppState>().micAutoSend;
+    if (willAutoSend) {
       _scheduleAutoSend();
+    } else if (!_muted) {
+      // Recognition stops on its own after `pauseFor` of silence even in
+      // dictation mode, so without this the mic would just go silently
+      // idle until the user noticed and toggled mute/unmute by hand.
+      _committedText = _recognized;
+      _listen();
     }
   }
 
@@ -3039,7 +3083,17 @@ class _VoiceScreenState extends State<VoiceScreen>
     _speech
         .listen(
           onResult: (r) {
-            if (mounted) setState(() => _recognized = r.recognizedWords);
+            if (!mounted) return;
+            // Each listen() call starts a fresh session whose
+            // recognizedWords resets to empty, so prepend whatever was
+            // already committed by earlier sessions instead of dropping it.
+            setState(() {
+              _recognized = _committedText.isEmpty
+                  ? r.recognizedWords
+                  : (r.recognizedWords.isEmpty
+                        ? _committedText
+                        : '$_committedText ${r.recognizedWords}');
+            });
           },
           onSoundLevelChange: _onSoundLevel,
           listenOptions: stt.SpeechListenOptions(
@@ -3063,7 +3117,13 @@ class _VoiceScreenState extends State<VoiceScreen>
     _listenWatchdog?.cancel();
     _listenWatchdog = Timer(const Duration(milliseconds: 2500), () {
       if (!mounted || _muted || _listening) return;
-      if (_listenRetries >= _maxListenRetries) return;
+      if (_listenRetries >= _maxListenRetries) {
+        // Stop retrying silently — tell the user instead of leaving them
+        // staring at "Connecting microphone…" forever with no way to know
+        // it's actually given up.
+        setState(() => _initFailed = true);
+        return;
+      }
       _listenRetries++;
       _speech.stop().then((_) {
         Future.delayed(const Duration(milliseconds: 400), () {
@@ -3079,9 +3139,11 @@ class _VoiceScreenState extends State<VoiceScreen>
     setState(() => _muted = !_muted);
     if (_muted) {
       _manualStop = true;
+      _committedText = _recognized;
       _speech.stop();
     } else {
       _listenRetries = 0;
+      _initFailed = false;
       _listen();
     }
   }
@@ -3279,41 +3341,73 @@ class _VoiceScreenState extends State<VoiceScreen>
                 soundLevel: _soundLevel,
               ),
               const SizedBox(height: 40),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.black38,
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.mic, color: Color(0xFF7C83FD)),
-                    const SizedBox(width: 10),
-                    Flexible(
-                      child: Text(
-                        _recognized.isEmpty
-                            ? (_muted
-                                  ? app.t('muted')
-                                  : (_listening
-                                        ? app.t('listening')
-                                        : app.t('preparingMic')))
-                            : _recognized,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+              GestureDetector(
+                onTap: _initFailed && _recognized.isEmpty ? _retryInit : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black38,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _initFailed && _recognized.isEmpty
+                            ? Icons.mic_off
+                            : Icons.mic,
+                        color: _initFailed && _recognized.isEmpty
+                            ? Colors.redAccent
+                            : const Color(0xFF7C83FD),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Text(
+                          _recognized.isEmpty
+                              ? (_initFailed
+                                    ? app.t('micUnavailable')
+                                    : (_muted
+                                          ? app.t('muted')
+                                          : (_listening
+                                                ? app.t('listening')
+                                                : app.t('preparingMic'))))
+                              : _recognized,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      if (_initFailed && _recognized.isEmpty) ...[
+                        const SizedBox(width: 10),
+                        Text(
+                          app.t('retry'),
+                          style: const TextStyle(
+                            color: Color(0xFF7C83FD),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
               const Spacer(),
-              if (app.micAutoSend)
+              if (_initFailed && _recognized.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
+                  child: Text(
+                    app.t('micUnavailableDesc'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white54, fontSize: 16),
+                  ),
+                )
+              else if (app.micAutoSend)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(40, 0, 40, 30),
                   child: Text(
