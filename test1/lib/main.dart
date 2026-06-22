@@ -900,6 +900,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.3.2', [
+    'Описание тира («Для слабых/старых телефонов…» и т.д.) на экране «Локальные модели» больше не обрезается посередине строки — теперь идёт на отдельной строке под названием тира и переносится целиком.',
+  ]),
   ChangelogEntry('2.3.1', [
     'Убрана картинка со сплэш-экрана — теперь это просто фон фирменного цвета (светлый/тёмный), без изображения.',
   ]),
@@ -4527,28 +4530,18 @@ class LocalModelsScreen extends StatelessWidget {
           if (showDivider) ...[
             Divider(color: _sub(context).withValues(alpha: 0.25), height: 17),
           ],
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                app.t(titleKey),
-                style: TextStyle(
-                  color: _txt(context),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  app.t(descKey),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: _sub(context), fontSize: 12),
-                ),
-              ),
-            ],
+          Text(
+            app.t(titleKey),
+            style: TextStyle(
+              color: _txt(context),
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            app.t(descKey),
+            style: TextStyle(color: _sub(context), fontSize: 12),
           ),
           const SizedBox(height: 6),
         ],
