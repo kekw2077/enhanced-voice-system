@@ -102,6 +102,9 @@ const Map<String, Map<String, String>> _i18n = {
     'upToDate': 'У вас последняя версия',
     'updateCheckFailed': 'Не удалось проверить обновления',
     'updateDownloadFailed': 'Не удалось скачать обновление',
+    'aboutVersion': 'О версии',
+    'whatsNewTitle': 'Что нового в версии',
+    'gotIt': 'Понятно',
     'manageModelsItem': 'Управление моделями',
     'localModelsItem': 'Локальные модели',
     'localModelsTitle': 'Локальные модели',
@@ -297,6 +300,9 @@ const Map<String, Map<String, String>> _i18n = {
     'upToDate': 'You have the latest version',
     'updateCheckFailed': 'Failed to check for updates',
     'updateDownloadFailed': 'Failed to download update',
+    'aboutVersion': 'About version',
+    'whatsNewTitle': "What's new in version",
+    'gotIt': 'Got it',
     'manageModelsItem': 'Manage models',
     'localModelsItem': 'Local models',
     'localModelsTitle': 'Local models',
@@ -853,6 +859,65 @@ String formatBytes(int bytes) {
   return '${(bytes / mb).toStringAsFixed(0)} MB';
 }
 
+/* ============================ ИСТОРИЯ ИЗМЕНЕНИЙ ============================ */
+// Keep in sync with CHANGELOG.md — this is the in-app copy shown on the
+// "About version" screen and in the post-update "what's new" dialog.
+
+class ChangelogEntry {
+  final String version;
+  final List<String> changes;
+  const ChangelogEntry(this.version, this.changes);
+}
+
+const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('1.7.0', [
+    'Новый пункт «О версии» в настройках («О приложении») — открывает экран со списком изменений по всем версиям приложения.',
+    'После обновления приложения при первом запуске показывается всплывающее окно с описанием того, что изменилось в новой версии.',
+  ]),
+  ChangelogEntry('1.6.0', [
+    'Экран голосового ввода: добавлена анимированная светящаяся рамка по краям экрана (тот же вращающийся синий/фиолетовый градиент, что и вокруг поля ввода текста).',
+    'Цветовая гамма экрана голосового ввода (фон, сфера, акценты) перекрашена из бирюзовой в сине-фиолетовую, чтобы сочетаться с новой рамкой.',
+  ]),
+  ChangelogEntry('1.5.2', [
+    'Исправлена миграция старых данных: заглушка «Alice Nano» и адрес сервера по умолчанию (192.168.1.100:11434), сохранённые версиями приложения до 1.4.1, теперь автоматически вычищаются при загрузке вместо того, чтобы выглядеть как настоящие сохранённые значения.',
+    'Поле адреса сервера пустое по умолчанию и показывает серый пример-подсказку, пока пользователь не введёт свой адрес.',
+  ]),
+  ChangelogEntry('1.5.1', [
+    'Единый синий градиент применён ко всем акцентным кнопкам («Новый чат», CTA в пустом списке чатов) и ползункам (размер шрифта, параметры персонализации).',
+    'Шрифт по всему приложению стал на ступень менее жирным (w800→w700, w700→w600, w600→w500).',
+    'Масштаб текста теперь учитывает системную настройку размера шрифта устройства, а не только внутренний слайдер приложения.',
+  ]),
+  ChangelogEntry('1.5.0', [
+    'Настройки поведения модели теперь можно задать индивидуально для каждого чата: новая кнопка (значок «человек+шестерёнка») в верхней панели открывает экран персонализации именно для текущего чата. Если для чата заданы свои настройки, общие настройки приложения на него больше не влияют.',
+  ]),
+  ChangelogEntry('1.4.1', [
+    'Убрана несуществующая модель-заглушка «Alice Nano»: при отсутствии подключения к серверу и нескачанных локальных моделей теперь честно показывается «Нет доступных моделей» вместо фейкового названия.',
+  ]),
+  ChangelogEntry('1.4.0', [
+    'Проверка обновлений в настройках («О приложении» → «Проверить обновления»): сравнивает версию с последним релизом на GitHub, скачивает APK и запускает установку — без переходов по ссылкам (Android).',
+    'Сфера на главном экране теперь по-настоящему разлетается на частицы при появлении клавиатуры и собирается обратно при скрытии (раньше — простое затухание/уменьшение).',
+    'Увеличено количество частиц в сфере, добавлена случайная яркость каждой частицы — силуэт выглядит менее "идеально круглым".',
+  ]),
+  ChangelogEntry('1.3.0', [
+    'Нативный сплэш-экран при запуске (свой дизайн вместо чёрного/белого экрана), отдельно для светлой и тёмной темы — Android (включая Android 12+), iOS, Web.',
+    'Минимальная длительность показа сплэша (1.2с), чтобы он не "мигал" на быстрых устройствах.',
+  ]),
+  ChangelogEntry('1.2.0', [
+    'Каталог локальных моделей расширен с 2 до 9: добавлены лёгкие (Qwen2.5 0.5B, Llama 3.2 1B), средние (Qwen2.5 3B, Phi-3 Mini) и мощные (Mistral 7B, Qwen2.5 7B, Llama 3.1 8B) варианты.',
+    'Модели в экране «Локальные модели» сгруппированы по категориям устройств (лёгкие/средние/мощные) с разделителями.',
+    'Список моделей сделан компактнее (карточки в одну строку вместо нескольких).',
+  ]),
+  ChangelogEntry('1.1.0', [
+    'Локальный инференс на устройстве через fllama (llama.cpp/GGUF) — чат работает офлайн без сервера.',
+    'Экран «Локальные модели»: скачивание с прогрессом, выбор, удаление.',
+    'Исправления голосового ввода: разрешения микрофона на Android, надёжность переподключения, кнопка «Отправить».',
+    'Новая иконка приложения (закруглённые углы, обрезка лишних полей).',
+  ]),
+  ChangelogEntry('1.0.0', [
+    'Базовая версия: переименование приложения в Alice AI.',
+  ]),
+];
+
 /* ============================ СОСТОЯНИЕ ============================ */
 
 enum AppThemeMode { system, light, dark }
@@ -890,6 +955,7 @@ class AppState extends ChangeNotifier {
   String? updateAvailableVersion;
   String? _updateApkUrl;
   double? updateDownloadProgress;
+  String? lastSeenVersion;
 
   Personalization persona = Personalization();
 
@@ -948,6 +1014,7 @@ class AppState extends ChangeNotifier {
     }
     downloadedLocalModelIds =
         (prefs.getStringList('downloadedLocalModelIds') ?? []).toSet();
+    lastSeenVersion = prefs.getString('lastSeenVersion');
 
     final pj = prefs.getString('persona');
     if (pj != null) {
@@ -1222,6 +1289,23 @@ class AppState extends ChangeNotifier {
       if (rv != lv) return rv > lv;
     }
     return false;
+  }
+
+  // Called once after launch. Returns the changelog entry to show in a
+  // "what's new" dialog if the app was just updated, or null if this is a
+  // fresh install or the version hasn't changed since last launch.
+  Future<ChangelogEntry?> consumeWhatsNew() async {
+    final info = await PackageInfo.fromPlatform();
+    final current = info.version;
+    final previous = lastSeenVersion;
+    if (previous == current) return null;
+    lastSeenVersion = current;
+    await prefs.setString('lastSeenVersion', current);
+    if (previous == null) return null; // fresh install, nothing to announce
+    for (final entry in kChangelog) {
+      if (entry.version == current) return entry;
+    }
+    return null;
   }
 
   Future<void> checkForUpdates() async {
@@ -1916,11 +2000,39 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      if (context.read<AppState>().showKeyboardOnLaunch) {
+      final app = context.read<AppState>();
+      if (app.showKeyboardOnLaunch) {
         _inputFocus.requestFocus();
       }
+      final entry = await app.consumeWhatsNew();
+      if (!mounted || entry == null) return;
+      showDialog(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('${app.t('whatsNewTitle')} ${entry.version}'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final change in entry.changes)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text('•  $change'),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(app.t('gotIt')),
+            ),
+          ],
+        ),
+      );
     });
   }
 
@@ -3692,6 +3804,16 @@ class SettingsSheet extends StatelessWidget {
                   _sectionLabel(app.t('sectionAbout')),
                   _group([
                     _updateRow(context, app),
+                    _nav(
+                      context,
+                      Icons.info_outline,
+                      app.t('aboutVersion'),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const AboutVersionScreen(),
+                        ),
+                      ),
+                    ),
                   ]),
                   const SizedBox(height: 30),
                 ],
@@ -4132,6 +4254,71 @@ class SettingsSheet extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/* ============================ ИСТОРИЯ ИЗМЕНЕНИЙ (ЭКРАН) ============================ */
+
+class AboutVersionScreen extends StatelessWidget {
+  const AboutVersionScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Scaffold(
+      backgroundColor: _bg(context),
+      appBar: AppBar(
+        backgroundColor: _bg(context),
+        elevation: 0,
+        foregroundColor: _txt(context),
+        title: Text(app.t('aboutVersion'),
+            style:
+                TextStyle(color: _txt(context), fontWeight: FontWeight.w600)),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          for (final entry in kChangelog)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _card(context).withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(entry.version,
+                      style: TextStyle(
+                          color: _txt(context),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 10),
+                  for (final change in entry.changes)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('•  ',
+                              style: TextStyle(color: _sub(context))),
+                          Expanded(
+                            child: Text(change,
+                                style: TextStyle(
+                                    color: _sub(context),
+                                    fontSize: 14,
+                                    height: 1.4)),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
