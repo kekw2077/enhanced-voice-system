@@ -103,6 +103,8 @@ const Map<String, Map<String, String>> _i18n = {
     'upToDate': 'У вас последняя версия',
     'updateCheckFailed': 'Не удалось проверить обновления',
     'updateDownloadFailed': 'Не удалось скачать обновление',
+    'downloadUpdateNow': 'Скачать и установить',
+    'later': 'Позже',
     'aboutVersion': 'О версии',
     'whatsNewTitle': 'Что нового в версии',
     'gotIt': 'Понятно',
@@ -301,6 +303,8 @@ const Map<String, Map<String, String>> _i18n = {
     'upToDate': 'You have the latest version',
     'updateCheckFailed': 'Failed to check for updates',
     'updateDownloadFailed': 'Failed to download update',
+    'downloadUpdateNow': 'Download and install',
+    'later': 'Later',
     'aboutVersion': 'About version',
     'whatsNewTitle': "What's new in version",
     'gotIt': 'Got it',
@@ -740,6 +744,31 @@ class Personalization {
     }
     return b.toString();
   }
+
+  // Small on-device models reliably break down when given the full
+  // multi-directive prompt above (formality/empathy/verbosity/tone/etc.) —
+  // they tend to start mimicking its "key: value" structure instead of
+  // actually answering. Keep only what's simple enough for them to follow
+  // and important enough to be worth the tokens.
+  String buildLocalSystemPrompt() {
+    final b = StringBuffer();
+    b.writeln('You are Mirai, a helpful assistant. Answer naturally and directly.');
+    if (defaultLength == 'len_short') {
+      b.writeln('Keep answers short.');
+    } else if (defaultLength == 'len_long') {
+      b.writeln('Give detailed answers.');
+    }
+    if (avoidTopics.isNotEmpty) {
+      b.writeln('Avoid these topics: $avoidTopics.');
+    }
+    if (contentFilter == 'cf_strict') {
+      b.writeln('Avoid adult and violent content.');
+    }
+    if (customPrompt.trim().isNotEmpty) {
+      b.writeln('Additional instruction: ${customPrompt.trim()}');
+    }
+    return b.toString();
+  }
 }
 
 /* ============================ ЛОКАЛЬНЫЕ МОДЕЛИ ============================ */
@@ -871,6 +900,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.3.0', [
+    'Локальные модели теперь получают сильно укороченный системный промпт (имя ассистента, длина ответа, запретные темы, кастомная инструкция) вместо полного набора директив персонализации — маленькие модели не справлялись с длинным промптом и путали его структуру с содержанием ответа.',
+    'Проверка обновлений в настройках теперь показывает результат во всплывающем диалоговом окне (ошибка / последняя версия / доступно обновление с кнопкой «Скачать и установить») вместо короткого уведомления внизу экрана.',
+  ]),
   ChangelogEntry('2.2.0', [
     'Убрана модель TinyLlama 1.1B Chat из каталога локальных моделей — слишком слабая, не справлялась с системным промптом и выдавала бессвязные ответы.',
     'Добавлена Gemma 2 2B Instruct (средний тир) — известна хорошим качеством именно обычного диалога при небольшом размере.',
@@ -1464,7 +1497,7 @@ class AppState extends ChangeNotifier {
     if (!await localModelFileExists(modelPath)) return t('localModelMissing');
 
     final messages = <Message>[
-      Message(Role.system, (conv.persona ?? persona).buildSystemPrompt()),
+      Message(Role.system, (conv.persona ?? persona).buildLocalSystemPrompt()),
       ...conv.messages.map(
         (m) => Message(
           m.role == 'user' ? Role.user : Role.assistant,
@@ -3965,12 +3998,40 @@ class SettingsSheet extends StatelessWidget {
       onTap = () async {
         await app.checkForUpdates();
         if (!context.mounted) return;
-        final msg = app.updateCheckError ??
-            (app.updateAvailableVersion == null ? app.t('upToDate') : null);
-        if (msg != null) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text(msg)));
-        }
+        final version = app.updateAvailableVersion;
+        final error = app.updateCheckError;
+        showDialog(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(app.t('checkForUpdates')),
+            content: Text(
+              error ??
+                  (version != null
+                      ? '${app.t('updateAvailable')} $version'
+                      : app.t('upToDate')),
+            ),
+            actions: version != null && error == null
+                ? [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(app.t('later')),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        app.downloadAndInstallUpdate();
+                      },
+                      child: Text(app.t('downloadUpdateNow')),
+                    ),
+                  ]
+                : [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(app.t('gotIt')),
+                    ),
+                  ],
+          ),
+        );
       };
     }
 
