@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -870,6 +871,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.1.0', [
+    'Сфера на экране голосового ввода теперь реагирует на громкость с микрофона в реальном времени: пульсирует сильнее, ярче светится и быстрее дрожит при громком звуке, и успокаивается в тишине.',
+    'На Windows-сборке эффект не виден — нативный SAPI-плагин речи не передаёт уровень громкости; полноценно работает на Android (и должно — на iOS).',
+  ]),
   ChangelogEntry('2.0.0', [
     'Приложение и репозиторий переименованы из «Alice AI» в «Mirai»: новое отображаемое имя, системный промпт ассистента, package name и applicationId/bundle id на всех платформах.',
     'Важно: из-за смены applicationId/bundle id уже установленные копии Alice AI не обновятся поверх — Mirai ставится как отдельное приложение, старое нужно удалить вручную.',
@@ -1657,6 +1662,9 @@ class ParticleSphere extends StatefulWidget {
   final bool dense;
   final bool active;
   final bool scattered;
+  // Optional live microphone level (smoothed, 0..1) — when provided, the
+  // sphere's pulse, particle brightness, and jitter speed react to it.
+  final ValueListenable<double>? soundLevel;
   const ParticleSphere({
     super.key,
     this.size = 220,
@@ -1664,6 +1672,7 @@ class ParticleSphere extends StatefulWidget {
     this.dense = false,
     this.active = false,
     this.scattered = false,
+    this.soundLevel,
   });
 
   @override
@@ -1726,11 +1735,14 @@ class _ParticleSphereState extends State<ParticleSphere>
 
   @override
   Widget build(BuildContext context) {
+    final soundLevel = widget.soundLevel;
     return SizedBox(
       width: widget.size,
       height: widget.size,
       child: AnimatedBuilder(
-        animation: Listenable.merge([_ctrl, _disperseCtrl]),
+        animation: soundLevel == null
+            ? Listenable.merge([_ctrl, _disperseCtrl])
+            : Listenable.merge([_ctrl, _disperseCtrl, soundLevel]),
         builder: (_, __) => CustomPaint(
           painter: _SpherePainter(
             _points,
@@ -1738,6 +1750,7 @@ class _ParticleSphereState extends State<ParticleSphere>
             widget.color,
             widget.active,
             Curves.easeOutCubic.transform(_disperseCtrl.value),
+            soundLevel?.value ?? 0.0,
           ),
         ),
       ),
@@ -1756,20 +1769,36 @@ class _SpherePainter extends CustomPainter {
   final Color color;
   final bool active;
   final double disperse;
-  _SpherePainter(this.points, this.t, this.color, this.active, this.disperse);
+  // Smoothed microphone level, 0 (silence) .. 1 (loud). Only meaningful
+  // while [active] is true; drives extra pulse, brightness and per-particle
+  // jitter on top of the constant idle rotation/breathing.
+  final double level;
+  _SpherePainter(
+    this.points,
+    this.t,
+    this.color,
+    this.active,
+    this.disperse,
+    this.level,
+  );
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final R = size.width / 2 * 0.92;
     final rotY = t * 2 * math.pi;
-    final pulse = active ? (0.92 + 0.08 * math.sin(t * 2 * math.pi * 3)) : 1.0;
+    final reactive = active ? level.clamp(0.0, 1.0) : 0.0;
+    final pulse = active
+        ? (0.92 + 0.08 * math.sin(t * 2 * math.pi * 3) + reactive * 0.22)
+        : 1.0;
+    // Louder input makes particles jitter faster around their resting spot.
+    final jitterPhase = t * 2 * math.pi * (8 + reactive * 30);
 
     if (disperse < 1.0) {
       final glow = Paint()
         ..shader = RadialGradient(
           colors: [
-            color.withValues(alpha: 0.18 * (1 - disperse)),
+            color.withValues(alpha: 0.18 * (1 - disperse) * (1 + reactive)),
             Colors.transparent,
           ],
         ).createShader(Rect.fromCircle(center: center, radius: R));
@@ -1791,6 +1820,13 @@ class _SpherePainter extends CustomPainter {
       double px = center.dx + x * R * pulse;
       double py = center.dy + y * R * pulse;
 
+      if (reactive > 0) {
+        final jitterAngle = jitterPhase + p.seed * 2 * math.pi;
+        final jitterDist = reactive * p.radius * 2.4 * p.seed;
+        px += math.cos(jitterAngle) * jitterDist;
+        py += math.sin(jitterAngle) * jitterDist;
+      }
+
       if (disperse > 0) {
         final dirAngle = p.seed * 2 * math.pi * 5.3;
         final dist = (0.5 + p.seed * 2.2) * R * disperse;
@@ -1798,13 +1834,17 @@ class _SpherePainter extends CustomPainter {
         py += math.sin(dirAngle) * dist;
       }
 
-      final opacity = ((0.25 + 0.75 * scale) * p.brightness * (1 - disperse))
-          .clamp(0.0, 1.0);
+      final opacity =
+          ((0.25 + 0.75 * scale) *
+                  p.brightness *
+                  (1 - disperse) *
+                  (1 + reactive * 0.6))
+              .clamp(0.0, 1.0);
       if (opacity <= 0.01) continue;
       paint.color = color.withValues(alpha: opacity);
       canvas.drawCircle(
         Offset(px, py),
-        p.radius * scale * (1 - disperse * 0.3),
+        p.radius * scale * (1 - disperse * 0.3) * (1 + reactive * 0.35),
         paint,
       );
     }
@@ -2827,6 +2867,10 @@ class _VoiceScreenState extends State<VoiceScreen>
   int _listenRetries = 0;
   static const _maxListenRetries = 5;
   late final AnimationController _borderCtrl;
+  // Smoothed 0..1 microphone level driving the sphere's reaction. A
+  // ValueNotifier instead of setState so updates (which can fire several
+  // times a second) only repaint the sphere, not the whole screen.
+  final ValueNotifier<double> _soundLevel = ValueNotifier(0.0);
 
   @override
   void initState() {
@@ -2839,6 +2883,7 @@ class _VoiceScreenState extends State<VoiceScreen>
   }
 
   void _onSpeechError(dynamic e) {
+    _soundLevel.value = 0.0;
     if (mounted) setState(() => _listening = false);
   }
 
@@ -2867,6 +2912,8 @@ class _VoiceScreenState extends State<VoiceScreen>
     if (_listening) {
       _listenWatchdog?.cancel();
       _listenRetries = 0;
+    } else {
+      _soundLevel.value = 0.0;
     }
     final stoppedNaturally = wasListening && !_listening && !_manualStop;
     _manualStop = false;
@@ -2875,6 +2922,15 @@ class _VoiceScreenState extends State<VoiceScreen>
         context.read<AppState>().micAutoSend) {
       _scheduleAutoSend();
     }
+  }
+
+  // speech_to_text reports raw, platform-dependent decibel-ish values (the
+  // exact range differs between Android and iOS) rather than a normalized
+  // level. Clamp to a generous range, map to 0..1, then smooth so the
+  // sphere reacts to the trend of the volume rather than every noisy tick.
+  void _onSoundLevel(double level) {
+    final normalized = ((level + 2) / 12).clamp(0.0, 1.0);
+    _soundLevel.value += (normalized - _soundLevel.value) * 0.35;
   }
 
   // Recognition already waited out `pauseFor` of silence before stopping;
@@ -2895,6 +2951,7 @@ class _VoiceScreenState extends State<VoiceScreen>
           onResult: (r) {
             if (mounted) setState(() => _recognized = r.recognizedWords);
           },
+          onSoundLevelChange: _onSoundLevel,
           listenOptions: stt.SpeechListenOptions(
             listenMode: stt.ListenMode.dictation,
             pauseFor: Duration(seconds: app.micPauseSeconds),
@@ -3041,6 +3098,7 @@ class _VoiceScreenState extends State<VoiceScreen>
     _autoSendTimer?.cancel();
     _listenWatchdog?.cancel();
     _borderCtrl.dispose();
+    _soundLevel.dispose();
     _speech.stop();
     super.dispose();
   }
@@ -3128,6 +3186,7 @@ class _VoiceScreenState extends State<VoiceScreen>
                 color: const Color(0xFF7C83FD),
                 dense: true,
                 active: _listening,
+                soundLevel: _soundLevel,
               ),
               const SizedBox(height: 40),
               Container(
