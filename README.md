@@ -3,7 +3,6 @@
 A Flutter chat client for LLMs, with remote (Ollama/OpenAI-compatible) and on-device inference.
 Mirai — кросс-платформенный чат-клиент для LLM на Flutter, с поддержкой как удалённых серверов, так и полностью локального инференса на устройстве (без интернета).
 
-## Getting Started
 ## Возможности
 
 This project is a starting point for a Flutter application.
