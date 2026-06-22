@@ -17,15 +17,6 @@
           "downloadURL": "https://github.com/kekw2077/mirai/releases/download/ios-v2.7.3/Mirai.ipa",
           "size": 17912802,
           "minOSVersion": "13.0"
-        },
-        {
-          "version": "2.7.3",
-          "buildVersion": "26",
-          "date": "2026-06-23T00:00:00Z",
-          "localizedDescription": "См. CHANGELOG.md в репозитории.",
-          "downloadURL": "https://github.com/kekw2077/mirai/releases/download/ios-v2.7.3/Mirai.ipa",
-          "size": 0,
-          "minOSVersion": "13.0"
         }
       ],
       "appPermissions": {
