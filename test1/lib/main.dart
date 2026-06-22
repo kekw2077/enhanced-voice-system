@@ -758,6 +758,23 @@ class Personalization {
     } else if (defaultLength == 'len_long') {
       b.writeln('Give detailed answers.');
     }
+    // Only written when they differ from the default — one extra plain
+    // sentence per setting is fine, it's the dense multi-attribute "Style:
+    // formality X, empathy Y, ..." line above that small models choke on.
+    if (emoji == 'emoji_never') {
+      b.writeln('Never use emoji.');
+    } else if (emoji == 'emoji_always') {
+      b.writeln('Use emoji frequently.');
+    }
+    if (tone != 'tone_neutral') {
+      final toneWord = switch (tone) {
+        'tone_sarcastic' => 'sarcastic',
+        'tone_melancholic' => 'melancholic',
+        'tone_excited' => 'excited and energetic',
+        _ => null,
+      };
+      if (toneWord != null) b.writeln('Write in a $toneWord tone.');
+    }
     if (avoidTopics.isNotEmpty) {
       b.writeln('Avoid these topics: $avoidTopics.');
     }
@@ -900,6 +917,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.5.0', [
+    'Настройки персонализации снова применяются к локальным моделям среднего и мощного тиров — раньше все локальные модели получали урезанный промпт, теперь это ограничение касается только самых слабых (лёгкий тир).',
+    'Даже для лёгкого тира добавилась реакция на тон ответа и частоту эмодзи.',
+  ]),
   ChangelogEntry('2.4.0', [
     'Подключён Shorebird Code Push: обычные обновления теперь прилетают в фоне небольшим патчем и применяются при следующем перезапуске приложения, без скачивания нового APK целиком. Крупные изменения по-прежнему идут через полный APK с GitHub.',
   ]),
@@ -1505,8 +1526,17 @@ class AppState extends ChangeNotifier {
     final modelPath = '$dir/${spec.fileName}';
     if (!await localModelFileExists(modelPath)) return t('localModelMissing');
 
+    final effectivePersona = conv.persona ?? persona;
+    // Only the weakest (light-tier) models reliably break down on the full
+    // multi-directive prompt — mid/high tier local models are capable
+    // instruct models in their own right and should get full
+    // personalization, same as remote models.
+    final systemPrompt = spec.tier == LocalModelTier.light
+        ? effectivePersona.buildLocalSystemPrompt()
+        : effectivePersona.buildSystemPrompt();
+
     final messages = <Message>[
-      Message(Role.system, (conv.persona ?? persona).buildLocalSystemPrompt()),
+      Message(Role.system, systemPrompt),
       ...conv.messages.map(
         (m) => Message(
           m.role == 'user' ? Role.user : Role.assistant,
