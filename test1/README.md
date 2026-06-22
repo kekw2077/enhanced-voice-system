@@ -1,6 +1,6 @@
-# test1
+# Mirai
 
-A new Flutter project.
+A Flutter chat client for LLMs, with remote (Ollama/OpenAI-compatible) and on-device inference.
 
 ## Getting Started
 

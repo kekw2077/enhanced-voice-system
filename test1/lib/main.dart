@@ -30,14 +30,14 @@ void main() async {
     await Future.delayed(_minSplashDuration - elapsed);
   }
 
-  runApp(ChangeNotifierProvider.value(value: app, child: const AliceApp()));
+  runApp(ChangeNotifierProvider.value(value: app, child: const MiraiApp()));
 }
 
 /* ============================ ЛОКАЛИЗАЦИЯ ============================ */
 
 const Map<String, Map<String, String>> _i18n = {
   'ru': {
-    'appName': 'Alice AI',
+    'appName': 'Mirai',
     'howCanIHelp': 'Чем могу помочь?',
     'subtitle':
         'Приватный ИИ для письма, планирования, кода и повседневных вопросов.',
@@ -67,7 +67,7 @@ const Map<String, Map<String, String>> _i18n = {
     'micPauseDuration': 'Длительность паузы перед отправкой',
     'send': 'Отправить',
     'speakNaturally':
-        'Говорите свободно. Alice ответит, как только вы сделаете паузу.',
+        'Говорите свободно. Mirai ответит, как только вы сделаете паузу.',
     'conversations': 'Беседы',
     'chats': 'Чаты',
     'chatsDesc':
@@ -92,7 +92,7 @@ const Map<String, Map<String, String>> _i18n = {
     'dAgo': 'дн назад',
     'settings': 'Настройки',
     'settingsDesc':
-        'Настройте Alice AI, управляйте поведением приложения и просматривайте сведения в одном месте.',
+        'Настройте Mirai, управляйте поведением приложения и просматривайте сведения в одном месте.',
     'sectionApp': 'Приложение',
     'sectionTheme': 'Оформление',
     'sectionAbout': 'О приложении',
@@ -236,7 +236,7 @@ const Map<String, Map<String, String>> _i18n = {
     'customPromptHint': 'Прямая инструкция ассистенту…',
   },
   'en': {
-    'appName': 'Alice AI',
+    'appName': 'Mirai',
     'howCanIHelp': 'How can I help?',
     'subtitle':
         'Private AI for writing, planning, coding, and everyday questions.',
@@ -265,7 +265,7 @@ const Map<String, Map<String, String>> _i18n = {
     'micPauseDuration': 'Pause duration before sending',
     'send': 'Send',
     'speakNaturally':
-        'Speak naturally. Alice will respond as soon as you pause.',
+        'Speak naturally. Mirai will respond as soon as you pause.',
     'conversations': 'Conversations',
     'chats': 'Chats',
     'chatsDesc':
@@ -290,7 +290,7 @@ const Map<String, Map<String, String>> _i18n = {
     'dAgo': 'd ago',
     'settings': 'Settings',
     'settingsDesc':
-        'Personalize Alice AI, manage device behavior, and review the app details in one place.',
+        'Personalize Mirai, manage device behavior, and review the app details in one place.',
     'sectionApp': 'App',
     'sectionTheme': 'Theme',
     'sectionAbout': 'About',
@@ -650,7 +650,7 @@ class Personalization {
 
   String buildSystemPrompt() {
     final b = StringBuffer();
-    b.writeln('You are Alice, a helpful AI assistant.');
+    b.writeln('You are Mirai, a helpful AI assistant.');
 
     String lvl(double v) => v < 0.33 ? 'low' : (v < 0.66 ? 'medium' : 'high');
     b.writeln(
@@ -870,6 +870,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.0.0', [
+    'Приложение и репозиторий переименованы из «Alice AI» в «Mirai»: новое отображаемое имя, системный промпт ассистента, package name и applicationId/bundle id на всех платформах.',
+    'Важно: из-за смены applicationId/bundle id уже установленные копии Alice AI не обновятся поверх — Mirai ставится как отдельное приложение, старое нужно удалить вручную.',
+  ]),
   ChangelogEntry('1.7.1', [
     'Исправлена ошибка «exceeds the available context size» при разговоре с локальной моделью (TinyLlama и др.) — fllama делит запрошенный размер контекста на 4 параллельных слота, из-за чего модели реально доставалось только 512 токенов вместо 2048.',
     'Кнопка отправки в поле ввода больше не меняет размер при переходе в состояние «отправляется».',
@@ -1276,7 +1280,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  static const _updateRepo = 'kekw2077/test-v0.1';
+  static const _updateRepo = 'kekw2077/mirai';
 
   bool _isNewerVersion(String remote, String local) {
     List<int> parse(String v) => v
@@ -1362,7 +1366,7 @@ class AppState extends ChangeNotifier {
     updateCheckError = null;
     notifyListeners();
     try {
-      final path = await updateDownloadPath('alice_ai_update.apk');
+      final path = await updateDownloadPath('mirai_update.apk');
       await downloadFileWithProgress(
         url,
         path,
@@ -1574,15 +1578,15 @@ class AppState extends ChangeNotifier {
 
 /* ============================ ТЕМА / ПРИЛОЖЕНИЕ ============================ */
 
-class AliceApp extends StatelessWidget {
-  const AliceApp({super.key});
+class MiraiApp extends StatelessWidget {
+  const MiraiApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Alice AI',
+      title: 'Mirai',
       theme: _buildTheme(false),
       darkTheme: _buildTheme(true),
       themeMode: _getThemeMode(app.themeMode),

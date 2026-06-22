@@ -1,4 +1,4 @@
-package com.example.test1
+package com.example.mirai
 
 import io.flutter.embedding.android.FlutterActivity
 

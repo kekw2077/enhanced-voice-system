@@ -1,11 +1,12 @@
-# Alice AI — описание проекта
+# Mirai — описание проекта
 
-Flutter-приложение «Alice AI» — чат-клиент для LLM с поддержкой удалённых серверов (Ollama/OpenAI-совместимый API) и локального инференса прямо на устройстве (без интернета).
+Flutter-приложение «Mirai» — чат-клиент для LLM с поддержкой удалённых серверов (Ollama/OpenAI-совместимый API) и локального инференса прямо на устройстве (без интернета).
 
 - Git repo root: `C:\Files\vs code\test v0.1` (проект Flutter лежит в подпапке `test1`)
-- GitHub remote: `https://github.com/kekw2077/test-v0.1`
+- GitHub remote: `https://github.com/kekw2077/mirai`
 - Основная ветка: `main`
-- Package name: `alice_ai`, отображаемое имя приложения: **Alice AI**
+- Package name: `mirai`, отображаемое имя приложения: **Mirai**
+- Приложение и репозиторий были переименованы из «Alice AI» (`alice_ai`, `com.example.test1`, репозиторий `test-v0.1`) в «Mirai» (`mirai`, `com.example.mirai`) — applicationId/bundle id изменился, поэтому старые установки на устройствах не обновятся поверх, а ставятся как отдельное приложение.
 
 ## Архитектура
 
