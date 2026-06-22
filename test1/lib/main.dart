@@ -921,6 +921,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.6.1', [
+    'Вкладки «Личность»/«Память» в настройках персонализации перенесены с левой боковой панели наверх, под заголовок экрана.',
+  ]),
   ChangelogEntry('2.6.0', [
     'Экран «Память» (заметки, профиль «о вас», запретные темы/безопасность) объединён с экраном персонализации как вкладка сбоку — раньше «Память» всегда редактировала только общие настройки, даже если открыта из конкретного чата. Теперь обе вкладки сохраняются туда же, куда и настройки личности.',
   ]),
@@ -4828,27 +4831,29 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           ),
         ],
       ),
-      body: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Column(
         children: [
-          Column(
+          Row(
             children: [
-              const SizedBox(height: 12),
-              _sideTab(
-                icon: Icons.person_outline,
-                label: app.t('tabPersonality'),
-                selected: _tab == 0,
-                onTap: () => setState(() => _tab = 0),
+              Expanded(
+                child: _topTab(
+                  icon: Icons.person_outline,
+                  label: app.t('tabPersonality'),
+                  selected: _tab == 0,
+                  onTap: () => setState(() => _tab = 0),
+                ),
               ),
-              _sideTab(
-                icon: Icons.psychology_outlined,
-                label: app.t('tabMemory'),
-                selected: _tab == 1,
-                onTap: () => setState(() => _tab = 1),
+              Expanded(
+                child: _topTab(
+                  icon: Icons.psychology_outlined,
+                  label: app.t('tabMemory'),
+                  selected: _tab == 1,
+                  onTap: () => setState(() => _tab = 1),
+                ),
               ),
             ],
           ),
-          Container(width: 1, color: _sub(context).withValues(alpha: 0.15)),
+          Container(height: 1, color: _sub(context).withValues(alpha: 0.15)),
           Expanded(
             child: _tab == 0 ? _personalityTab(app) : _memoryTab(app),
           ),
@@ -4857,7 +4862,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     );
   }
 
-  Widget _sideTab({
+  Widget _topTab({
     required IconData icon,
     required String label,
     required bool selected,
@@ -4866,29 +4871,28 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     return InkWell(
       onTap: onTap,
       child: Container(
-        width: 72,
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           border: Border(
-            left: BorderSide(
+            bottom: BorderSide(
               color: selected ? const Color(0xFF2F8DFF) : Colors.transparent,
               width: 3,
             ),
           ),
         ),
-        child: Column(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
               color: selected ? const Color(0xFF2F8DFF) : _sub(context),
-              size: 22,
+              size: 20,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(width: 8),
             Text(
               label,
-              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 11,
+                fontSize: 14,
                 color: selected ? _txt(context) : _sub(context),
                 fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
               ),
