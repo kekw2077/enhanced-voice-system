@@ -1199,6 +1199,26 @@ class Personalization {
     }
     return b.toString();
   }
+
+  // "Never use emoji" is a plain-language system-prompt instruction like
+  // every other personality setting, but unlike formality/tone/verbosity it
+  // has a hard, checkable answer (an emoji is either there or it isn't) —
+  // and models reliably keep using emoji anyway when earlier turns in the
+  // same chat already established that pattern, no matter how the system
+  // prompt is worded. So for this one setting only, enforce it directly on
+  // the model's output instead of just hoping the prompt is followed.
+  static final RegExp _emojiPattern = RegExp(
+    '[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]',
+    unicode: true,
+  );
+
+  String enforceEmojiPolicy(String text) {
+    if (emoji != 'emoji_never') return text;
+    return text
+        .replaceAll(_emojiPattern, '')
+        .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+        .trim();
+  }
 }
 
 /* ============================ РЕЖИМ РОЛЕВОЙ ИГРЫ (RP) ============================ */
@@ -2821,9 +2841,10 @@ class AppState extends ChangeNotifier {
       return _sendMessageStreaming(conv, text);
     }
 
-    final reply = selectedModel.isEmpty
+    final rawReply = selectedModel.isEmpty
         ? t('noModelsAvailable')
         : await _llmFactory.current.generateResponse(conv, conv.messages);
+    final reply = (conv.persona ?? persona).enforceEmojiPolicy(rawReply);
 
     conv.messages.add(ChatMessage(role: 'assistant', content: reply.trim()));
     conv.updatedAt = DateTime.now();
