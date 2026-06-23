@@ -1113,6 +1113,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.8.1', [
+    'Проверка обновлений на Android больше не путает Android- и iOS-релизы репозитория при поиске последней версии.',
+  ]),
   ChangelogEntry('2.8.0', [
     'В чате: тап по пустой области экрана скрывает клавиатуру; на iOS статус-бар и Dynamic Island больше не перекрываются содержимым чата.',
     'Настройки персонализации теперь реально применяются к локальным моделям среднего и мощного тиров, а не только к удалённым.',
@@ -1648,8 +1651,13 @@ class AppState extends ChangeNotifier {
     _updateApkUrl = null;
     notifyListeners();
     try {
+      // The repo also publishes iOS AltStore releases (tagged `ios-vX.Y.Z`,
+      // shipping a .ipa, not a .apk) — those can be more recent than the
+      // last Android release, so /releases/latest isn't reliable here.
+      // Walk the release list (already newest-first) and use the first one
+      // that actually carries an .apk asset.
       final res = await http.get(
-        Uri.parse('https://api.github.com/repos/$_updateRepo/releases/latest'),
+        Uri.parse('https://api.github.com/repos/$_updateRepo/releases'),
       );
       if (res.statusCode == 404) {
         return; // no releases published yet — not an error
@@ -1658,17 +1666,22 @@ class AppState extends ChangeNotifier {
         updateCheckError = t('updateCheckFailed');
         return;
       }
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final tag = (data['tag_name'] as String?) ?? '';
-      final remoteVersion = tag.startsWith('v') ? tag.substring(1) : tag;
-      final assets = (data['assets'] as List?) ?? [];
+      final list = jsonDecode(res.body) as List;
       String? apkUrl;
-      for (final a in assets) {
-        final name = (a['name'] as String?) ?? '';
-        if (name.toLowerCase().endsWith('.apk')) {
-          apkUrl = a['browser_download_url'] as String?;
-          break;
+      String remoteVersion = '';
+      for (final r in list) {
+        final release = r as Map<String, dynamic>;
+        final assets = (release['assets'] as List?) ?? [];
+        for (final a in assets) {
+          final name = (a['name'] as String?) ?? '';
+          if (name.toLowerCase().endsWith('.apk')) {
+            apkUrl = a['browser_download_url'] as String?;
+            final tag = (release['tag_name'] as String?) ?? '';
+            remoteVersion = tag.startsWith('v') ? tag.substring(1) : tag;
+            break;
+          }
         }
+        if (apkUrl != null) break;
       }
       final info = await PackageInfo.fromPlatform();
       if (apkUrl != null &&
