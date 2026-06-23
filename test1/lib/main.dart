@@ -156,6 +156,46 @@ const Map<String, Map<String, String>> _i18n = {
         'Файл модели будет удалён с устройства. Скачать её снова можно в любой момент.',
     'personalization': 'Персонализация',
     'memory': 'Память',
+    'rpMode': 'Режим ролевой игры',
+    'rpModeOn': 'Режим ролевой игры включён для этого чата',
+    'rpModeOff': 'Режим ролевой игры выключен для этого чата',
+    'stopGeneration': 'Остановить генерацию',
+    'tabRoleplay': 'Ролевая игра',
+    'rpDesc':
+        'Имена персонажей, сценарий, параметры генерации и блокнот мира для этого чата.',
+    'rpModelLocked': 'Модель зафиксирована для этого чата',
+    'rpModelLockedToast':
+        'Модель этого чата зафиксирована при включении режима ролевой игры и не меняется внутри сессии.',
+    'rpCharacters': 'Персонажи',
+    'rpUserName': 'Ваше имя',
+    'rpAiName': 'Имя персонажа ИИ',
+    'rpPromptScenario': 'Промпт и сценарий',
+    'systemPrompt': 'Системный промпт / личность персонажа',
+    'rpSystemPromptHint':
+        'Опишите персонажа от первого лица. Доступны {{user}} и {{char}}.',
+    'scenario': 'Сценарий / окружение',
+    'rpScenarioHint': 'С чего начинается история?',
+    'rpSampling': 'Параметры генерации',
+    'rpTemperature': 'Температура',
+    'rpTopP': 'Top-P',
+    'rpRepetitionPenalty': 'Штраф за повторение',
+    'rpMaxTokens': 'Длина ответа',
+    'rpPresetShort': 'Коротко (150)',
+    'rpPresetMedium': 'Средне (300)',
+    'rpPresetLong': 'Роман (600)',
+    'rpLorebook': 'Блокнот мира',
+    'rpLorebookEnable': 'Блокнот мира (Lorebook)',
+    'rpLorebookDesc':
+        'Статьи с ключевыми словами подмешиваются в промпт, когда упоминаются в чате.',
+    'rpLorebookKeywords': 'Ключевые слова, через запятую',
+    'rpLorebookContent': 'Описание для промпта',
+    'rpLorebookAddEntry': 'Добавить статью',
+    'rpStopSequences': 'Стоп-последовательности',
+    'rpStopSequenceHint': 'Введите текст и нажмите Enter',
+    'rpContextWindow': 'Лимит контекста',
+    'rpContextFull':
+        'Контекст этого чата почти заполнен — можно сжать старую историю в краткое резюме.',
+    'rpCompressButton': 'Сжать память чата',
     'language': 'Язык',
     'serverAddress': 'Адрес сервера',
     'showKeyboard': 'Клавиатура при запуске',
@@ -409,6 +449,46 @@ const Map<String, Map<String, String>> _i18n = {
         'The model file will be removed from your device. You can download it again anytime.',
     'personalization': 'Personalization',
     'memory': 'Memory',
+    'rpMode': 'Roleplay mode',
+    'rpModeOn': 'Roleplay mode is on for this chat',
+    'rpModeOff': 'Roleplay mode is off for this chat',
+    'stopGeneration': 'Stop generating',
+    'tabRoleplay': 'Roleplay',
+    'rpDesc':
+        'Character names, scenario, generation settings, and the world lorebook for this chat.',
+    'rpModelLocked': 'Model is locked for this chat',
+    'rpModelLockedToast':
+        "This chat's model was locked in when roleplay mode turned on and can't change within the session.",
+    'rpCharacters': 'Characters',
+    'rpUserName': 'Your name',
+    'rpAiName': "AI character's name",
+    'rpPromptScenario': 'Prompt & scenario',
+    'systemPrompt': 'System prompt / character personality',
+    'rpSystemPromptHint':
+        'Describe the character in first person. {{user}} and {{char}} are available.',
+    'scenario': 'Scenario / setting',
+    'rpScenarioHint': 'How does the story begin?',
+    'rpSampling': 'Generation settings',
+    'rpTemperature': 'Temperature',
+    'rpTopP': 'Top-P',
+    'rpRepetitionPenalty': 'Repetition penalty',
+    'rpMaxTokens': 'Reply length',
+    'rpPresetShort': 'Short (150)',
+    'rpPresetMedium': 'Medium (300)',
+    'rpPresetLong': 'Novel (600)',
+    'rpLorebook': 'Lorebook',
+    'rpLorebookEnable': 'World lorebook',
+    'rpLorebookDesc':
+        "Entries get mixed into the prompt when their keywords show up in chat.",
+    'rpLorebookKeywords': 'Keywords, comma-separated',
+    'rpLorebookContent': 'Description for the prompt',
+    'rpLorebookAddEntry': 'Add entry',
+    'rpStopSequences': 'Stop sequences',
+    'rpStopSequenceHint': 'Type text and press Enter',
+    'rpContextWindow': 'Context window limit',
+    'rpContextFull':
+        "This chat's context is almost full — you can compress the older history into a summary.",
+    'rpCompressButton': 'Compress chat memory',
     'language': 'Language',
     'serverAddress': 'Server address',
     'showKeyboard': 'Show keyboard on launch',
@@ -553,7 +633,10 @@ const Map<String, Map<String, String>> _i18n = {
 class ChatMessage {
   final String id;
   final String role;
-  final String content;
+  // Mutable so a streaming reply can grow this in place (see
+  // AppState.sendMessageStreaming) instead of replacing the message object
+  // on every chunk.
+  String content;
   final DateTime time;
   final List<String> attachments;
   ChatMessage({
@@ -594,6 +677,16 @@ class Conversation {
   List<ChatMessage> messages;
   Personalization? persona;
   List<String> pinnedMessageIds;
+  // Opt-in per-chat mode for roleplay-oriented features (currently: live
+  // streaming with a Stop Generation button instead of waiting silently for
+  // the full reply). Off by default so the existing chat flow is untouched
+  // unless the user explicitly turns it on for a given conversation.
+  bool rpModeEnabled;
+  // RP-specific settings for this chat (character names, system prompt,
+  // sampling, lorebook, locked model...) — nullable and cloned-while-editing
+  // the same way persona is; only ever non-null once rpModeEnabled has been
+  // turned on at least once for this conversation.
+  RPSessionConfig? rpConfig;
 
   Conversation({
     required this.id,
@@ -603,6 +696,8 @@ class Conversation {
     List<ChatMessage>? messages,
     this.persona,
     List<String>? pinnedMessageIds,
+    this.rpModeEnabled = false,
+    this.rpConfig,
   }) : updatedAt = updatedAt ?? DateTime.now(),
        messages = messages ?? [],
        pinnedMessageIds = pinnedMessageIds ?? [];
@@ -628,6 +723,8 @@ class Conversation {
     'messages': messages.map((m) => m.toJson()).toList(),
     'persona': persona?.toJson(),
     'pinnedMessageIds': pinnedMessageIds,
+    'rpModeEnabled': rpModeEnabled,
+    'rpConfig': rpConfig?.toJson(),
   };
   factory Conversation.fromJson(Map<String, dynamic> j) => Conversation(
     id: j['id'] as String? ?? '',
@@ -648,6 +745,10 @@ class Conversation {
             ?.map((e) => e.toString())
             .toList() ??
         [],
+    rpModeEnabled: j['rpModeEnabled'] as bool? ?? false,
+    rpConfig: j['rpConfig'] is Map<String, dynamic>
+        ? RPSessionConfig.fromJson(j['rpConfig'] as Map<String, dynamic>)
+        : null,
   );
 }
 
@@ -1003,6 +1104,307 @@ class Personalization {
   }
 }
 
+/* ============================ РЕЖИМ РОЛЕВОЙ ИГРЫ (RP) ============================ */
+
+// Sampling-параметры генерации для RP-режима. mirostatMode/tfsZ из исходного
+// ТЗ сознательно не добавлены — у закреплённой версии fllama (OpenAiRequest,
+// см. package:fllama/misc/openai.dart) просто нет таких полей; добавлять их
+// в данные, которые ни на что не влияют, было бы нечестным UI.
+class RPSamplingConfig {
+  RPSamplingConfig();
+
+  double temperature = 0.9;
+  double topP = 0.90;
+  // Маппится на fllama presencePenalty / remote repeat_penalty — это и есть
+  // репетишн-пенальти, отдельного поля под него не нужно.
+  double repetitionPenalty = 1.10;
+  int maxResponseTokens = 300;
+
+  Map<String, dynamic> toJson() => {
+    'temperature': temperature,
+    'topP': topP,
+    'repetitionPenalty': repetitionPenalty,
+    'maxResponseTokens': maxResponseTokens,
+  };
+
+  factory RPSamplingConfig.fromJson(Map<String, dynamic> j) {
+    final c = RPSamplingConfig();
+    c.temperature = (j['temperature'] as num?)?.toDouble() ?? c.temperature;
+    c.topP = (j['topP'] as num?)?.toDouble() ?? c.topP;
+    c.repetitionPenalty =
+        (j['repetitionPenalty'] as num?)?.toDouble() ?? c.repetitionPenalty;
+    c.maxResponseTokens =
+        (j['maxResponseTokens'] as num?)?.toInt() ?? c.maxResponseTokens;
+    return c;
+  }
+
+  RPSamplingConfig clone() => RPSamplingConfig.fromJson(toJson());
+}
+
+// Одна статья "блокнота мира" — keywords через запятую, матчится
+// регистронезависимо против последних N сообщений чата (см.
+// RPMemoryManager.scanLorebook).
+class LoreEntry {
+  String keywords;
+  String content;
+  LoreEntry({this.keywords = '', this.content = ''});
+
+  Map<String, dynamic> toJson() => {'keywords': keywords, 'content': content};
+  factory LoreEntry.fromJson(Map<String, dynamic> j) => LoreEntry(
+    keywords: j['keywords'] as String? ?? '',
+    content: j['content'] as String? ?? '',
+  );
+}
+
+// Настройки RP-режима для конкретного чата — нестандартное nullable поле
+// Conversation.rpConfig, по образцу уже существующего Conversation.persona.
+class RPSessionConfig {
+  RPSessionConfig();
+
+  String userCharacterName = '';
+  String aiCharacterName = '';
+  // Свободный текст с {{user}}/{{char}} — в отличие от Personalization,
+  // которая собирает промпт программно из отдельных директив, RP-режим
+  // использует один авторский шаблон (см. RPMemoryManager.buildSystemPrompt).
+  String systemPrompt = '';
+  String scenario = '';
+  RPSamplingConfig sampling = RPSamplingConfig();
+  bool isLorebookEnabled = false;
+  List<LoreEntry> lorebook = [];
+  List<String> stopSequences = [];
+  // Снимок AppState.selectedModel в момент первого включения RP для этого
+  // чата — дальше не меняется (см. AppState.toggleRpMode).
+  String? lockedModel;
+  int contextWindowLimit = 4096;
+  // Сгенерированное резюме старой истории чата (контекстная компрессия по
+  // запросу пользователя) — null, пока пользователь не нажал "Сжать".
+  String? rollingSummary;
+  int? summaryCoversUpToMessageIndex;
+
+  Map<String, dynamic> toJson() => {
+    'userCharacterName': userCharacterName,
+    'aiCharacterName': aiCharacterName,
+    'systemPrompt': systemPrompt,
+    'scenario': scenario,
+    'sampling': sampling.toJson(),
+    'isLorebookEnabled': isLorebookEnabled,
+    'lorebook': lorebook.map((e) => e.toJson()).toList(),
+    'stopSequences': stopSequences,
+    'lockedModel': lockedModel,
+    'contextWindowLimit': contextWindowLimit,
+    'rollingSummary': rollingSummary,
+    'summaryCoversUpToMessageIndex': summaryCoversUpToMessageIndex,
+  };
+
+  factory RPSessionConfig.fromJson(Map<String, dynamic> j) {
+    final c = RPSessionConfig();
+    c.userCharacterName = j['userCharacterName'] as String? ?? '';
+    c.aiCharacterName = j['aiCharacterName'] as String? ?? '';
+    c.systemPrompt = j['systemPrompt'] as String? ?? '';
+    c.scenario = j['scenario'] as String? ?? '';
+    c.sampling = j['sampling'] is Map<String, dynamic>
+        ? RPSamplingConfig.fromJson(j['sampling'] as Map<String, dynamic>)
+        : RPSamplingConfig();
+    c.isLorebookEnabled = j['isLorebookEnabled'] as bool? ?? false;
+    c.lorebook =
+        (j['lorebook'] as List<dynamic>?)
+            ?.map((e) => LoreEntry.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+    c.stopSequences =
+        (j['stopSequences'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+    c.lockedModel = j['lockedModel'] as String?;
+    c.contextWindowLimit =
+        (j['contextWindowLimit'] as num?)?.toInt() ?? c.contextWindowLimit;
+    c.rollingSummary = j['rollingSummary'] as String?;
+    c.summaryCoversUpToMessageIndex =
+        (j['summaryCoversUpToMessageIndex'] as num?)?.toInt();
+    return c;
+  }
+
+  RPSessionConfig clone() => RPSessionConfig.fromJson(toJson());
+}
+
+// Assembles the RP-mode system prompt (system prompt + scenario + rolling
+// summary + lorebook + pinned context) and manages what actually gets sent
+// to the model as history (lorebook scan, sliding-window trim). Pure static
+// functions, no AppState dependency — operates only on Conversation/
+// RPSessionConfig/ChatMessage.
+class RPMemoryManager {
+  static String _substitutePlaceholders(String text, RPSessionConfig cfg) {
+    var out = text;
+    if (cfg.userCharacterName.trim().isNotEmpty) {
+      out = out.replaceAll('{{user}}', cfg.userCharacterName.trim());
+    }
+    if (cfg.aiCharacterName.trim().isNotEmpty) {
+      out = out.replaceAll('{{char}}', cfg.aiCharacterName.trim());
+    }
+    return out;
+  }
+
+  // Replaces persona.buildSystemPrompt() entirely for RP-mode chats — RP
+  // uses one author-written template instead of Personalization's
+  // programmatically-assembled sentences. conv.pinnedContextBlock() is
+  // still appended so pinned messages keep working in RP mode too.
+  static String buildSystemPrompt(Conversation conv) {
+    final cfg = conv.rpConfig!;
+    final b = StringBuffer();
+    if (cfg.systemPrompt.trim().isNotEmpty) {
+      b.writeln(_substitutePlaceholders(cfg.systemPrompt.trim(), cfg));
+    } else {
+      final ai = cfg.aiCharacterName.trim().isNotEmpty
+          ? cfg.aiCharacterName.trim()
+          : 'a character';
+      final user = cfg.userCharacterName.trim();
+      b.writeln(
+        'You are roleplaying as $ai${user.isNotEmpty ? " opposite $user" : ""}. '
+        'Stay in character and respond only as your character would.',
+      );
+    }
+    if (cfg.scenario.trim().isNotEmpty) {
+      b.writeln(
+        'Scenario: ${_substitutePlaceholders(cfg.scenario.trim(), cfg)}',
+      );
+    }
+    if (cfg.rollingSummary != null && cfg.rollingSummary!.isNotEmpty) {
+      b.writeln('Summary of earlier events: ${cfg.rollingSummary}');
+    }
+    if (cfg.isLorebookEnabled) {
+      final lore = scanLorebook(conv, cfg);
+      if (lore.isNotEmpty) b.writeln(lore);
+    }
+    final pinned = conv.pinnedContextBlock();
+    if (pinned.isNotEmpty) b.writeln(pinned);
+    return b.toString();
+  }
+
+  static String scanLorebook(
+    Conversation conv,
+    RPSessionConfig cfg, {
+    int lastN = 10,
+  }) {
+    final recent = conv.messages.length > lastN
+        ? conv.messages.sublist(conv.messages.length - lastN)
+        : conv.messages;
+    final haystack = recent.map((m) => m.content.toLowerCase()).join(' ');
+    final matched = <String>[];
+    for (final entry in cfg.lorebook) {
+      final kws = entry.keywords
+          .split(',')
+          .map((k) => k.trim().toLowerCase())
+          .where((k) => k.isNotEmpty);
+      if (kws.any(haystack.contains)) matched.add(entry.content);
+    }
+    return matched.join('\n');
+  }
+
+  // FIFO sliding window: once history is over budget, keep the first
+  // message (greeting/scenario opener) plus the last [keepLastN], drop the
+  // rest. Only affects what's SENT to the model — conv.messages (UI) is
+  // never touched here.
+  static List<ChatMessage> trimForContext(
+    List<ChatMessage> history,
+    int contextWindowLimit, {
+    int keepLastN = 8,
+  }) {
+    if (history.length <= keepLastN + 1) return history;
+    final estTokens = history.fold<int>(
+      0,
+      (sum, m) => sum + TokenCounter.estimate(m.content),
+    );
+    if (estTokens <= contextWindowLimit) return history;
+    final greeting = [history.first];
+    final tail = history.sublist(history.length - keepLastN);
+    return [...greeting, ...tail];
+  }
+
+  // Context-compression-on-demand (ТЗ-4): true once estimated tokens cross
+  // 80% of the chat's contextWindowLimit.
+  static bool checkContextThreshold(
+    List<ChatMessage> history,
+    RPSessionConfig cfg,
+  ) {
+    final estTokens = history.fold<int>(
+      0,
+      (sum, m) => sum + TokenCounter.estimate(m.content),
+    );
+    return estTokens > cfg.contextWindowLimit * 0.8;
+  }
+
+  static const _summarizationPrompt =
+      'Summarize the following roleplay conversation history concisely, '
+      'preserving key plot points, character states, and facts established. '
+      'Write the summary in plain prose, third person, no preamble.';
+
+  // Reuses the conversation's own ILLMService (the locked model, passed in
+  // by the caller) via a one-off synthetic exchange — NOT the chat's real
+  // persona/RP config, so the summarizer doesn't inherit the character's
+  // tone instructions.
+  static Future<String> summarizeOldContext(
+    ILLMService service,
+    List<ChatMessage> oldMessages,
+  ) async {
+    final transcript = oldMessages
+        .map((m) => '${m.role}: ${m.content}')
+        .join('\n');
+    final synthetic = Conversation(
+      id: 'rp-summary-temp',
+      title: '',
+      persona: Personalization(),
+    );
+    final history = [
+      ChatMessage(
+        role: 'user',
+        content: '$_summarizationPrompt\n\n$transcript',
+      ),
+    ];
+    return service.generateResponse(synthetic, history);
+  }
+}
+
+// Post-processing safety nets applied to a finished RP reply (after
+// streaming completes, never mid-stream — closing a `*` early then having
+// more text arrive would look broken).
+class RPGuardFilters {
+  // Native stop-sequence support only exists for the remote backend (see
+  // RemoteLLMService._buildBody); this regex is the only defense for local
+  // models, and a backstop for remote ones too. Cuts the reply at the start
+  // of a line that looks like the model writing the user's own dialogue.
+  static String antiImpersonationFilter(String text, RPSessionConfig cfg) {
+    final patterns = <String>[
+      r'\{\{user\}\}\s*:',
+      if (cfg.userCharacterName.trim().isNotEmpty)
+        '${RegExp.escape(cfg.userCharacterName.trim())}\\s*:',
+      // Deliberately not \b-bounded: Dart/JS regex \b treats Cyrillic
+      // letters as non-word characters, so it doesn't reliably bound
+      // Cyrillic text — requiring trailing whitespace instead sidesteps that.
+      r'\*?Вы\s',
+    ];
+    final combined = RegExp(
+      '^(${patterns.join('|')})',
+      multiLine: true,
+      caseSensitive: false,
+    );
+    final match = combined.firstMatch(text);
+    if (match == null) return text;
+    return text.substring(0, match.start).trimRight();
+  }
+
+  // RP replies often use *asterisks* for actions/thoughts — if the model
+  // cuts off mid-italics, auto-close the trailing one instead of leaving
+  // broken markdown in the chat UI.
+  static String formatEnforcer(String text) {
+    final count = '*'.allMatches(text).length;
+    return count.isOdd ? '$text*' : text;
+  }
+
+  static String apply(String text, RPSessionConfig cfg) =>
+      formatEnforcer(antiImpersonationFilter(text, cfg));
+}
+
 /* ============================ ЛОКАЛЬНЫЕ МОДЕЛИ ============================ */
 
 enum LocalModelTier { light, mid, high }
@@ -1231,6 +1633,450 @@ const List<ChangelogEntry> kChangelog = [
   ]),
 ];
 
+/* ============================ LLM PROVIDER PATTERN ============================ */
+//
+// Unifies the local (fllama) and remote (Ollama/OpenAI-compatible HTTP)
+// backends behind one interface, so AppState.sendMessage() doesn't have to
+// branch on isLocalModel() itself. Both implementations need a handful of
+// AppState fields (selectedModel, serverUrl, persona...) and helpers
+// (t(), buildSystemPrompt() via persona, _extractContent) — passed in via
+// the AppState reference rather than duplicated, since these services
+// aren't meant to be used outside AppState's own call path. Kept as plain
+// classes in this file rather than split into their own files/packages —
+// the project is deliberately single-file (see CLAUDE.md).
+
+abstract class ILLMService {
+  /// No-op placeholder for both backends today: fllama loads/caches GGUF
+  /// weights lazily on the first fllamaChat() call (there's no separate
+  /// "load" step to await), and the remote backend has nothing to connect
+  /// ahead of time either. Kept on the interface for whichever backend
+  /// eventually needs real setup (e.g. a local engine with an explicit
+  /// load step) without having to change callers.
+  Future<void> initialize();
+
+  /// Local: the model file is actually downloaded. Remote: the server
+  /// responds to a lightweight reachability check. Neither is a guarantee
+  /// the next generateResponse/generateStream call will succeed (a local
+  /// model can still fail to load, a server can still time out) — it's a
+  /// best-effort check, not a hard contract.
+  Future<bool> isAvailable();
+
+  /// [history] is the conversation so far, NOT including the reply being
+  /// generated (callers must not have appended a placeholder for it yet).
+  Future<String> generateResponse(Conversation conv, List<ChatMessage> history);
+
+  /// Same contract as [generateResponse], but emits the cumulative reply
+  /// text so far on every update instead of waiting for the final string.
+  Stream<String> generateStream(Conversation conv, List<ChatMessage> history);
+
+  /// Best-effort interrupt for whichever generateResponse/generateStream
+  /// call is currently in flight on this instance. Safe to call when
+  /// nothing is running.
+  Future<void> stopGeneration();
+}
+
+// RP-mode chats lock in whichever model was selected the first time RP
+// turned on for them (Conversation.rpConfig.lockedModel) — once locked, that
+// chat keeps using it regardless of whatever AppState.selectedModel is set
+// to globally afterwards. Non-RP chats always just follow the global model.
+String _effectiveModelFor(AppState app, Conversation conv) {
+  if (conv.rpModeEnabled) {
+    final locked = conv.rpConfig?.lockedModel;
+    if (locked != null && locked.isNotEmpty) return locked;
+  }
+  return app.selectedModel;
+}
+
+class LocalLLMService implements ILLMService {
+  LocalLLMService(this.app);
+  final AppState app;
+  int? _activeRequestId;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> isAvailable() async {
+    final spec = app.localSpecFor(app.selectedModel);
+    if (spec == null) return false;
+    final dir = await localModelsDirPath();
+    return localModelFileExists('$dir/${spec.fileName}');
+  }
+
+  // Shared by generateResponse/generateStream so the prompt-construction
+  // logic (system prompt + tier-based prompt builder + pinned context)
+  // only lives in one place.
+  Future<(String modelPath, List<Message> messages)?> _prepare(
+    Conversation conv,
+    List<ChatMessage> history,
+  ) async {
+    final spec = app.localSpecFor(_effectiveModelFor(app, conv));
+    if (spec == null) return null;
+    final dir = await localModelsDirPath();
+    final modelPath = '$dir/${spec.fileName}';
+    if (!await localModelFileExists(modelPath)) return null;
+
+    final rpActive = conv.rpModeEnabled && conv.rpConfig != null;
+    final effectivePersona = conv.persona ?? app.persona;
+    // Only the weakest (light-tier) models reliably break down on the full
+    // multi-directive prompt — mid/high tier local models are capable
+    // instruct models in their own right and should get full
+    // personalization, same as remote models. RP mode always bypasses this
+    // tier check: its own prompt (RPMemoryManager.buildSystemPrompt) is
+    // short and user-authored by nature, so the problem buildLocalSystemPrompt
+    // exists to solve doesn't really apply the same way.
+    final systemPrompt = rpActive
+        ? RPMemoryManager.buildSystemPrompt(conv)
+        : (spec.tier == LocalModelTier.light
+                  ? effectivePersona.buildLocalSystemPrompt()
+                  : effectivePersona.buildSystemPrompt()) +
+              conv.pinnedContextBlock();
+    final effectiveHistory = rpActive
+        ? RPMemoryManager.trimForContext(
+            history,
+            conv.rpConfig!.contextWindowLimit,
+          )
+        : history;
+
+    final messages = <Message>[
+      Message(Role.system, systemPrompt),
+      ...effectiveHistory.map(
+        (m) => Message(
+          m.role == 'user' ? Role.user : Role.assistant,
+          m.content.isNotEmpty
+              ? m.content
+              : '[Attached files: ${m.attachments.join(', ')}]',
+        ),
+      ),
+    ];
+    return (modelPath, messages);
+  }
+
+  OpenAiRequest _buildRequest(
+    Conversation conv,
+    String modelPath,
+    List<Message> messages,
+  ) {
+    final effectivePersona = conv.persona ?? app.persona;
+    final sampling = (conv.rpModeEnabled ? conv.rpConfig?.sampling : null);
+    return OpenAiRequest(
+      messages: messages,
+      modelPath: modelPath,
+      // fllama hardcodes n_parallel=4 natively and ignores nParallel on
+      // native platforms, splitting contextSize into 4 slots internally
+      // (n_ctx_seq = n_ctx / 4). Requesting 4x the user-facing/effective
+      // size gives back that much usable context.
+      contextSize: effectivePersona.localContextSize * 4,
+      maxTokens: sampling?.maxResponseTokens ?? 512,
+      temperature: sampling?.temperature ?? 0.7,
+      topP: sampling?.topP ?? 1.0,
+      presencePenalty: sampling?.repetitionPenalty ?? 1.1,
+    );
+  }
+
+  @override
+  Future<String> generateResponse(
+    Conversation conv,
+    List<ChatMessage> history,
+  ) async {
+    final prepared = await _prepare(conv, history);
+    if (prepared == null) return app.t('localModelMissing');
+    final (modelPath, messages) = prepared;
+
+    final completer = Completer<String>();
+    try {
+      await fllamaChat(_buildRequest(conv, modelPath, messages), (
+        response,
+        openaiJson,
+        done,
+      ) {
+        if (done && !completer.isCompleted) completer.complete(response);
+      });
+    } catch (e) {
+      if (!completer.isCompleted) {
+        completer.complete('${app.t('unreachable')} ($e)');
+      }
+    }
+    return completer.future;
+  }
+
+  @override
+  Stream<String> generateStream(Conversation conv, List<ChatMessage> history) {
+    final controller = StreamController<String>();
+    () async {
+      final prepared = await _prepare(conv, history);
+      if (prepared == null) {
+        controller.add(app.t('localModelMissing'));
+        await controller.close();
+        return;
+      }
+      final (modelPath, messages) = prepared;
+      try {
+        final requestId = await fllamaChat(
+          _buildRequest(conv, modelPath, messages),
+          (response, openaiJson, done) {
+            if (!controller.isClosed) controller.add(response);
+            if (done && !controller.isClosed) controller.close();
+          },
+        );
+        _activeRequestId = requestId;
+      } catch (e) {
+        if (!controller.isClosed) {
+          controller.add('${app.t('unreachable')} ($e)');
+          await controller.close();
+        }
+      }
+    }();
+    return controller.stream;
+  }
+
+  @override
+  Future<void> stopGeneration() async {
+    final id = _activeRequestId;
+    if (id != null) fllamaCancelInference(id);
+  }
+}
+
+class RemoteLLMService implements ILLMService {
+  RemoteLLMService(this.app);
+  final AppState app;
+  http.Client? _activeClient;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<bool> isAvailable() async {
+    if (app.serverUrl.trim().isEmpty) return false;
+    try {
+      final headers = <String, String>{};
+      if (app.apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer ${app.apiKey}';
+      }
+      final res = await http
+          .get(Uri.parse('${app.baseUrl}/api/tags'), headers: headers)
+          .timeout(const Duration(seconds: 6));
+      return res.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  List<Map<String, dynamic>> _buildMessages(
+    Conversation conv,
+    List<ChatMessage> history,
+  ) {
+    final rpActive = conv.rpModeEnabled && conv.rpConfig != null;
+    final systemPrompt = rpActive
+        ? RPMemoryManager.buildSystemPrompt(conv)
+        : (conv.persona ?? app.persona).buildSystemPrompt() +
+              conv.pinnedContextBlock();
+    final effectiveHistory = rpActive
+        ? RPMemoryManager.trimForContext(
+            history,
+            conv.rpConfig!.contextWindowLimit,
+          )
+        : history;
+    return [
+      {'role': 'system', 'content': systemPrompt},
+      ...effectiveHistory.map(
+        (m) => {
+          'role': m.role,
+          'content': m.content.isNotEmpty
+              ? m.content
+              : '[Attached files: ${m.attachments.join(', ')}]',
+        },
+      ),
+    ];
+  }
+
+  // RP mode forwards RPSamplingConfig/stopSequences as Ollama's `options`;
+  // non-RP requests are left exactly as before (server defaults).
+  Map<String, dynamic> _buildBody(
+    Conversation conv,
+    List<ChatMessage> history,
+    bool stream,
+  ) {
+    final body = <String, dynamic>{
+      'model': _effectiveModelFor(app, conv),
+      'stream': stream,
+      'messages': _buildMessages(conv, history),
+    };
+    if (conv.rpModeEnabled && conv.rpConfig != null) {
+      final s = conv.rpConfig!.sampling;
+      body['options'] = {
+        'temperature': s.temperature,
+        'top_p': s.topP,
+        'repeat_penalty': s.repetitionPenalty,
+        'num_predict': s.maxResponseTokens,
+        if (conv.rpConfig!.stopSequences.isNotEmpty)
+          'stop': conv.rpConfig!.stopSequences,
+      };
+    }
+    return body;
+  }
+
+  @override
+  Future<String> generateResponse(
+    Conversation conv,
+    List<ChatMessage> history,
+  ) async {
+    try {
+      final headers = {'Content-Type': 'application/json'};
+      if (app.apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer ${app.apiKey}';
+      }
+      final res = await http
+          .post(
+            Uri.parse('${app.baseUrl}/api/chat'),
+            headers: headers,
+            body: jsonEncode(_buildBody(conv, history, false)),
+          )
+          .timeout(const Duration(seconds: 60));
+      if (res.statusCode == 200) {
+        try {
+          final data = jsonDecode(res.body);
+          if (data is Map<String, dynamic>) {
+            return app._extractContent(data) ?? '—';
+          }
+          return '—';
+        } catch (_) {
+          return '—';
+        }
+      }
+      return '${app.t('serverError')} ${res.statusCode}: ${res.body}';
+    } catch (e) {
+      return '${app.t('unreachable')} ${app.baseUrl}.\n($e)\n\n${app.t('checkAddress')}';
+    }
+  }
+
+  @override
+  Stream<String> generateStream(Conversation conv, List<ChatMessage> history) {
+    final controller = StreamController<String>();
+    () async {
+      final headers = {'Content-Type': 'application/json'};
+      if (app.apiKey.isNotEmpty) {
+        headers['Authorization'] = 'Bearer ${app.apiKey}';
+      }
+      final client = http.Client();
+      _activeClient = client;
+      final buffer = StringBuffer();
+      try {
+        final request = http.Request('POST', Uri.parse('${app.baseUrl}/api/chat'))
+          ..headers.addAll(headers)
+          ..body = jsonEncode(_buildBody(conv, history, true));
+        final streamedResponse = await client
+            .send(request)
+            .timeout(const Duration(seconds: 60));
+        if (streamedResponse.statusCode != 200) {
+          final body = await streamedResponse.stream.bytesToString();
+          controller.add(
+            '${app.t('serverError')} ${streamedResponse.statusCode}: $body',
+          );
+          return;
+        }
+        await streamedResponse.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .forEach((line) {
+              if (line.trim().isEmpty) return;
+              try {
+                final data = jsonDecode(line);
+                if (data is Map<String, dynamic>) {
+                  final delta = app._extractContent(data);
+                  if (delta != null && delta.isNotEmpty) {
+                    buffer.write(delta);
+                    controller.add(buffer.toString());
+                  }
+                }
+              } catch (_) {
+                // Partial/garbled line (e.g. mid-chunk on a slow
+                // connection) — skip it, the stream keeps arriving.
+              }
+            });
+      } catch (e) {
+        // A cancel-triggered client.close() also lands here; only show an
+        // error if nothing actually streamed yet, otherwise keep the
+        // partial reply that's already on screen.
+        if (buffer.isEmpty) {
+          controller.add(
+            '${app.t('unreachable')} ${app.baseUrl}.\n($e)\n\n${app.t('checkAddress')}',
+          );
+        }
+      } finally {
+        client.close();
+        if (!controller.isClosed) await controller.close();
+      }
+    }();
+    return controller.stream;
+  }
+
+  @override
+  Future<void> stopGeneration() async {
+    _activeClient?.close();
+  }
+}
+
+/// Picks the active backend purely off [isLocal] — re-evaluated on every
+/// access, so it always reflects the model currently selected in settings.
+class LLMServiceFactory {
+  LLMServiceFactory({
+    required AppState app,
+    required LocalLLMService local,
+    required RemoteLLMService remote,
+    required bool Function() isLocal,
+  }) : _app = app,
+       _local = local,
+       _remote = remote,
+       _isLocal = isLocal;
+
+  final AppState _app;
+  final LocalLLMService _local;
+  final RemoteLLMService _remote;
+  final bool Function() _isLocal;
+
+  ILLMService get current => _isLocal() ? _local : _remote;
+
+  // RP chats may have locked in a model of a different type (local/remote)
+  // than whatever is currently selected globally — `current` alone isn't
+  // enough for them, it only reflects the global selector.
+  ILLMService forConversation(Conversation conv) =>
+      _app.isLocalModel(_effectiveModelFor(_app, conv)) ? _local : _remote;
+}
+
+/// Lightweight token-count approximation for context-budget purposes —
+/// deliberately cheap (no I/O), since it's meant to be safe to call on
+/// every keystroke rather than just once per request. English/Latin text
+/// runs roughly 4 chars/token; Cyrillic tokenizes denser (smaller share of
+/// most vocabs, more multi-byte UTF-8), roughly 2.5 chars/token. Both are
+/// heuristics, not exact counts — for an exact local count, use
+/// [estimateForLocalModel] instead.
+class TokenCounter {
+  static final RegExp _cyrillic = RegExp(r'[Ѐ-ӿ]');
+
+  static int estimate(String text) {
+    if (text.isEmpty) return 0;
+    final cyrillicChars = _cyrillic.allMatches(text).length;
+    final charsPerToken = cyrillicChars > text.length / 2 ? 2.5 : 4.0;
+    return (text.length / charsPerToken).ceil();
+  }
+
+  /// Exact count via fllama's own tokenizer for the given local GGUF —
+  /// only meaningful for the local backend. Remote APIs only report token
+  /// counts after the fact, in their response usage stats, so there's
+  /// nothing equivalent to call ahead of a request for them. Falls back to
+  /// [estimate] if the model can't be tokenized (e.g. not downloaded).
+  static Future<int> estimateForLocalModel(String text, String modelPath) async {
+    try {
+      return await fllamaTokenize(
+        FllamaTokenizeRequest(input: text, modelPath: modelPath),
+      );
+    } catch (_) {
+      return estimate(text);
+    }
+  }
+}
+
 /* ============================ СОСТОЯНИЕ ============================ */
 
 enum AppThemeMode { system, light, dark, gray }
@@ -1262,6 +2108,28 @@ class AppState extends ChangeNotifier {
   Set<String> downloadedLocalModelIds = {};
   final Map<String, double> localDownloadProgress = {};
   final Set<String> _cancelledLocalDownloads = {};
+
+  // Live-streaming generation (RP mode only — see sendMessage/Conversation.
+  // rpModeEnabled). isGenerating drives the Stop Generation button; the
+  // cancel callback is whatever the active backend (fllama/HTTP) needs to
+  // actually interrupt itself.
+  bool isGenerating = false;
+  void Function()? _cancelGeneration;
+  void cancelGeneration() => _cancelGeneration?.call();
+
+  // LLM provider pattern (see ILLMService above) — one instance of each
+  // backend, picked per-call by the factory based on the currently
+  // selected model. Kept as fields (not created fresh per call) so a
+  // service instance's in-flight request/client survives long enough for
+  // a later stopGeneration() to actually reach it.
+  late final LocalLLMService _localLLM = LocalLLMService(this);
+  late final RemoteLLMService _remoteLLM = RemoteLLMService(this);
+  late final LLMServiceFactory _llmFactory = LLMServiceFactory(
+    app: this,
+    local: _localLLM,
+    remote: _remoteLLM,
+    isLocal: () => isLocalModel(selectedModel),
+  );
 
   bool checkingForUpdate = false;
   String? updateCheckError;
@@ -1441,6 +2309,12 @@ class AppState extends ChangeNotifier {
 
   void saveConversationPersona(Conversation conv, Personalization p) {
     conv.persona = p;
+    _save();
+    notifyListeners();
+  }
+
+  void saveConversationRpConfig(Conversation conv, RPSessionConfig cfg) {
+    conv.rpConfig = cfg;
     _save();
     notifyListeners();
   }
@@ -1748,6 +2622,50 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void toggleRpMode(Conversation c) {
+    c.rpModeEnabled = !c.rpModeEnabled;
+    if (c.rpModeEnabled) {
+      c.rpConfig ??= RPSessionConfig();
+      // Model is locked exactly once, the first time RP turns on for this
+      // chat — turning RP off and back on later does not re-lock, matching
+      // "the model can't be changed within this session" from the spec.
+      if (c.rpConfig!.lockedModel == null && selectedModel.isNotEmpty) {
+        c.rpConfig!.lockedModel = selectedModel;
+        c.rpConfig!.contextWindowLimit = isLocalModel(selectedModel)
+            ? 4096
+            : 16384;
+      }
+    }
+    _save();
+    notifyListeners();
+  }
+
+  // Context compression on demand (ТЗ-4): summarizes everything except the
+  // last 8 messages via the chat's own locked model, stores the summary on
+  // rpConfig.rollingSummary — RPMemoryManager.buildSystemPrompt/trimForContext
+  // pick it up on the next request automatically.
+  bool isCompressingContext = false;
+
+  Future<void> compressRpContext(Conversation conv) async {
+    final cfg = conv.rpConfig;
+    if (cfg == null || isCompressingContext) return;
+    const keepLastN = 8;
+    if (conv.messages.length <= keepLastN) return;
+    isCompressingContext = true;
+    notifyListeners();
+    try {
+      final old = conv.messages.sublist(0, conv.messages.length - keepLastN);
+      final service = _llmFactory.forConversation(conv);
+      final summary = await RPMemoryManager.summarizeOldContext(service, old);
+      cfg.rollingSummary = summary.trim();
+      cfg.summaryCoversUpToMessageIndex = old.length;
+      _save();
+    } finally {
+      isCompressingContext = false;
+      notifyListeners();
+    }
+  }
+
   void deleteChat(Conversation c) {
     conversations.remove(c);
     if (current == c) current = null;
@@ -1780,62 +2698,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Future<String> _sendLocalMessage(Conversation conv) async {
-    final spec = localSpecFor(selectedModel);
-    if (spec == null) return t('localModelMissing');
-    final dir = await localModelsDirPath();
-    final modelPath = '$dir/${spec.fileName}';
-    if (!await localModelFileExists(modelPath)) return t('localModelMissing');
-
-    final effectivePersona = conv.persona ?? persona;
-    // Only the weakest (light-tier) models reliably break down on the full
-    // multi-directive prompt — mid/high tier local models are capable
-    // instruct models in their own right and should get full
-    // personalization, same as remote models.
-    final systemPrompt =
-        (spec.tier == LocalModelTier.light
-            ? effectivePersona.buildLocalSystemPrompt()
-            : effectivePersona.buildSystemPrompt()) +
-        conv.pinnedContextBlock();
-
-    final messages = <Message>[
-      Message(Role.system, systemPrompt),
-      ...conv.messages.map(
-        (m) => Message(
-          m.role == 'user' ? Role.user : Role.assistant,
-          m.content.isNotEmpty
-              ? m.content
-              : '[Attached files: ${m.attachments.join(', ')}]',
-        ),
-      ),
-    ];
-
-    final completer = Completer<String>();
-    try {
-      await fllamaChat(
-        OpenAiRequest(
-          messages: messages,
-          modelPath: modelPath,
-          // fllama hardcodes n_parallel=4 natively and ignores nParallel on
-          // native platforms, splitting contextSize into 4 slots internally
-          // (n_ctx_seq = n_ctx / 4). Requesting 4x the user-facing/effective
-          // size gives back that much usable context.
-          contextSize: effectivePersona.localContextSize * 4,
-          maxTokens: 512,
-          temperature: 0.7,
-        ),
-        (response, openaiJson, done) {
-          if (done && !completer.isCompleted) completer.complete(response);
-        },
-      );
-    } catch (e) {
-      if (!completer.isCompleted) {
-        completer.complete('${t('unreachable')} ($e)');
-      }
-    }
-    return completer.future;
-  }
-
   Future<String> sendMessage(
     String text, {
     List<String> attachments = const [],
@@ -1858,63 +2720,13 @@ class AppState extends ChangeNotifier {
     conv.updatedAt = DateTime.now();
     notifyListeners();
 
-    String reply;
-    if (selectedModel.isEmpty) {
-      reply = t('noModelsAvailable');
-    } else if (isLocalModel(selectedModel)) {
-      reply = await _sendLocalMessage(conv);
-    } else {
-      try {
-        final headers = {'Content-Type': 'application/json'};
-        if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
-
-        final msgs = <Map<String, dynamic>>[
-          {
-            'role': 'system',
-            'content':
-                (conv.persona ?? persona).buildSystemPrompt() +
-                conv.pinnedContextBlock(),
-          },
-          ...conv.messages.map(
-            (m) => {
-              'role': m.role,
-              'content': m.content.isNotEmpty
-                  ? m.content
-                  : '[Attached files: ${m.attachments.join(', ')}]',
-            },
-          ),
-        ];
-
-        final res = await http
-            .post(
-              Uri.parse('$baseUrl/api/chat'),
-              headers: headers,
-              body: jsonEncode({
-                'model': selectedModel,
-                'stream': false,
-                'messages': msgs,
-              }),
-            )
-            .timeout(const Duration(seconds: 60));
-
-        if (res.statusCode == 200) {
-          try {
-            final data = jsonDecode(res.body);
-            if (data is Map<String, dynamic>) {
-              reply = _extractContent(data) ?? '—';
-            } else {
-              reply = '—';
-            }
-          } catch (_) {
-            reply = '—';
-          }
-        } else {
-          reply = '${t('serverError')} ${res.statusCode}: ${res.body}';
-        }
-      } catch (e) {
-        reply = '${t('unreachable')} $baseUrl.\n($e)\n\n${t('checkAddress')}';
-      }
+    if (conv.rpModeEnabled) {
+      return _sendMessageStreaming(conv, text);
     }
+
+    final reply = selectedModel.isEmpty
+        ? t('noModelsAvailable')
+        : await _llmFactory.current.generateResponse(conv, conv.messages);
 
     conv.messages.add(ChatMessage(role: 'assistant', content: reply.trim()));
     conv.updatedAt = DateTime.now();
@@ -1922,6 +2734,57 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     unawaited(_autoSaveMemoryFromExchange(conv, text, reply.trim()));
     return reply;
+  }
+
+  // RP-mode path: the assistant message is added (empty) up front and
+  // grown in place as chunks arrive, instead of waiting for the full reply
+  // — see Conversation.rpModeEnabled. `history` is a snapshot of the
+  // conversation taken before that placeholder is appended, so it isn't
+  // sent back to the model as part of its own context.
+  Future<String> _sendMessageStreaming(
+    Conversation conv,
+    String userText,
+  ) async {
+    final history = List<ChatMessage>.from(conv.messages);
+    final assistantMessage = ChatMessage(role: 'assistant', content: '');
+    conv.messages.add(assistantMessage);
+    isGenerating = true;
+    notifyListeners();
+
+    final service = _llmFactory.forConversation(conv);
+    _cancelGeneration = () => unawaited(service.stopGeneration());
+    try {
+      if (selectedModel.isEmpty) {
+        assistantMessage.content = t('noModelsAvailable');
+        notifyListeners();
+      } else {
+        await for (final chunk in service.generateStream(conv, history)) {
+          assistantMessage.content = chunk;
+          notifyListeners();
+        }
+        if (conv.rpModeEnabled && conv.rpConfig != null) {
+          assistantMessage.content = RPGuardFilters.apply(
+            assistantMessage.content,
+            conv.rpConfig!,
+          );
+          notifyListeners();
+        }
+      }
+    } finally {
+      isGenerating = false;
+      _cancelGeneration = null;
+      conv.updatedAt = DateTime.now();
+      _save();
+      notifyListeners();
+    }
+    unawaited(
+      _autoSaveMemoryFromExchange(
+        conv,
+        userText,
+        assistantMessage.content.trim(),
+      ),
+    );
+    return assistantMessage.content;
   }
 
   static const _memoryExtractionPrompt =
@@ -2703,6 +3566,20 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  void _toggleRpMode() {
+    if (!mounted) return;
+    final app = context.read<AppState>();
+    final conv = app.current;
+    if (conv == null) return;
+    app.toggleRpMode(conv);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(conv.rpModeEnabled ? app.t('rpModeOn') : app.t('rpModeOff')),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   void _openVoice() async {
     if (!mounted) return;
     final result = await Navigator.of(context).push<(String, bool)>(
@@ -2734,9 +3611,19 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               _topBar(app),
               Expanded(
-                child: hasMessages ? _messageList(conv) : _emptyState(app),
+                child: hasMessages
+                    ? _messageList(conv, app)
+                    : _emptyState(app),
               ),
               if (app.showPromptChips && !hasMessages) _promptChips(app),
+              if (conv != null &&
+                  conv.rpModeEnabled &&
+                  conv.rpConfig != null &&
+                  RPMemoryManager.checkContextThreshold(
+                    conv.messages,
+                    conv.rpConfig!,
+                  ))
+                _compressionBanner(conv, app),
               if (_pendingAttachments.isNotEmpty) _attachmentBar(app),
               _inputBar(app),
             ],
@@ -2747,6 +3634,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _topBar(AppState app) {
+    final lockedModel = app.current?.rpModeEnabled == true
+        ? app.current?.rpConfig?.lockedModel
+        : null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
@@ -2758,6 +3648,15 @@ class _ChatScreenState extends State<ChatScreen> {
               borderRadius: BorderRadius.circular(20),
               onTap: () {
                 app.buzz();
+                if (lockedModel != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(app.t('rpModelLockedToast')),
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
                 _openModelMenu();
               },
               child: Padding(
@@ -2765,47 +3664,68 @@ class _ChatScreenState extends State<ChatScreen> {
                   horizontal: 12,
                   vertical: 6,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (app.loadingModels) ...[
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          app.t('loadingModels'),
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _sub(context),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
+                child: Opacity(
+                  opacity: lockedModel != null ? 0.6 : 1,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (app.loadingModels) ...[
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            app.t('loadingModels'),
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _sub(context),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
-                      ),
-                    ] else ...[
-                      Flexible(
-                        child: Text(
-                          app.modelDisplayName(app.selectedModel),
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _txt(context),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                      ] else ...[
+                        Flexible(
+                          child: Text(
+                            app.modelDisplayName(
+                              lockedModel ?? app.selectedModel,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _txt(context),
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
-                      Icon(Icons.keyboard_arrow_down, color: _txt(context)),
+                        Icon(
+                          lockedModel != null
+                              ? Icons.lock_outline
+                              : Icons.keyboard_arrow_down,
+                          color: _txt(context),
+                          size: lockedModel != null ? 18 : 24,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
           ),
           const Spacer(),
+          if (app.current != null)
+            _circleBtn(
+              app.current!.rpModeEnabled
+                  ? Icons.theater_comedy
+                  : Icons.theater_comedy_outlined,
+              _toggleRpMode,
+              active: app.current!.rpModeEnabled,
+              tooltip: app.t('rpMode'),
+            ),
+          if (app.current != null) const SizedBox(width: 8),
           _circleBtn(Icons.manage_accounts_outlined, _openChatPersonalization),
           const SizedBox(width: 8),
           _circleBtn(Icons.chat_bubble_outline, _openConversations),
@@ -2814,8 +3734,13 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _circleBtn(IconData icon, VoidCallback onTap) {
-    return InkResponse(
+  Widget _circleBtn(
+    IconData icon,
+    VoidCallback onTap, {
+    bool active = false,
+    String? tooltip,
+  }) {
+    final btn = InkResponse(
       onTap: () {
         if (!mounted) return;
         context.read<AppState>().buzz();
@@ -2827,12 +3752,24 @@ class _ChatScreenState extends State<ChatScreen> {
         height: 48,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: _sub(context).withValues(alpha: 0.3)),
-          color: _card(context).withValues(alpha: 0.4),
+          border: Border.all(
+            color: active
+                ? const Color(0xFF2F6BFF)
+                : _sub(context).withValues(alpha: 0.3),
+            width: active ? 1.5 : 1,
+          ),
+          color: active
+              ? const Color(0xFF2F6BFF).withValues(alpha: 0.18)
+              : _card(context).withValues(alpha: 0.4),
         ),
-        child: Icon(icon, color: _txt(context), size: 22),
+        child: Icon(
+          icon,
+          color: active ? const Color(0xFF2F6BFF) : _txt(context),
+          size: 22,
+        ),
       ),
     );
+    return tooltip == null ? btn : Tooltip(message: tooltip, child: btn);
   }
 
   Widget _emptyState(AppState app) {
@@ -2880,11 +3817,21 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _messageList(Conversation conv) {
+  Widget _messageList(Conversation conv, AppState app) {
+    // In RP mode the assistant message is already a real (possibly still
+    // empty) entry in conv.messages from the moment generation starts (see
+    // AppState._sendMessageStreaming), so the synthetic placeholder below
+    // would otherwise show a second "thinking" bubble alongside it.
+    final showSyntheticPlaceholder = _sending && !conv.rpModeEnabled;
+    if (app.isGenerating && conv.rpModeEnabled) {
+      // Keep the growing reply in view as it streams in, the same way
+      // _send() already does once for the non-streaming reply.
+      _scrollDown();
+    }
     return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.all(16),
-      itemCount: conv.messages.length + (_sending ? 1 : 0),
+      itemCount: conv.messages.length + (showSyntheticPlaceholder ? 1 : 0),
       itemBuilder: (_, i) {
         if (i >= conv.messages.length) {
           return _bubble(
@@ -2892,7 +3839,14 @@ class _ChatScreenState extends State<ChatScreen> {
             thinking: true,
           );
         }
-        return _bubble(conv.messages[i]);
+        final m = conv.messages[i];
+        final isStreamingPlaceholder =
+            app.isGenerating &&
+            conv.rpModeEnabled &&
+            i == conv.messages.length - 1 &&
+            m.role == 'assistant' &&
+            m.content.isEmpty;
+        return _bubble(m, thinking: isStreamingPlaceholder);
       },
     );
   }
@@ -3153,6 +4107,44 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _compressionBanner(Conversation conv, AppState app) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _card(context).withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.compress, color: _sub(context), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              app.t('rpContextFull'),
+              style: TextStyle(color: _txt(context), fontSize: 13),
+            ),
+          ),
+          TextButton(
+            onPressed: app.isCompressingContext
+                ? null
+                : () => app.compressRpContext(conv),
+            child: app.isCompressingContext
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _sub(context),
+                    ),
+                  )
+                : Text(app.t('rpCompressButton')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _attachmentBar(AppState app) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -3235,17 +4227,36 @@ class _ChatScreenState extends State<ChatScreen> {
                   final hasContent =
                       _controller.text.trim().isNotEmpty ||
                       _pendingAttachments.isNotEmpty;
+                  final canStop =
+                      app.isGenerating && (app.current?.rpModeEnabled ?? false);
                   return Container(
                     width: 36,
                     height: 36,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: hasContent
+                      color: canStop
+                          ? Colors.redAccent
+                          : hasContent
                           ? kSendActiveColor
                           : _txt(context).withValues(alpha: 0.1),
                     ),
-                    child: _sending
+                    child: canStop
+                        ? IconButton(
+                            onPressed: () {
+                              app.buzz();
+                              app.cancelGeneration();
+                            },
+                            tooltip: app.t('stopGeneration'),
+                            icon: const Icon(
+                              Icons.stop_rounded,
+                              color: Colors.white,
+                            ),
+                            iconSize: 20,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          )
+                        : _sending
                         ? SizedBox(
                             width: 18,
                             height: 18,
@@ -5885,6 +6896,15 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
   late final TextEditingController _location;
   late final TextEditingController _avoid;
 
+  // Third "Roleplay" tab — only relevant/shown for a conversation with
+  // rpModeEnabled, mirrors the same clone-while-editing pattern as `p`.
+  late RPSessionConfig rp;
+  late final TextEditingController _rpUserName;
+  late final TextEditingController _rpAiName;
+  late final TextEditingController _rpSystemPrompt;
+  late final TextEditingController _rpScenario;
+  late final TextEditingController _rpStopSeq;
+
   @override
   void initState() {
     super.initState();
@@ -5900,6 +6920,13 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     _goals = TextEditingController(text: p.goals);
     _location = TextEditingController(text: p.location);
     _avoid = TextEditingController(text: p.avoidTopics);
+
+    rp = (widget.conversation?.rpConfig ?? RPSessionConfig()).clone();
+    _rpUserName = TextEditingController(text: rp.userCharacterName);
+    _rpAiName = TextEditingController(text: rp.aiCharacterName);
+    _rpSystemPrompt = TextEditingController(text: rp.systemPrompt);
+    _rpScenario = TextEditingController(text: rp.scenario);
+    _rpStopSeq = TextEditingController();
   }
 
   @override
@@ -5913,6 +6940,11 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     _goals.dispose();
     _location.dispose();
     _avoid.dispose();
+    _rpUserName.dispose();
+    _rpAiName.dispose();
+    _rpSystemPrompt.dispose();
+    _rpScenario.dispose();
+    _rpStopSeq.dispose();
     super.dispose();
   }
 
@@ -5931,6 +6963,13 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
       app.saveConversationPersona(widget.conversation!, p);
     } else {
       app.savePersona(p);
+    }
+    if (widget.conversation != null && widget.conversation!.rpModeEnabled) {
+      rp.userCharacterName = _rpUserName.text;
+      rp.aiCharacterName = _rpAiName.text;
+      rp.systemPrompt = _rpSystemPrompt.text;
+      rp.scenario = _rpScenario.text;
+      app.saveConversationRpConfig(widget.conversation!, rp);
     }
     Navigator.pop(context);
   }
@@ -5984,10 +7023,25 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
                   onTap: () => setState(() => _tab = 1),
                 ),
               ),
+              if (widget.conversation?.rpModeEnabled == true)
+                Expanded(
+                  child: _topTab(
+                    icon: Icons.theater_comedy_outlined,
+                    label: app.t('tabRoleplay'),
+                    selected: _tab == 2,
+                    onTap: () => setState(() => _tab = 2),
+                  ),
+                ),
             ],
           ),
           Container(height: 1, color: _sub(context).withValues(alpha: 0.15)),
-          Expanded(child: _tab == 0 ? _personalityTab(app) : _memoryTab(app)),
+          Expanded(
+            child: switch (_tab) {
+              0 => _personalityTab(app),
+              1 => _memoryTab(app),
+              _ => _roleplayTab(app),
+            },
+          ),
         ],
       ),
     );
@@ -6424,6 +7478,353 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           desc: app.t('localDataDesc'),
         ),
         const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  Widget _roleplayTab(AppState app) {
+    final lockedModel = rp.lockedModel;
+    final isLocal = lockedModel != null && app.isLocalModel(lockedModel);
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        _heroHeader(app.t('tabRoleplay'), app.t('rpDesc')),
+        if (lockedModel != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: _infoCard(
+              icon: Icons.lock_outline,
+              title: app.t('rpModelLocked'),
+              desc: app.modelDisplayName(lockedModel),
+            ),
+          ),
+        _section(app.t('rpCharacters')),
+        _card2(
+          child: Row(
+            children: [
+              Expanded(child: _field(_rpUserName, app.t('rpUserName'))),
+              const SizedBox(width: 12),
+              Expanded(child: _field(_rpAiName, app.t('rpAiName'))),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _section(app.t('rpPromptScenario')),
+        _card2(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _label(app.t('systemPrompt')),
+              _field(_rpSystemPrompt, app.t('rpSystemPromptHint'), maxLines: 6),
+              const SizedBox(height: 12),
+              _label(app.t('scenario')),
+              _field(_rpScenario, app.t('rpScenarioHint'), maxLines: 4),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _section(app.t('rpSampling')),
+        _card2(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sliderRange(
+                app.t('rpTemperature'),
+                rp.sampling.temperature,
+                0.0,
+                isLocal ? 1.5 : 2.0,
+                (v) => setState(() => rp.sampling.temperature = v),
+                format: (v) => v.toStringAsFixed(2),
+              ),
+              _sliderRange(
+                app.t('rpTopP'),
+                rp.sampling.topP,
+                0.0,
+                1.0,
+                (v) => setState(() => rp.sampling.topP = v),
+                format: (v) => v.toStringAsFixed(2),
+              ),
+              _sliderRange(
+                app.t('rpRepetitionPenalty'),
+                rp.sampling.repetitionPenalty,
+                1.0,
+                1.5,
+                (v) => setState(() => rp.sampling.repetitionPenalty = v),
+                format: (v) => v.toStringAsFixed(2),
+              ),
+              const SizedBox(height: 8),
+              _label(app.t('rpMaxTokens')),
+              _quickChips(
+                const [150, 300, 600],
+                rp.sampling.maxResponseTokens,
+                (v) => setState(() => rp.sampling.maxResponseTokens = v),
+                labelFor: (v) => switch (v) {
+                  150 => app.t('rpPresetShort'),
+                  300 => app.t('rpPresetMedium'),
+                  600 => app.t('rpPresetLong'),
+                  _ => '$v',
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _section(app.t('rpLorebook')),
+        _card2(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _iconSwitchRow(
+                icon: Icons.menu_book_outlined,
+                title: app.t('rpLorebookEnable'),
+                desc: app.t('rpLorebookDesc'),
+                value: rp.isLorebookEnabled,
+                onChanged: (v) => setState(() => rp.isLorebookEnabled = v),
+              ),
+              if (rp.isLorebookEnabled) ...[
+                Divider(color: _sub(context).withValues(alpha: 0.25), height: 25),
+                _lorebookEditor(app),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _section(app.t('rpStopSequences')),
+        _card2(child: _stopSequenceInput(app)),
+        const SizedBox(height: 20),
+        _section(app.t('rpContextWindow')),
+        _card2(
+          child: _quickChips(
+            isLocal ? const [2048, 4096, 8192] : const [4096, 16384, 32768],
+            rp.contextWindowLimit,
+            (v) => setState(() => rp.contextWindowLimit = v),
+          ),
+        ),
+        const SizedBox(height: 40),
+      ],
+    );
+  }
+
+  Widget _lorebookEditor(AppState app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final entry in rp.lorebook)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _bg(context).withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          initialValue: entry.keywords,
+                          style: TextStyle(color: _txt(context), fontSize: 13),
+                          decoration: InputDecoration(
+                            hintText: app.t('rpLorebookKeywords'),
+                            hintStyle: TextStyle(
+                              color: _sub(context),
+                              fontSize: 13,
+                            ),
+                            isDense: true,
+                            border: InputBorder.none,
+                          ),
+                          onChanged: (v) => entry.keywords = v,
+                        ),
+                      ),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
+                        icon: const Icon(
+                          Icons.close,
+                          size: 18,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: () => setState(() => rp.lorebook.remove(entry)),
+                      ),
+                    ],
+                  ),
+                  TextFormField(
+                    initialValue: entry.content,
+                    maxLines: 3,
+                    style: TextStyle(color: _txt(context), fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: app.t('rpLorebookContent'),
+                      hintStyle: TextStyle(color: _sub(context), fontSize: 13),
+                      isDense: true,
+                      border: InputBorder.none,
+                    ),
+                    onChanged: (v) => entry.content = v,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        TextButton.icon(
+          onPressed: () => setState(() => rp.lorebook.add(LoreEntry())),
+          icon: const Icon(Icons.add, size: 18),
+          label: Text(app.t('rpLorebookAddEntry')),
+        ),
+      ],
+    );
+  }
+
+  Widget _stopSequenceInput(AppState app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (rp.stopSequences.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final seq in rp.stopSequences)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _bg(context).withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _sub(context).withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          seq,
+                          style: TextStyle(color: _txt(context), fontSize: 13),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => rp.stopSequences.remove(seq)),
+                          child: Icon(
+                            Icons.close,
+                            size: 14,
+                            color: _sub(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        TextField(
+          controller: _rpStopSeq,
+          style: TextStyle(color: _txt(context), fontSize: 14),
+          decoration: InputDecoration(
+            hintText: app.t('rpStopSequenceHint'),
+            hintStyle: TextStyle(color: _sub(context), fontSize: 14),
+            isDense: true,
+            filled: true,
+            fillColor: _bg(context).withValues(alpha: 0.3),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          onSubmitted: (v) {
+            final trimmed = v.trim();
+            if (trimmed.isEmpty) return;
+            setState(() {
+              rp.stopSequences.add(trimmed);
+              _rpStopSeq.clear();
+            });
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _sliderRange(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged, {
+    String Function(double)? format,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(color: _txt(context), fontSize: 15),
+                ),
+              ),
+              Text(
+                format != null ? format(value) : value.toStringAsFixed(2),
+                style: TextStyle(
+                  color: _sub(context),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackShape: const GradientSliderTrackShape(),
+              thumbColor: const Color(0xFF2F6BFF),
+            ),
+            child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quickChips(
+    List<int> values,
+    int current,
+    ValueChanged<int> onSelect, {
+    String Function(int)? labelFor,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final v in values)
+          ChoiceChip(
+            label: Text(labelFor != null ? labelFor(v) : '$v'),
+            selected: current == v,
+            labelStyle: TextStyle(
+              color: current == v ? Colors.white : _txt(context),
+              fontWeight: FontWeight.w500,
+            ),
+            selectedColor: const Color(0xFF2F8DFF),
+            backgroundColor: _bg(context).withValues(alpha: 0.4),
+            side: BorderSide(color: _sub(context).withValues(alpha: 0.2)),
+            onSelected: (_) => onSelect(v),
+          ),
       ],
     );
   }
