@@ -3719,8 +3719,8 @@ class _ChatScreenState extends State<ChatScreen> {
           if (app.current != null)
             _circleBtn(
               app.current!.rpModeEnabled
-                  ? Icons.theater_comedy
-                  : Icons.theater_comedy_outlined,
+                  ? Icons.auto_awesome
+                  : Icons.auto_awesome_outlined,
               _toggleRpMode,
               active: app.current!.rpModeEnabled,
               tooltip: app.t('rpMode'),
@@ -4117,7 +4117,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.compress, color: _sub(context), size: 18),
+          Icon(Icons.inventory_2_outlined, color: _sub(context), size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -4249,7 +4249,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             },
                             tooltip: app.t('stopGeneration'),
                             icon: const Icon(
-                              Icons.stop_rounded,
+                              Icons.close,
                               color: Colors.white,
                             ),
                             iconSize: 20,
@@ -7026,7 +7026,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
               if (widget.conversation?.rpModeEnabled == true)
                 Expanded(
                   child: _topTab(
-                    icon: Icons.theater_comedy_outlined,
+                    icon: Icons.badge_outlined,
                     label: app.t('tabRoleplay'),
                     selected: _tab == 2,
                     onTap: () => setState(() => _tab = 2),
@@ -7575,7 +7575,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _iconSwitchRow(
-                icon: Icons.menu_book_outlined,
+                icon: Icons.notes_outlined,
                 title: app.t('rpLorebookEnable'),
                 desc: app.t('rpLorebookDesc'),
                 value: rp.isLorebookEnabled,
