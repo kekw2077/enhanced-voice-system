@@ -10,6 +10,15 @@
       "iconURL": "https://raw.githubusercontent.com/kekw2077/mirai/main/test1/assets/icon/icon.png",
       "versions": [
         {
+          "version": "2.9.1",
+          "buildVersion": "30",
+          "date": "2026-06-23T21:03:38Z",
+          "localizedDescription": "См. CHANGELOG.md в репозитории.",
+          "downloadURL": "https://github.com/kekw2077/mirai/releases/download/ios-v2.9.1/Mirai.ipa",
+          "size": 18086327,
+          "minOSVersion": "13.0"
+        },
+        {
           "version": "2.9.0",
           "buildVersion": "29",
           "date": "2026-06-23T20:16:22Z",
