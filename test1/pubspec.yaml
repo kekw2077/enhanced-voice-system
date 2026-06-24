@@ -1,7 +1,7 @@
 name: mirai
 description: Mirai — local & remote AI chat client
 publish_to: "none"
-version: 2.10.2+34
+version: 2.11.0+35
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -65,6 +65,8 @@ flutter_launcher_icons:
 flutter_native_splash:
   color: "#ebf4fc"
   color_dark: "#0f182f"
+  image: assets/splash/splash_orb.png
+  image_dark: assets/splash/splash_orb.png
   fullscreen: true
   android: true
   ios: true
