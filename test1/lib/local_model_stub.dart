@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 Future<String> localModelsDirPath() async {
   throw UnsupportedError('Local models are not supported on this platform.');
 }
@@ -11,6 +13,10 @@ Future<void> installApk(String path) async {
 }
 
 Future<bool> localModelFileExists(String path) async => false;
+
+Widget attachmentThumbnail(String path, {double size = 72, BoxFit fit = BoxFit.cover}) {
+  return SizedBox(width: size, height: size);
+}
 
 Future<void> deleteLocalModelFile(String path) async {}
 

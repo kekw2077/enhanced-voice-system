@@ -162,6 +162,8 @@ const Map<String, Map<String, String>> _i18n = {
     'rpMode': 'Режим ролевой игры',
     'rpModeOn': 'Режим ролевой игры включён для этого чата',
     'rpModeOff': 'Режим ролевой игры выключен для этого чата',
+    'rpEnableDesc':
+        'Заменяет обычный системный промпт на персонажа из этой вкладки и фиксирует модель за этим чатом.',
     'stopGeneration': 'Остановить генерацию',
     'tabRoleplay': 'Ролевая игра',
     'rpDesc':
@@ -181,6 +183,9 @@ const Map<String, Map<String, String>> _i18n = {
         'Главное описание персонажа — голос, характер, манера речи. Заменяет обычный системный промпт личности в этом чате.',
     'rpSystemPromptHint':
         'Опишите персонажа от первого лица. Доступны {{user}} и {{char}}.',
+    'rpPlaceholderExampleTitle': 'Пример',
+    'rpPlaceholderExample':
+        '«Ты — {{char}}, бывалый капитан космического корабля. Ты называешь {{user}} новым членом экипажа и общаешься с ним грубовато, но по-доброму.» При ответе модель сама заменит {{user}} и {{char}} на имена из полей выше.',
     'scenario': 'Сценарий / окружение',
     'scenarioDesc':
         'Вступление и контекст истории — обстановка, в которой начинается диалог.',
@@ -337,6 +342,8 @@ const Map<String, Map<String, String>> _i18n = {
     'contextSizeDesc':
         'Сколько диалога помнит локальная модель. Больше — лучше память, но выше нагрузка на устройство и медленнее ответы.',
     'contextSizeMaxFor': 'Максимум для',
+    'contextSizeMovedToRp':
+        'Для этого чата размер контекста настраивается во вкладке «Ролевая игра» — там же, где лимит контекста и параметры генерации.',
     'persProfile': 'О вас',
     'name': 'Имя',
     'pronouns': 'Местоимения',
@@ -500,6 +507,8 @@ const Map<String, Map<String, String>> _i18n = {
     'rpMode': 'Roleplay mode',
     'rpModeOn': 'Roleplay mode is on for this chat',
     'rpModeOff': 'Roleplay mode is off for this chat',
+    'rpEnableDesc':
+        "Replaces the regular system prompt with the character from this tab and locks the model to this chat.",
     'stopGeneration': 'Stop generating',
     'tabRoleplay': 'Roleplay',
     'rpDesc':
@@ -519,6 +528,9 @@ const Map<String, Map<String, String>> _i18n = {
         "The character's core description — voice, personality, way of speaking. Replaces the regular personality system prompt for this chat.",
     'rpSystemPromptHint':
         'Describe the character in first person. {{user}} and {{char}} are available.',
+    'rpPlaceholderExampleTitle': 'Example',
+    'rpPlaceholderExample':
+        '"You are {{char}}, a grizzled starship captain. You call {{user}} the crew\'s newest recruit and speak to them gruffly but warmly." The model will replace {{user}} and {{char}} with the names from the fields above.',
     'scenario': 'Scenario / setting',
     'scenarioDesc':
         'The opening context for the story — the setting the conversation starts in.',
@@ -675,6 +687,8 @@ const Map<String, Map<String, String>> _i18n = {
     'contextSizeDesc':
         "How much of the conversation the local model remembers. Higher means better memory, but more load on the device and slower replies.",
     'contextSizeMaxFor': 'Maximum for',
+    'contextSizeMovedToRp':
+        'For this chat, context size is configured in the "Roleplay" tab — alongside the context limit and generation settings.',
     'persProfile': 'About you',
     'name': 'Name',
     'pronouns': 'Pronouns',
@@ -1644,53 +1658,34 @@ const List<LocalModelSpec> kLocalModels = [
     tier: LocalModelTier.mid,
     maxContextTokens: 4096,
   ),
-  // Мощные — флагманы с большим запасом ОЗУ (например, iPhone 15 Pro Max)
+  // 7B/8B-классу (Mistral 7B, Qwen2.5 7B, Llama 3.1 8B, EVA-Qwen2.5 7B) тут
+  // больше нет места — на практике эти модели слишком тяжёлые для типичного
+  // телефона и стабильно приводили к падениям приложения (нехватка памяти
+  // под n_ctx*4 из-за квирка fllama, см. maxLocalContextSize). Каталог
+  // сознательно ограничен моделями среднего размера с большим нативным
+  // контекстом — оптимальный баланс качества письма/ролевой игры и
+  // надёжности на устройстве.
   LocalModelSpec(
-    id: 'mistral-7b-v0.3',
-    displayName: 'Mistral 7B Instruct v0.3',
-    shortName: 'Mistral 7B',
-    sizeBytes: 4372812000,
+    id: 'llama-3.2-3b',
+    displayName: 'Llama 3.2 3B Instruct',
+    shortName: 'Llama 3B',
+    sizeBytes: 2019377696,
     url:
-        'https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf?download=true',
-    fileName: 'Mistral-7B-Instruct-v0.3-Q4_K_M.gguf',
-    tier: LocalModelTier.high,
-    maxContextTokens: 32768,
-  ),
-  LocalModelSpec(
-    id: 'qwen2.5-7b',
-    displayName: 'Qwen2.5 7B Instruct',
-    shortName: 'Qwen 7B',
-    sizeBytes: 4683074240,
-    url:
-        'https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf?download=true',
-    fileName: 'Qwen2.5-7B-Instruct-Q4_K_M.gguf',
-    tier: LocalModelTier.high,
-    maxContextTokens: 32768,
-  ),
-  LocalModelSpec(
-    id: 'llama-3.1-8b',
-    displayName: 'Llama 3.1 8B Instruct',
-    shortName: 'Llama 8B',
-    sizeBytes: 4920739232,
-    url:
-        'https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf?download=true',
-    fileName: 'Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf',
-    tier: LocalModelTier.high,
+        'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf?download=true',
+    fileName: 'Llama-3.2-3B-Instruct-Q4_K_M.gguf',
+    tier: LocalModelTier.mid,
     maxContextTokens: 131072,
   ),
-  // Ролевая игра — RP-ориентированный файнтюн, отдельно от моделей общего
-  // назначения выше (тот же вес/контекст, что у Qwen2.5 7B, но обучен на
-  // ролевых/литературных диалогах, а не только на ассистентских задачах).
   LocalModelSpec(
-    id: 'eva-qwen2.5-7b',
-    displayName: 'EVA-Qwen2.5 7B v0.1',
-    shortName: 'EVA 7B',
-    sizeBytes: 4683072288,
+    id: 'phi-3.5-mini',
+    displayName: 'Phi-3.5 Mini Instruct',
+    shortName: 'Phi-3.5 Mini',
+    sizeBytes: 2393232672,
     url:
-        'https://huggingface.co/bartowski/EVA-Qwen2.5-7B-v0.1-GGUF/resolve/main/EVA-Qwen2.5-7B-v0.1-Q4_K_M.gguf?download=true',
-    fileName: 'EVA-Qwen2.5-7B-v0.1-Q4_K_M.gguf',
-    tier: LocalModelTier.roleplay,
-    maxContextTokens: 32768,
+        'https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf?download=true',
+    fileName: 'Phi-3.5-mini-instruct-Q4_K_M.gguf',
+    tier: LocalModelTier.mid,
+    maxContextTokens: 131072,
   ),
 ];
 
@@ -1712,6 +1707,14 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.12.0', [
+    'Переключатель ролевой игры убран из шапки чата — теперь он внутри вкладки «Ролевая игра», которая всегда видна рядом с «Память».',
+    'В описание системного промпта ролевой игры добавлен пример использования {{user}} и {{char}}.',
+    'Размер контекста для ролевых чатов больше не дублируется в двух вкладках — единственный лимит теперь на вкладке «Ролевая игра».',
+    'Название модели в шапке чата — без «(на устройстве)», с акцентной обводкой.',
+    'При прикреплении фото — миниатюра прямо в поле ввода, а не отдельный блок с именем файла.',
+    'Из каталога локальных моделей убраны тяжёлые 7B/8B модели — часто приводили к нехватке памяти и падению приложения. Добавлены Llama 3.2 3B и Phi-3.5 Mini с контекстом 128K токенов.',
+  ]),
   ChangelogEntry('2.11.1', [
     'Исправлен статус-бар на iOS (время, сеть, заряд батареи пропадали).',
     'В ролевой игре добавлен пресет длины ответа «Эпопея» (1000 токенов).',
@@ -1994,16 +1997,22 @@ class LocalLLMService implements ILLMService {
     List<Message> messages,
   ) {
     final effectivePersona = conv.persona ?? app.persona;
-    final sampling = (conv.rpModeEnabled ? conv.rpConfig?.sampling : null);
-    // Defensive re-clamp: the UI control already keeps localContextSize
-    // within the live model's range, but this guards the actual request
-    // too in case the stored value predates a model switch (or this whole
-    // per-model-max feature).
+    final rpActive = conv.rpModeEnabled && conv.rpConfig != null;
+    final sampling = rpActive ? conv.rpConfig?.sampling : null;
+    // Defensive re-clamp: the UI control already keeps the relevant size
+    // within the live model's range, but this guards the actual request too
+    // in case the stored value predates a model switch. RP chats use their
+    // own contextWindowLimit (Roleplay tab) as the single source of truth
+    // instead of the persona's localContextSize (Memory tab) -- showing both
+    // controls for the same chat used to let them disagree.
     final spec = app.localSpecFor(_effectiveModelFor(app, conv));
     final maxLocalContextSize = spec?.maxLocalContextSize ?? 4096;
-    final clampedContextSize = effectivePersona.localContextSize > maxLocalContextSize
-        ? maxLocalContextSize
+    final requestedContextSize = rpActive
+        ? conv.rpConfig!.contextWindowLimit
         : effectivePersona.localContextSize;
+    final clampedContextSize = requestedContextSize > maxLocalContextSize
+        ? maxLocalContextSize
+        : requestedContextSize;
     return OpenAiRequest(
       messages: messages,
       modelPath: modelPath,
@@ -2687,11 +2696,11 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  String modelDisplayName(String modelKey) {
+  String modelDisplayName(String modelKey, {bool withSuffix = true}) {
     if (modelKey.isEmpty) return t('noModelsAvailable');
     final spec = localSpecFor(modelKey);
     if (spec == null) return modelKey;
-    return '${spec.shortName} (${t('onDevice')})';
+    return withSuffix ? '${spec.shortName} (${t('onDevice')})' : spec.shortName;
   }
 
   Future<void> downloadLocalModel(LocalModelSpec spec) async {
@@ -3835,20 +3844,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _toggleRpMode() {
-    if (!mounted) return;
-    final app = context.read<AppState>();
-    final conv = app.current;
-    if (conv == null) return;
-    app.toggleRpMode(conv);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(conv.rpModeEnabled ? app.t('rpModeOn') : app.t('rpModeOff')),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   void _openVoice() async {
     if (!mounted) return;
     final result = await Navigator.of(context).push<(String, bool)>(
@@ -3893,7 +3888,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     conv.rpConfig!,
                   ))
                 _compressionBanner(conv, app),
-              if (_pendingAttachments.isNotEmpty) _attachmentBar(app),
               _inputBar(app),
             ],
           ),
@@ -3927,10 +3921,17 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
                 _openModelMenu();
               },
-              child: Padding(
+              child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF2F8DFF).withValues(alpha: 0.45),
+                    width: 1.5,
+                  ),
                 ),
                 child: Opacity(
                   opacity: lockedModel != null ? 0.6 : 1,
@@ -3960,6 +3961,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           child: Text(
                             app.modelDisplayName(
                               lockedModel ?? app.selectedModel,
+                              withSuffix: false,
                             ),
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -3983,27 +3985,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          if (app.current != null)
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _circleBtn(
-                  app.current!.rpModeEnabled
-                      ? Icons.auto_awesome
-                      : Icons.auto_awesome_outlined,
-                  _toggleRpMode,
-                  active: app.current!.rpModeEnabled,
-                  tooltip: app.t('rpMode'),
-                ),
-                const SizedBox(height: 6),
-                _circleBtn(
-                  Icons.manage_accounts_outlined,
-                  _openChatPersonalization,
-                ),
-              ],
-            )
-          else
-            _circleBtn(Icons.manage_accounts_outlined, _openChatPersonalization),
+          _circleBtn(Icons.manage_accounts_outlined, _openChatPersonalization),
           const SizedBox(width: 8),
           _circleBtn(Icons.chat_bubble_outline, _openConversations),
         ],
@@ -4422,29 +4404,25 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _attachmentBar(AppState app) {
+  // Image attachments get an actual thumbnail (matches the reference
+  // screenshot); non-image files keep the old filename chip, since there's
+  // nothing meaningful to preview for those.
+  Widget _attachmentPreviewRow(AppState app) {
     final showVisionWarning =
         _pendingAttachments.any(_isImageAttachment) &&
         !_modelSupportsVision(app);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Wrap(
             spacing: 8,
-            runSpacing: 4,
+            runSpacing: 8,
             children: _pendingAttachments.map((a) {
-              return Chip(
-                avatar: const Icon(Icons.attach_file, size: 16),
-                label: Text(
-                  a.split('/').last,
-                  style: TextStyle(fontSize: 12, color: _txt(context)),
-                ),
-                onDeleted: () => setState(() => _pendingAttachments.remove(a)),
-                backgroundColor: _card(context),
-                side: BorderSide(color: _sub(context).withValues(alpha: 0.3)),
-              );
+              return _isImageAttachment(a)
+                  ? _imageAttachmentThumb(a)
+                  : _fileAttachmentChip(a);
             }).toList(),
           ),
           if (showVisionWarning) ...[
@@ -4475,6 +4453,47 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _imageAttachmentThumb(String path) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: attachmentThumbnail(path, size: 72),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: GestureDetector(
+            onTap: () => setState(() => _pendingAttachments.remove(path)),
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, size: 14, color: Colors.black),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _fileAttachmentChip(String path) {
+    return Chip(
+      avatar: const Icon(Icons.attach_file, size: 16),
+      label: Text(
+        path.split('/').last,
+        style: TextStyle(fontSize: 12, color: _txt(context)),
+      ),
+      onDeleted: () => setState(() => _pendingAttachments.remove(path)),
+      backgroundColor: _bg(context).withValues(alpha: 0.4),
+      side: BorderSide(color: _sub(context).withValues(alpha: 0.3)),
+    );
+  }
+
   Widget _inputBar(AppState app) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 10, 8, 16),
@@ -4487,8 +4506,13 @@ class _ChatScreenState extends State<ChatScreen> {
             borderRadius: BorderRadius.circular(20),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (_pendingAttachments.isNotEmpty)
+                _attachmentPreviewRow(app),
+              Row(
+                children: [
               // Кнопка добавления с анимированной обводкой
               _buildAnimatedBtn(
                 onTap: () {
@@ -4587,6 +4611,8 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                   );
                 },
+              ),
+                ],
               ),
             ],
           ),
@@ -7287,7 +7313,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     } else {
       app.savePersona(p);
     }
-    if (widget.conversation != null && widget.conversation!.rpModeEnabled) {
+    if (widget.conversation != null) {
       rp.userCharacterName = _rpUserName.text;
       rp.aiCharacterName = _rpAiName.text;
       rp.systemPrompt = _rpSystemPrompt.text;
@@ -7295,6 +7321,29 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
       app.saveConversationRpConfig(widget.conversation!, rp);
     }
     Navigator.pop(context);
+  }
+
+  // The roleplay switch lives inside the tab itself now (no more header
+  // button) -- toggling it mutates the live conv.rpModeEnabled/rpConfig
+  // right away via AppState.toggleRpMode, so the locked-model snapshot it
+  // may just have taken needs copying into our editing clone `rp` too,
+  // otherwise _save() would overwrite it with `rp`'s stale defaults.
+  void _toggleRp(bool _) {
+    final conv = widget.conversation;
+    if (conv == null) return;
+    final app = context.read<AppState>();
+    app.toggleRpMode(conv);
+    setState(() {
+      rp.lockedModel = conv.rpConfig?.lockedModel;
+      rp.contextWindowLimit =
+          conv.rpConfig?.contextWindowLimit ?? rp.contextWindowLimit;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(conv.rpModeEnabled ? app.t('rpModeOn') : app.t('rpModeOff')),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   String tr(String k) => context.read<AppState>().t(k);
@@ -7338,7 +7387,13 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
             // The tab body, its state (`p`), and _save() are left fully
             // intact below; re-enabling is just adding its _topTab back and
             // restoring the `0 => _personalityTab(app)` switch case.
-            if (widget.conversation?.rpModeEnabled == true)
+            //
+            // "Ролевая игра" is shown next to "Память" whenever this screen
+            // is opened from a chat, regardless of whether RP mode is
+            // currently on for it -- the on/off switch now lives inside the
+            // tab itself (see _toggleRp), so the tab needs to be reachable
+            // before RP is turned on, not just after.
+            if (widget.conversation != null)
               Row(
                 children: [
                   Expanded(
@@ -7359,12 +7414,11 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
                   ),
                 ],
               ),
-            if (widget.conversation?.rpModeEnabled == true)
+            if (widget.conversation != null)
               Container(height: 1, color: _sub(context).withValues(alpha: 0.15)),
             Expanded(
               child: switch (_tab) {
-                1 when widget.conversation?.rpModeEnabled == true =>
-                  _roleplayTab(app),
+                1 when widget.conversation != null => _roleplayTab(app),
                 _ => _memoryTab(app),
               },
             ),
@@ -7636,7 +7690,18 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
               const SizedBox(height: 12),
               _field(_memory, app.t('memoryNote'), maxLines: 3),
               Divider(color: _sub(context).withValues(alpha: 0.25), height: 25),
-              _contextSizeControl(app),
+              // RP chats get their own "Лимит контекста" control on the
+              // Roleplay tab, which doubles as the local model's real
+              // context allocation (see LocalLLMService._buildRequest) --
+              // showing both here and there was the exact "two controls for
+              // the same thing" confusion this note exists to resolve.
+              widget.conversation?.rpModeEnabled == true
+                  ? _infoCard(
+                      icon: Icons.tune,
+                      title: app.t('contextSize'),
+                      desc: app.t('contextSizeMovedToRp'),
+                    )
+                  : _contextSizeControl(app),
               Divider(color: _sub(context).withValues(alpha: 0.25), height: 25),
               _destructiveActionRow(
                 icon: Icons.delete_outline,
@@ -7818,12 +7883,35 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
   }
 
   Widget _roleplayTab(AppState app) {
+    final conv = widget.conversation;
+    final rpOn = conv?.rpModeEnabled ?? false;
     final lockedModel = rp.lockedModel;
     final isLocal = lockedModel != null && app.isLocalModel(lockedModel);
+    final localSpec = lockedModel != null ? app.localSpecFor(lockedModel) : null;
+    final localMax = localSpec?.maxLocalContextSize ?? 8192;
+    final contextOptions = isLocal
+        ? const [2048, 4096, 8192].where((v) => v <= localMax).toList()
+        : const [4096, 16384, 32768];
+    final safeContextOptions = contextOptions.isEmpty
+        ? [localMax]
+        : contextOptions;
+    final displayContextLimit = safeContextOptions.contains(rp.contextWindowLimit)
+        ? rp.contextWindowLimit
+        : safeContextOptions.last;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
         _heroHeader(app.t('tabRoleplay'), app.t('rpDesc')),
+        _card2(
+          child: _iconSwitchRow(
+            icon: Icons.auto_awesome_outlined,
+            title: app.t('rpMode'),
+            desc: app.t('rpEnableDesc'),
+            value: rpOn,
+            onChanged: conv == null ? (_) {} : _toggleRp,
+          ),
+        ),
+        const SizedBox(height: 20),
         if (lockedModel != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 20),
@@ -7845,6 +7933,12 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
               const SizedBox(height: 12),
               _label(app.t('systemPrompt'), desc: app.t('systemPromptDesc')),
               _field(_rpSystemPrompt, app.t('rpSystemPromptHint'), maxLines: 6),
+              const SizedBox(height: 10),
+              _infoCard(
+                icon: Icons.info_outline,
+                title: app.t('rpPlaceholderExampleTitle'),
+                desc: app.t('rpPlaceholderExample'),
+              ),
             ],
           ),
         ),
@@ -7935,10 +8029,22 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
         const SizedBox(height: 20),
         _section(app.t('rpContextWindow'), app.t('rpContextWindowDesc')),
         _card2(
-          child: _quickChips(
-            isLocal ? const [2048, 4096, 8192] : const [4096, 16384, 32768],
-            rp.contextWindowLimit,
-            (v) => setState(() => rp.contextWindowLimit = v),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _quickChips(
+                safeContextOptions,
+                displayContextLimit,
+                (v) => setState(() => rp.contextWindowLimit = v),
+              ),
+              if (isLocal && localSpec != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${app.t('contextSizeMaxFor')} ${localSpec.shortName}: $localMax',
+                  style: TextStyle(color: _sub(context), fontSize: 12, height: 1.3),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 40),

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,6 +25,10 @@ Future<void> installApk(String path) async {
 }
 
 Future<bool> localModelFileExists(String path) => File(path).exists();
+
+Widget attachmentThumbnail(String path, {double size = 72, BoxFit fit = BoxFit.cover}) {
+  return Image.file(File(path), width: size, height: size, fit: fit);
+}
 
 Future<void> deleteLocalModelFile(String path) async {
   final f = File(path);
