@@ -1751,6 +1751,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.13.2', [
+    'Вкладки «Память»/«Ролевая игра» в стеклянном стиле — капсула с «парящей» пилюлей (сегмент-контрол iOS 26) вместо подчёркивания.',
+    'Экран «Настройки этого чата» в стеклянном стиле получил собственный мягкий цветной фон вместо размытия живого чата за ним.',
+  ]),
   ChangelogEntry('2.13.1', [
     'Лимит контекста в ролевой игре предлагает все значения до максимума модели (раньше обрезалось на 8192).',
     'Контекстные меню (⋮ у чата, долгое нажатие на сообщение) — в стиле «Жидкое стекло» с размытием.',
@@ -3612,32 +3616,22 @@ void showAppSnackBar(BuildContext context, String text) {
   );
 }
 
-// Opens the chat/personalization settings screen. In glass mode it's pushed
-// as a transparent overlay so the screen's frosted app bar/body blur the
-// chat behind (real glass); in standard mode it's a normal opaque page.
+// Opens the chat/personalization settings screen (normal opaque page). In
+// glass style the screen gives itself an ambient colored backdrop so its
+// glass tabs/cards read — see PersonalizationScreen.build.
 void openPersonalization(
   BuildContext context, {
   Conversation? conversation,
   int initialTab = 0,
 }) {
-  final screen = PersonalizationScreen(
-    conversation: conversation,
-    initialTab: initialTab,
-  );
-  if (_isGlass(context)) {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        opaque: false,
-        barrierColor: Colors.transparent,
-        transitionDuration: const Duration(milliseconds: 240),
-        reverseTransitionDuration: const Duration(milliseconds: 200),
-        pageBuilder: (_, anim, _) =>
-            FadeTransition(opacity: anim, child: screen),
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => PersonalizationScreen(
+        conversation: conversation,
+        initialTab: initialTab,
       ),
-    );
-  } else {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
-  }
+    ),
+  );
 }
 
 // Reusable translucent blurred surface for the Liquid Glass style. A real
@@ -3697,6 +3691,268 @@ class GlassSurface extends StatelessWidget {
           child: child,
         ),
       ),
+    );
+  }
+}
+
+// Soft ambient colored glow used as the backdrop for glass screens (e.g. the
+// chat-settings tabs), so the translucent glass surfaces above have a
+// non-uniform background to refract. Three big blurred color blobs over the
+// theme background.
+class AmbientGlow extends StatelessWidget {
+  const AmbientGlow({super.key});
+
+  Widget _blob(Color c, double size) => ImageFiltered(
+    imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+    child: Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: c),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final a = dark ? 0.55 : 0.30;
+    return Container(
+      color: _bg(context),
+      child: Stack(
+        children: [
+          Positioned(
+            left: -50,
+            top: 140,
+            child: _blob(const Color(0xFF3C78FF).withValues(alpha: a), 360),
+          ),
+          Positioned(
+            right: -40,
+            top: 120,
+            child: _blob(const Color(0xFF9B5AFF).withValues(alpha: a), 320),
+          ),
+          Positioned(
+            left: 150,
+            top: 180,
+            child: _blob(const Color(0xFF28C8B4).withValues(alpha: a), 240),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class GlassTab {
+  final String label;
+  final IconData icon;
+  const GlassTab({required this.label, required this.icon});
+}
+
+// Liquid Glass (iOS 26) segmented control: a frosted capsule with a floating
+// active pill that slides between tabs. Ported from the project's reference
+// design; label/icon colors adapt to the theme so it works on light too.
+class LiquidGlassTabs extends StatelessWidget {
+  const LiquidGlassTabs({
+    super.key,
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onChanged,
+    this.height = 58,
+    this.accent = const Color(0xFF2F8DFF),
+    this.blurSigma = 18,
+    this.animationDuration = const Duration(milliseconds: 320),
+  });
+
+  final List<GlassTab> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+  final double height;
+  final Color accent;
+  final double blurSigma;
+  final Duration animationDuration;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = height / 2;
+    const pad = 5.0;
+    final pillRadius = radius - pad;
+    return SizedBox(
+      height: height,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+          child: Container(
+            padding: const EdgeInsets.all(pad),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white.withValues(alpha: 0.16),
+                  Colors.white.withValues(alpha: 0.05),
+                ],
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.18),
+                width: 1,
+              ),
+            ),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: _ActivePill(
+                    count: tabs.length,
+                    index: selectedIndex,
+                    radius: pillRadius,
+                    duration: animationDuration,
+                    accent: accent,
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(pillRadius),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.center,
+                          colors: [
+                            Colors.white.withValues(alpha: 0.12),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: _LiquidTabLabels(
+                    tabs: tabs,
+                    selectedIndex: selectedIndex,
+                    onChanged: onChanged,
+                    accent: accent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivePill extends StatelessWidget {
+  const _ActivePill({
+    required this.count,
+    required this.index,
+    required this.radius,
+    required this.duration,
+    required this.accent,
+  });
+
+  final int count;
+  final int index;
+  final double radius;
+  final Duration duration;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final align = count <= 1 ? 0.0 : (index / (count - 1)) * 2 - 1;
+    final glassTop = Color.lerp(Colors.white, accent, 0.10)!;
+    final glassBottom = Color.lerp(Colors.white, accent, 0.18)!;
+    return AnimatedAlign(
+      alignment: Alignment(align, 0),
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      child: FractionallySizedBox(
+        widthFactor: 1 / count,
+        heightFactor: 1,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                glassTop.withValues(alpha: 0.60),
+                glassBottom.withValues(alpha: 0.30),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.50),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.28),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.18),
+                blurRadius: 1,
+                offset: const Offset(0, -1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LiquidTabLabels extends StatelessWidget {
+  const _LiquidTabLabels({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onChanged,
+    required this.accent,
+  });
+
+  final List<GlassTab> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final idle = _sub(context);
+    return Row(
+      children: List.generate(tabs.length, (i) {
+        final selected = i == selectedIndex;
+        return Expanded(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onChanged(i),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    tabs[i].icon,
+                    size: 18,
+                    color: selected ? accent : idle,
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: selected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                      color: selected ? _txt(context) : idle,
+                    ),
+                    child: Text(tabs[i].label),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 }
@@ -8095,31 +8351,31 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    // Glass mode: this screen is pushed as a transparent overlay over the
-    // chat (see openPersonalization), so the app bar + body frost the chat
-    // behind for a real glass look (like the settings sheet) instead of
-    // sitting on a flat opaque background.
     final glass = _isGlass(context);
-    final frostFill = _bg(context).withValues(alpha: 0.4);
-    final body = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: Column(
-          children: [
-            // "Личность" (_personalityTab) is temporarily disabled — the
-            // user's testing on an up-to-date build still found no
-            // observable change in model behavior from these sliders, so
-            // it's hidden from the tab row rather than fixed-in-place again.
-            // The tab body, its state (`p`), and _save() are left fully
-            // intact below; re-enabling is just adding its _topTab back and
-            // restoring the `0 => _personalityTab(app)` switch case.
-            //
-            // "Ролевая игра" is shown next to "Память" whenever this screen
-            // is opened from a chat, regardless of whether RP mode is
-            // currently on for it -- the on/off switch now lives inside the
-            // tab itself (see _toggleRp), so the tab needs to be reachable
-            // before RP is turned on, not just after.
-            if (widget.conversation != null)
+    // The "Личность" (_personalityTab) tab stays hidden; its body/state/_save
+    // are intact for a one-line revert. "Ролевая игра" sits next to "Память"
+    // whenever opened from a chat (the on/off switch lives inside the tab).
+    final hasTabs = widget.conversation != null;
+    final Widget tabsArea = glass
+        // Liquid Glass: a floating-pill segmented control (see LiquidGlassTabs).
+        ? Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: LiquidGlassTabs(
+              selectedIndex: _tab,
+              onChanged: (i) => setState(() => _tab = i),
+              accent: const Color(0xFF2F8DFF),
+              tabs: [
+                GlassTab(label: app.t('tabMemory'), icon: Icons.memory),
+                GlassTab(
+                  label: app.t('tabRoleplay'),
+                  icon: Icons.badge_outlined,
+                ),
+              ],
+            ),
+          )
+        // Standard: the underline tabs.
+        : Column(
+            children: [
               Row(
                 children: [
                   Expanded(
@@ -8140,31 +8396,38 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
                   ),
                 ],
               ),
-            if (widget.conversation != null)
-              Container(height: 1, color: _sub(context).withValues(alpha: 0.15)),
-            Expanded(
-              child: switch (_tab) {
-                1 when widget.conversation != null => _roleplayTab(app),
-                _ => _memoryTab(app),
-              },
-            ),
-          ],
-        ),
-    );
+              Container(
+                height: 1,
+                color: _sub(context).withValues(alpha: 0.15),
+              ),
+            ],
+          );
 
-    Widget frost(Widget child) => ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(color: frostFill, child: child),
+    final content = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Column(
+        children: [
+          if (hasTabs) tabsArea,
+          Expanded(
+            child: switch (_tab) {
+              1 when hasTabs => _roleplayTab(app),
+              _ => _memoryTab(app),
+            },
+          ),
+        ],
       ),
     );
 
     return Scaffold(
-      backgroundColor: glass ? Colors.transparent : _bg(context),
+      backgroundColor: _bg(context),
+      // Glass mode draws an ambient colored backdrop behind a transparent app
+      // bar so the glass tabs/cards have something to refract; standard mode
+      // is the plain opaque screen.
+      extendBodyBehindAppBar: glass,
       appBar: AppBar(
         backgroundColor: glass ? Colors.transparent : _bg(context),
         elevation: 0,
-        flexibleSpace: glass ? frost(const SizedBox.expand()) : null,
         foregroundColor: _txt(context),
         title: Text(
           widget.conversation != null ? app.t('chatPers') : app.t('pers'),
@@ -8184,7 +8447,19 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           ),
         ],
       ),
-      body: glass ? frost(body) : body,
+      body: glass
+          ? Stack(
+              children: [
+                const Positioned.fill(child: AmbientGlow()),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: kToolbarHeight),
+                    child: content,
+                  ),
+                ),
+              ],
+            )
+          : content,
     );
   }
 
