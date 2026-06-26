@@ -1,7 +1,7 @@
 name: mirai
 description: Mirai — local & remote AI chat client
 publish_to: "none"
-version: 2.13.2+41
+version: 2.14.0+42
 
 environment:
   sdk: ">=3.10.0 <4.0.0"

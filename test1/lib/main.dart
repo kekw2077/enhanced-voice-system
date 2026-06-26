@@ -102,6 +102,9 @@ const Map<String, Map<String, String>> _i18n = {
     'renameChat': 'Переименовать чат',
     'renameChatHint': 'Название чата',
     'msgCopy': 'Копировать',
+    'msgEdit': 'Редактировать',
+    'msgRegenerate': 'Перегенерировать',
+    'msgContinue': 'Продолжить',
     'msgUseInComposer': 'Использовать в поле ввода',
     'msgRemember': 'Запомнить',
     'msgForgetMemory': 'Забыть связанное воспоминание',
@@ -461,6 +464,9 @@ const Map<String, Map<String, String>> _i18n = {
     'renameChat': 'Rename chat',
     'renameChatHint': 'Chat name',
     'msgCopy': 'Copy',
+    'msgEdit': 'Edit',
+    'msgRegenerate': 'Regenerate',
+    'msgContinue': 'Continue',
     'msgUseInComposer': 'Use in composer',
     'msgRemember': 'Remember this',
     'msgForgetMemory': 'Forget related memory',
@@ -1751,6 +1757,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.14.0', [
+    'Под последним ответом нейросети — три кнопки (во всех чатах): Редактировать (правка прямо в пузыре), Перегенерировать (заново сгенерировать ответ), Продолжить (следующий ход ассистента по контексту, без вашей реплики).',
+  ]),
   ChangelogEntry('2.13.2', [
     'Вкладки «Память»/«Ролевая игра» в стеклянном стиле — капсула с «парящей» пилюлей (сегмент-контрол iOS 26) вместо подчёркивания.',
     'Экран «Настройки этого чата» в стеклянном стиле получил собственный мягкий цветной фон вместо размытия живого чата за ним.',
@@ -3067,73 +3076,99 @@ class AppState extends ChangeNotifier {
     }
     conv.updatedAt = DateTime.now();
     notifyListeners();
+    return _generateAssistantReply(conv, userTextForMemory: text);
+  }
 
-    if (conv.rpModeEnabled) {
-      return _sendMessageStreaming(conv, text);
+  // Regenerate the last assistant reply: drop the trailing assistant
+  // message(s) and generate a fresh one from the same context. No memory
+  // auto-save — the user turn didn't change, only the reply.
+  Future<void> regenerateLastReply(Conversation conv) async {
+    if (isGenerating) return;
+    while (conv.messages.isNotEmpty && conv.messages.last.role == 'assistant') {
+      conv.messages.removeLast();
     }
-
-    final rawReply = selectedModel.isEmpty
-        ? t('noModelsAvailable')
-        : await _llmFactory.current.generateResponse(conv, conv.messages);
-    final reply = (conv.persona ?? persona).enforceEmojiPolicy(rawReply);
-
-    conv.messages.add(ChatMessage(role: 'assistant', content: reply.trim()));
     conv.updatedAt = DateTime.now();
     _save();
     notifyListeners();
-    unawaited(_autoSaveMemoryFromExchange(conv, text, reply.trim()));
-    return reply;
+    await _generateAssistantReply(conv);
   }
 
-  // RP-mode path: the assistant message is added (empty) up front and
-  // grown in place as chunks arrive, instead of waiting for the full reply
-  // — see Conversation.rpModeEnabled. `history` is a snapshot of the
-  // conversation taken before that placeholder is appended, so it isn't
-  // sent back to the model as part of its own context.
-  Future<String> _sendMessageStreaming(
-    Conversation conv,
-    String userText,
-  ) async {
-    final history = List<ChatMessage>.from(conv.messages);
-    final assistantMessage = ChatMessage(role: 'assistant', content: '');
-    conv.messages.add(assistantMessage);
-    isGenerating = true;
-    notifyListeners();
+  // Continue the dialogue: generate another assistant turn from the current
+  // context without the user typing anything ("what happens next").
+  Future<void> continueReply(Conversation conv) async {
+    if (isGenerating || conv.messages.isEmpty) return;
+    await _generateAssistantReply(conv);
+  }
 
-    final service = _llmFactory.forConversation(conv);
-    _cancelGeneration = () => unawaited(service.stopGeneration());
-    try {
-      if (selectedModel.isEmpty) {
-        assistantMessage.content = t('noModelsAvailable');
+  // Manual edit of any message's text (used by the in-bubble inline editor).
+  void editMessage(Conversation conv, ChatMessage msg, String newText) {
+    msg.content = newText.trim();
+    conv.updatedAt = DateTime.now();
+    _save();
+    notifyListeners();
+  }
+
+  // Shared generation core. Assumes conv.messages already ends where the new
+  // assistant reply should be generated from (sendMessage appended the user
+  // turn; regenerate trimmed the old reply; continue leaves it as-is). RP
+  // chats stream the reply in place; everything else awaits the full reply.
+  Future<String> _generateAssistantReply(
+    Conversation conv, {
+    String? userTextForMemory,
+  }) async {
+    String replyText;
+    if (conv.rpModeEnabled) {
+      final history = List<ChatMessage>.from(conv.messages);
+      final assistantMessage = ChatMessage(role: 'assistant', content: '');
+      conv.messages.add(assistantMessage);
+      isGenerating = true;
+      notifyListeners();
+
+      final service = _llmFactory.forConversation(conv);
+      _cancelGeneration = () => unawaited(service.stopGeneration());
+      try {
+        if (selectedModel.isEmpty) {
+          assistantMessage.content = t('noModelsAvailable');
+          notifyListeners();
+        } else {
+          await for (final chunk in service.generateStream(conv, history)) {
+            assistantMessage.content = chunk;
+            notifyListeners();
+          }
+          if (conv.rpConfig != null) {
+            assistantMessage.content = RPGuardFilters.apply(
+              assistantMessage.content,
+              conv.rpConfig!,
+            );
+            notifyListeners();
+          }
+        }
+      } finally {
+        isGenerating = false;
+        _cancelGeneration = null;
+        conv.updatedAt = DateTime.now();
+        _save();
         notifyListeners();
-      } else {
-        await for (final chunk in service.generateStream(conv, history)) {
-          assistantMessage.content = chunk;
-          notifyListeners();
-        }
-        if (conv.rpModeEnabled && conv.rpConfig != null) {
-          assistantMessage.content = RPGuardFilters.apply(
-            assistantMessage.content,
-            conv.rpConfig!,
-          );
-          notifyListeners();
-        }
       }
-    } finally {
-      isGenerating = false;
-      _cancelGeneration = null;
+      replyText = assistantMessage.content;
+    } else {
+      final rawReply = selectedModel.isEmpty
+          ? t('noModelsAvailable')
+          : await _llmFactory.current.generateResponse(conv, conv.messages);
+      final reply = (conv.persona ?? persona).enforceEmojiPolicy(rawReply);
+      conv.messages.add(ChatMessage(role: 'assistant', content: reply.trim()));
       conv.updatedAt = DateTime.now();
       _save();
       notifyListeners();
+      replyText = reply;
     }
-    unawaited(
-      _autoSaveMemoryFromExchange(
-        conv,
-        userText,
-        assistantMessage.content.trim(),
-      ),
-    );
-    return assistantMessage.content;
+
+    if (userTextForMemory != null) {
+      unawaited(
+        _autoSaveMemoryFromExchange(conv, userTextForMemory, replyText.trim()),
+      );
+    }
+    return replyText;
   }
 
   static const _memoryExtractionPrompt =
@@ -4418,6 +4453,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final _inputFocus = FocusNode();
   bool _sending = false;
   final List<String> _pendingAttachments = [];
+  // id of the assistant message currently being edited inline (its bubble
+  // shows a text field instead of the text), plus its editing controller.
+  String? _editingMessageId;
+  final _editController = TextEditingController();
 
   @override
   void initState() {
@@ -4464,7 +4503,55 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.dispose();
     _scroll.dispose();
     _inputFocus.dispose();
+    _editController.dispose();
     super.dispose();
+  }
+
+  // Regenerate the last assistant reply (drops it, generates a fresh one).
+  Future<void> _regenerate() async {
+    if (!mounted) return;
+    final app = context.read<AppState>();
+    final conv = app.current;
+    if (conv == null || _sending || app.isGenerating) return;
+    app.buzz();
+    setState(() => _sending = true);
+    await app.regenerateLastReply(conv);
+    if (!mounted) return;
+    setState(() => _sending = false);
+    _scrollDown();
+  }
+
+  // Continue the story: generate another assistant turn from the current
+  // context, without the user typing a reply.
+  Future<void> _continue() async {
+    if (!mounted) return;
+    final app = context.read<AppState>();
+    final conv = app.current;
+    if (conv == null || _sending || app.isGenerating) return;
+    app.buzz();
+    setState(() => _sending = true);
+    await app.continueReply(conv);
+    if (!mounted) return;
+    setState(() => _sending = false);
+    _scrollDown();
+  }
+
+  void _startEdit(ChatMessage m) {
+    setState(() {
+      _editingMessageId = m.id;
+      _editController.text = m.content;
+    });
+  }
+
+  void _cancelEdit() {
+    setState(() => _editingMessageId = null);
+  }
+
+  void _saveEdit(ChatMessage m) {
+    final app = context.read<AppState>();
+    final conv = app.current;
+    if (conv != null) app.editMessage(conv, m, _editController.text);
+    setState(() => _editingMessageId = null);
   }
 
   static const _imageExtensions = [
@@ -4865,7 +4952,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _messageList(Conversation conv, AppState app) {
     // In RP mode the assistant message is already a real (possibly still
     // empty) entry in conv.messages from the moment generation starts (see
-    // AppState._sendMessageStreaming), so the synthetic placeholder below
+    // AppState._generateAssistantReply), so the synthetic placeholder below
     // would otherwise show a second "thinking" bubble alongside it.
     final showSyntheticPlaceholder = _sending && !conv.rpModeEnabled;
     if (app.isGenerating && conv.rpModeEnabled) {
@@ -4873,6 +4960,7 @@ class _ChatScreenState extends State<ChatScreen> {
       // _send() already does once for the non-streaming reply.
       _scrollDown();
     }
+    final busy = _sending || app.isGenerating;
     return ListView.builder(
       controller: _scroll,
       padding: const EdgeInsets.all(16),
@@ -4891,13 +4979,29 @@ class _ChatScreenState extends State<ChatScreen> {
             i == conv.messages.length - 1 &&
             m.role == 'assistant' &&
             m.content.isEmpty;
-        return _bubble(m, thinking: isStreamingPlaceholder);
+        // Action bar (edit / regenerate / continue) under the last assistant
+        // reply when idle.
+        final showActions =
+            !busy &&
+            i == conv.messages.length - 1 &&
+            m.role == 'assistant' &&
+            m.content.isNotEmpty;
+        return _bubble(
+          m,
+          thinking: isStreamingPlaceholder,
+          showActions: showActions,
+        );
       },
     );
   }
 
-  Widget _bubble(ChatMessage m, {bool thinking = false}) {
+  Widget _bubble(
+    ChatMessage m, {
+    bool thinking = false,
+    bool showActions = false,
+  }) {
     final isUser = m.role == 'user';
+    final editing = _editingMessageId == m.id;
     final bubble = Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -4946,6 +5050,8 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           if (thinking)
             const _ThinkingDots()
+          else if (editing)
+            _editBubbleBody(m)
           else if (m.content.isNotEmpty)
             Text(
               m.content,
@@ -4960,11 +5066,109 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: thinking
-          ? bubble
-          : GestureDetector(
-              onLongPressStart: (d) => _showMessageActions(m, d.globalPosition),
-              child: bubble,
+      child: Column(
+        crossAxisAlignment: isUser
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          thinking || editing
+              ? bubble
+              : GestureDetector(
+                  onLongPressStart: (d) =>
+                      _showMessageActions(m, d.globalPosition),
+                  child: bubble,
+                ),
+          if (showActions && !editing) _messageActionsBar(m),
+        ],
+      ),
+    );
+  }
+
+  // Inline editor shown inside an assistant bubble in place of its text.
+  Widget _editBubbleBody(ChatMessage m) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        TextField(
+          controller: _editController,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 12,
+          style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.4),
+          decoration: const InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextButton(
+              onPressed: _cancelEdit,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white70,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 32),
+              ),
+              child: Text(context.read<AppState>().t('cancel')),
+            ),
+            TextButton(
+              onPressed: () => _saveEdit(m),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                minimumSize: const Size(0, 32),
+              ),
+              child: Text(context.read<AppState>().t('save')),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  // Edit / regenerate / continue controls under the last assistant reply.
+  Widget _messageActionsBar(ChatMessage m) {
+    final app = context.read<AppState>();
+    Widget btn(IconData icon, String tooltip, VoidCallback onTap) {
+      return IconButton(
+        icon: Icon(icon, size: 18, color: _txt(context)),
+        tooltip: tooltip,
+        onPressed: onTap,
+        visualDensity: VisualDensity.compact,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        constraints: const BoxConstraints(),
+      );
+    }
+
+    Widget sep() => Container(
+      width: 1,
+      height: 20,
+      color: _sub(context).withValues(alpha: 0.25),
+    );
+
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        btn(Icons.edit_outlined, app.t('msgEdit'), () => _startEdit(m)),
+        sep(),
+        btn(Icons.refresh, app.t('msgRegenerate'), _regenerate),
+        sep(),
+        btn(Icons.fast_forward, app.t('msgContinue'), _continue),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6, left: 2),
+      child: _isGlass(context)
+          ? GlassSurface(borderRadius: BorderRadius.circular(18), child: row)
+          : Container(
+              decoration: BoxDecoration(
+                color: _card(context).withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: row,
             ),
     );
   }
