@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,7 +19,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'local_model_stub.dart' if (dart.library.io) 'local_model_io.dart';
 
-const _minSplashDuration = Duration(milliseconds: 1200);
+// Kept short now that the animated ImmersiveSplash provides the real
+// startup dwell — otherwise boot would be this delay plus the ~1.5s
+// animation stacked back to back.
+const _minSplashDuration = Duration(milliseconds: 300);
 
 void main() async {
   final startedAt = DateTime.now();
@@ -93,6 +98,9 @@ const Map<String, Map<String, String>> _i18n = {
     'pin': 'Закрепить',
     'unpin': 'Открепить',
     'delete': 'Удалить',
+    'rename': 'Переименовать',
+    'renameChat': 'Переименовать чат',
+    'renameChatHint': 'Название чата',
     'msgCopy': 'Копировать',
     'msgUseInComposer': 'Использовать в поле ввода',
     'msgRemember': 'Запомнить',
@@ -172,10 +180,15 @@ const Map<String, Map<String, String>> _i18n = {
     'rpModelLockedToast':
         'Модель этого чата зафиксирована при включении режима ролевой игры и не меняется внутри сессии.',
     'rpMyCharacter': 'Мой персонаж',
-    'rpMyCharacterDesc': 'Как модель называет вас в этом чате.',
+    'rpMyCharacterDesc': 'Кто вы в этой истории — имя и описание вашего персонажа.',
     'rpAiRole': 'Роль ИИ',
     'rpAiRoleDesc': 'Кем должна быть нейросеть в этом чате — имя и личность персонажа.',
     'rpUserName': 'Ваше имя',
+    'rpUserDescription': 'Описание вашего персонажа',
+    'rpUserDescriptionDesc':
+        'Кто ваш персонаж — внешность, характер, роль в истории. Модель учитывает это, обращаясь к вам, но играет не за вас.',
+    'rpUserDescriptionHint':
+        'Опишите своего персонажа. Доступны {{user}} и {{char}}.',
     'rpAiName': 'Имя персонажа ИИ',
     'rpScenarioSection': 'Сценарий',
     'systemPrompt': 'Системный промпт / личность персонажа',
@@ -232,6 +245,10 @@ const Map<String, Map<String, String>> _i18n = {
     'themeLight': 'Светлая',
     'themeDark': 'Тёмная',
     'themeGray': 'Серая',
+    'appStyle': 'Стиль приложения',
+    'appStyleDialogTitle': 'Стиль приложения',
+    'appStyleStandard': 'Обычный',
+    'appStyleGlass': 'Жидкое стекло',
     'showChips': 'Показывать подсказки',
     'fontSize': 'Размер шрифта',
     'deleteHistory': 'Удалить историю диалогов',
@@ -440,6 +457,9 @@ const Map<String, Map<String, String>> _i18n = {
     'pin': 'Pin',
     'unpin': 'Unpin',
     'delete': 'Delete',
+    'rename': 'Rename',
+    'renameChat': 'Rename chat',
+    'renameChatHint': 'Chat name',
     'msgCopy': 'Copy',
     'msgUseInComposer': 'Use in composer',
     'msgRemember': 'Remember this',
@@ -517,10 +537,15 @@ const Map<String, Map<String, String>> _i18n = {
     'rpModelLockedToast':
         "This chat's model was locked in when roleplay mode turned on and can't change within the session.",
     'rpMyCharacter': 'My character',
-    'rpMyCharacterDesc': 'What the model calls you in this chat.',
+    'rpMyCharacterDesc': 'Who you are in this story — your character\'s name and description.',
     'rpAiRole': "AI's role",
     'rpAiRoleDesc': "Who the AI should be in this chat — the character's name and personality.",
     'rpUserName': 'Your name',
+    'rpUserDescription': 'Your character description',
+    'rpUserDescriptionDesc':
+        'Who your character is — appearance, personality, role in the story. The model takes this into account when addressing you, but does not play as you.',
+    'rpUserDescriptionHint':
+        'Describe your character. {{user}} and {{char}} are available.',
     'rpAiName': "AI character's name",
     'rpScenarioSection': 'Scenario',
     'systemPrompt': 'System prompt / character personality',
@@ -577,6 +602,10 @@ const Map<String, Map<String, String>> _i18n = {
     'themeLight': 'Light',
     'themeDark': 'Dark',
     'themeGray': 'Gray',
+    'appStyle': 'App style',
+    'appStyleDialogTitle': 'App style',
+    'appStyleStandard': 'Standard',
+    'appStyleGlass': 'Liquid Glass',
     'showChips': 'Show prompt chips',
     'fontSize': 'Font size',
     'deleteHistory': 'Delete conversation history',
@@ -1311,6 +1340,11 @@ class RPSessionConfig {
   RPSessionConfig();
 
   String userCharacterName = '';
+  // Описание персонажа пользователя — кто он в этой истории. Передаётся
+  // модели как справочный контекст (см. RPMemoryManager.buildSystemPrompt),
+  // в отличие от systemPrompt, который описывает персонажа ИИ и задаёт его
+  // голос.
+  String userCharacterDescription = '';
   String aiCharacterName = '';
   // Свободный текст с {{user}}/{{char}} — в отличие от Personalization,
   // которая собирает промпт программно из отдельных директив, RP-режим
@@ -1332,6 +1366,7 @@ class RPSessionConfig {
 
   Map<String, dynamic> toJson() => {
     'userCharacterName': userCharacterName,
+    'userCharacterDescription': userCharacterDescription,
     'aiCharacterName': aiCharacterName,
     'systemPrompt': systemPrompt,
     'scenario': scenario,
@@ -1348,6 +1383,8 @@ class RPSessionConfig {
   factory RPSessionConfig.fromJson(Map<String, dynamic> j) {
     final c = RPSessionConfig();
     c.userCharacterName = j['userCharacterName'] as String? ?? '';
+    c.userCharacterDescription =
+        j['userCharacterDescription'] as String? ?? '';
     c.aiCharacterName = j['aiCharacterName'] as String? ?? '';
     c.systemPrompt = j['systemPrompt'] as String? ?? '';
     c.scenario = j['scenario'] as String? ?? '';
@@ -1423,6 +1460,13 @@ class RPMemoryManager {
       b.writeln(
         'You are roleplaying as $ai${userName.isNotEmpty ? " opposite $userName" : ""}. '
         'Stay in character and respond only as your character would.',
+      );
+    }
+    if (cfg.userCharacterDescription.trim().isNotEmpty) {
+      final who = userName.isNotEmpty ? userName : 'the user';
+      b.writeln(
+        'About $who (the human player, not you): '
+        '${_substitutePlaceholders(cfg.userCharacterDescription.trim(), cfg)}',
       );
     }
     if (cfg.scenario.trim().isNotEmpty) {
@@ -1707,6 +1751,14 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.13.0', [
+    'Список чатов открывается свайпом от левого края (полноэкранно); кнопка чатов из шапки убрана, настройки чата — справа, название модели по центру.',
+    'Новый стиль «Жидкое стекло» (iOS 26) — в настройках под «Темой» пункт «Стиль приложения». Переоформлен весь интерфейс, включая тумблеры. Работает поверх любой темы.',
+    'Чаты можно переименовывать — пункт «Переименовать» в меню чата (⋮).',
+    'При запуске играет анимация: сфера приближается и растворяется, открывая чат. Тапом можно пропустить. Старый статичный сплэш убран.',
+    'В ролевой игре у своего персонажа можно задать описание (внешность, характер, роль), не только имя.',
+    'Обводка вокруг названия модели в шапке — тоньше, того же цвета, что у круглых кнопок, с отступом.',
+  ]),
   ChangelogEntry('2.12.0', [
     'Переключатель ролевой игры убран из шапки чата — теперь он внутри вкладки «Ролевая игра», которая всегда видна рядом с «Память».',
     'В описание системного промпта ролевой игры добавлен пример использования {{user}} и {{char}}.',
@@ -2335,6 +2387,12 @@ class TokenCounter {
 
 enum AppThemeMode { system, light, dark, gray }
 
+// Visual style of the app's chrome, orthogonal to AppThemeMode: `standard`
+// keeps the existing solid surfaces, `liquidGlass` swaps them for
+// translucent blurred (iOS 26 "Liquid Glass") surfaces over whatever theme
+// is active. See GlassSurface / _isGlass.
+enum AppStyle { standard, liquidGlass }
+
 class AppState extends ChangeNotifier {
   final SharedPreferences prefs;
   AppState(this.prefs);
@@ -2345,6 +2403,7 @@ class AppState extends ChangeNotifier {
   String t(String key) => _i18n[lang]?[key] ?? _i18n['en']?[key] ?? key;
 
   AppThemeMode themeMode = AppThemeMode.system;
+  AppStyle appStyle = AppStyle.standard;
   bool haptics = true;
   bool showKeyboardOnLaunch = false;
   bool showPromptChips = true;
@@ -2428,6 +2487,11 @@ class AppState extends ChangeNotifier {
       (e) => e.name == tm,
       orElse: () => AppThemeMode.system,
     );
+    final as = prefs.getString('appStyle') ?? 'standard';
+    appStyle = AppStyle.values.firstWhere(
+      (e) => e.name == as,
+      orElse: () => AppStyle.standard,
+    );
     haptics = prefs.getBool('haptics') ?? true;
     showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
     showPromptChips = prefs.getBool('showPromptChips') ?? true;
@@ -2482,6 +2546,7 @@ class AppState extends ChangeNotifier {
   Future<void> _save() async {
     await prefs.setString('lang', lang);
     await prefs.setString('themeMode', themeMode.name);
+    await prefs.setString('appStyle', appStyle.name);
     await prefs.setBool('haptics', haptics);
     await prefs.setBool('showKeyboardOnLaunch', showKeyboardOnLaunch);
     await prefs.setBool('showPromptChips', showPromptChips);
@@ -2515,6 +2580,12 @@ class AppState extends ChangeNotifier {
 
   void setThemeMode(AppThemeMode v) {
     themeMode = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setAppStyle(AppStyle v) {
+    appStyle = v;
     _save();
     notifyListeners();
   }
@@ -2876,6 +2947,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Manual chat rename. Empty/whitespace input is ignored so a chat never
+  // ends up with a blank title.
+  void renameChat(Conversation c, String title) {
+    final t = title.trim();
+    if (t.isEmpty) return;
+    c.title = t;
+    _save();
+    notifyListeners();
+  }
+
   void toggleRpMode(Conversation c) {
     c.rpModeEnabled = !c.rpModeEnabled;
     if (c.rpModeEnabled) {
@@ -3158,7 +3239,7 @@ class MiraiApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const ChatScreen(),
+      home: const ImmersiveSplash(),
     );
   }
 
@@ -3208,6 +3289,92 @@ class MiraiApp extends StatelessWidget {
   }
 }
 
+// Animated startup transition: the particle sphere (same one shown on the
+// empty chat screen) swells toward the viewer and dissolves smoothly as the
+// chat reveals behind it — "flying into" the sphere. Plays once per cold
+// launch; a tap anywhere skips straight to the chat. The native static-orb
+// splash is the instant first frame before this; ChatScreen is mounted under
+// the overlay the whole time so it's already warm when the overlay clears.
+class ImmersiveSplash extends StatefulWidget {
+  const ImmersiveSplash({super.key});
+  @override
+  State<ImmersiveSplash> createState() => _ImmersiveSplashState();
+}
+
+class _ImmersiveSplashState extends State<ImmersiveSplash>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..addStatusListener((s) {
+      if (s == AnimationStatus.completed && mounted) {
+        setState(() => _done = true);
+      }
+    });
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _skip() {
+    if (_done) return;
+    _ctrl.stop();
+    setState(() => _done = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_done) return const ChatScreen();
+    return Stack(
+      children: [
+        const ChatScreen(),
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: _skip,
+            child: AnimatedBuilder(
+              animation: _ctrl,
+              builder: (context, _) {
+                final t = _ctrl.value;
+                // Brief hold, then ramp immersion; the whole overlay fades
+                // out over the last third so the chat shows through.
+                final immerse = t < 0.15 ? 0.0 : ((t - 0.15) / 0.85);
+                final fade = (1 - ((t - 0.7) / 0.3)).clamp(0.0, 1.0);
+                return Opacity(
+                  opacity: fade,
+                  child: Container(
+                    color: _bg(context),
+                    alignment: Alignment.center,
+                    child: ParticleSphere(
+                      size: 240,
+                      dense: true,
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white
+                          : const Color(0xFF2F6BFF),
+                      immerse: Curves.easeIn.transform(
+                        immerse.clamp(0.0, 1.0),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 bool _isGrayMode(BuildContext c) =>
     c.read<AppState>().themeMode == AppThemeMode.gray;
 
@@ -3228,6 +3395,140 @@ Color _sub(BuildContext c) => Theme.of(c).brightness == Brightness.dark
     ? const Color(0xFF8A8A95)
     : const Color(0xFF6B6B72);
 
+bool _isGlass(BuildContext c) =>
+    c.read<AppState>().appStyle == AppStyle.liquidGlass;
+
+// Outer panel for bottom sheets / the chats drawer: a translucent blurred
+// surface in glass style, a solid one otherwise. `rounded` controls the top
+// corners (off for the full-height embedded chats drawer).
+Widget _sheetSurface(
+  BuildContext context, {
+  bool rounded = true,
+  Color? solid,
+  required Widget child,
+}) {
+  final radius = rounded
+      ? const BorderRadius.vertical(top: Radius.circular(24))
+      : BorderRadius.zero;
+  if (_isGlass(context)) {
+    return GlassSurface(borderRadius: radius, child: child);
+  }
+  return Container(
+    decoration: BoxDecoration(color: solid ?? _bg(context), borderRadius: radius),
+    child: child,
+  );
+}
+
+// Toggle: a true iOS CupertinoSwitch in glass style, the green Material
+// Switch otherwise. Same green on/off semantics in both.
+Widget _iosSwitch(
+  BuildContext context,
+  bool value,
+  ValueChanged<bool> onChanged,
+) {
+  if (_isGlass(context)) {
+    return CupertinoSwitch(
+      value: value,
+      activeTrackColor: const Color(0xFF34C759),
+      onChanged: onChanged,
+    );
+  }
+  return Switch(
+    value: value,
+    activeThumbColor: Colors.white,
+    activeTrackColor: const Color(0xFF34C759),
+    onChanged: onChanged,
+  );
+}
+
+// Card-like surface used across screens (stat tiles, chat tiles, model
+// cards, etc.). Glass mode → translucent blurred surface; standard mode →
+// the original solid translucent _card fill (so standard is unchanged).
+Widget _glassCard(
+  BuildContext context, {
+  required Widget child,
+  double radius = 18,
+  EdgeInsetsGeometry? padding,
+  double alpha = 0.5,
+}) {
+  if (_isGlass(context)) {
+    return GlassSurface(
+      borderRadius: BorderRadius.circular(radius),
+      padding: padding,
+      child: child,
+    );
+  }
+  return Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      color: _card(context).withValues(alpha: alpha),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+    child: child,
+  );
+}
+
+// Reusable translucent blurred surface for the Liquid Glass style. A real
+// backdrop blur (so content behind shows through), a translucent fill tuned
+// per brightness, and a soft top-left specular border. Used by the chat
+// chrome (top bar, input bar, circle buttons), sheets, and cards when the
+// glass style is on. Blur sigma is kept modest on purpose — stacking many
+// BackdropFilters is expensive on weak devices.
+class GlassSurface extends StatelessWidget {
+  final Widget child;
+  final BorderRadius borderRadius;
+  final EdgeInsetsGeometry? padding;
+  final double blur;
+  final bool circle;
+
+  const GlassSurface({
+    super.key,
+    required this.child,
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+    this.padding,
+    this.blur = 18,
+    this.circle = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fill = dark
+        ? Colors.white.withValues(alpha: 0.10)
+        : Colors.white.withValues(alpha: 0.55);
+    final highlight = dark
+        ? Colors.white.withValues(alpha: 0.22)
+        : Colors.white.withValues(alpha: 0.7);
+    final shade = dark
+        ? Colors.black.withValues(alpha: 0.18)
+        : Colors.black.withValues(alpha: 0.06);
+    final clip = circle ? BorderRadius.circular(999) : borderRadius;
+    return ClipRRect(
+      borderRadius: clip,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            borderRadius: clip,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color.alphaBlend(highlight.withValues(alpha: 0.10), fill),
+                fill,
+                Color.alphaBlend(shade, fill),
+              ],
+            ),
+            border: Border.all(color: highlight, width: 1),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 /* ============================ СФЕРА ИЗ ЧАСТИЦ ============================ */
 
 class ParticleSphere extends StatefulWidget {
@@ -3236,6 +3537,12 @@ class ParticleSphere extends StatefulWidget {
   final bool dense;
   final bool active;
   final bool scattered;
+  // Splash "immersion" progress (0..1): the sphere swells toward the viewer
+  // and its particles stream smoothly outward along their own radial
+  // direction while fading — "flying into" the sphere. Distinct from
+  // `scattered`, which is the chaotic keyboard-scatter. Driven externally by
+  // ImmersiveSplash's controller, not the internal disperse animation.
+  final double immerse;
   // Optional live microphone level (smoothed, 0..1) — when provided, the
   // sphere's pulse, particle brightness, and jitter speed react to it.
   final ValueListenable<double>? soundLevel;
@@ -3246,6 +3553,7 @@ class ParticleSphere extends StatefulWidget {
     this.dense = false,
     this.active = false,
     this.scattered = false,
+    this.immerse = 0.0,
     this.soundLevel,
   });
 
@@ -3325,6 +3633,7 @@ class _ParticleSphereState extends State<ParticleSphere>
             widget.active,
             Curves.easeOutCubic.transform(_disperseCtrl.value),
             soundLevel?.value ?? 0.0,
+            widget.immerse,
           ),
         ),
       ),
@@ -3347,6 +3656,9 @@ class _SpherePainter extends CustomPainter {
   // while [active] is true; drives extra pulse, brightness and per-particle
   // jitter on top of the constant idle rotation/breathing.
   final double level;
+  // Splash immersion 0..1 — sphere swells past the viewer and particles
+  // stream smoothly outward (radially) while fading. See ParticleSphere.immerse.
+  final double immerse;
   _SpherePainter(
     this.points,
     this.t,
@@ -3354,12 +3666,19 @@ class _SpherePainter extends CustomPainter {
     this.active,
     this.disperse,
     this.level,
+    this.immerse,
   );
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final R = size.width / 2 * 0.92;
+    final baseR = size.width / 2 * 0.92;
+    final imm = immerse.clamp(0.0, 1.0);
+    // The sphere balloons toward the viewer as immersion ramps up (quadratic
+    // for an accelerating "fly-in"); every particle rides this larger radius
+    // outward along its own direction, so they stream past the edges smoothly
+    // instead of scattering randomly.
+    final R = baseR * (1 + imm * imm * 6);
     final rotY = t * 2 * math.pi;
     final reactive = active ? level.clamp(0.0, 1.0) : 0.0;
     final pulse = active
@@ -3372,7 +3691,9 @@ class _SpherePainter extends CustomPainter {
       final glow = Paint()
         ..shader = RadialGradient(
           colors: [
-            color.withValues(alpha: 0.18 * (1 - disperse) * (1 + reactive)),
+            color.withValues(
+              alpha: 0.18 * (1 - disperse) * (1 - imm) * (1 + reactive),
+            ),
             Colors.transparent,
           ],
         ).createShader(Rect.fromCircle(center: center, radius: R));
@@ -3412,13 +3733,18 @@ class _SpherePainter extends CustomPainter {
           ((0.25 + 0.75 * scale) *
                   p.brightness *
                   (1 - disperse) *
+                  (1 - imm) *
                   (1 + reactive * 0.6))
               .clamp(0.0, 1.0);
       if (opacity <= 0.01) continue;
       paint.color = color.withValues(alpha: opacity);
       canvas.drawCircle(
         Offset(px, py),
-        p.radius * scale * (1 - disperse * 0.3) * (1 + reactive * 0.35),
+        p.radius *
+            scale *
+            (1 - disperse * 0.3) *
+            (1 + imm * 0.8) *
+            (1 + reactive * 0.35),
         paint,
       );
     }
@@ -3821,18 +4147,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _openConversations() {
-    if (!mounted) return;
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const ConversationsSheet(),
-    ).then((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
   void _openChatPersonalization() {
     if (!mounted) return;
     final app = context.read<AppState>();
@@ -3867,6 +4181,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Scaffold(
       backgroundColor: _bg(context),
+      // Full-width left drawer holds the chat list — opened by an edge swipe
+      // (the old top-bar chats button is gone). Drawer keeps the OS status
+      // bar visible (not immersive); its content uses its own SafeArea.
+      drawerEdgeDragWidth: 56,
+      drawer: Drawer(
+        width: MediaQuery.of(context).size.width,
+        backgroundColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(),
+        child: const ConversationsSheet(embedded: true),
+      ),
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => FocusScope.of(context).unfocus(),
@@ -3905,6 +4229,7 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Row(
         children: [
           _circleBtn(Icons.settings_outlined, _openSettings),
+          const SizedBox(width: 8),
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
@@ -3921,18 +4246,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
                 _openModelMenu();
               },
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFF2F8DFF).withValues(alpha: 0.45),
-                    width: 1.5,
-                  ),
-                ),
+              child: _modelBubbleWrap(
                 child: Opacity(
                   opacity: lockedModel != null ? 0.6 : 1,
                   child: Row(
@@ -3985,11 +4299,52 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ),
-          _circleBtn(Icons.manage_accounts_outlined, _openChatPersonalization),
           const SizedBox(width: 8),
-          _circleBtn(Icons.chat_bubble_outline, _openConversations),
+          _circleBtn(Icons.manage_accounts_outlined, _openChatPersonalization),
         ],
       ),
+    );
+  }
+
+  // Input-bar surface: translucent blurred in glass style, solid card
+  // otherwise. Sits inside the AnimatedBorder, so no border of its own here.
+  Widget _inputSurface({required Widget child}) {
+    const pad = EdgeInsets.symmetric(horizontal: 4, vertical: 4);
+    if (_isGlass(context)) {
+      return GlassSurface(
+        borderRadius: BorderRadius.circular(20),
+        padding: pad,
+        child: child,
+      );
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: _card(context),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      padding: pad,
+      child: child,
+    );
+  }
+
+  // Outer wrapper for the model-name bubble: a translucent blurred pill in
+  // glass style, the bordered solid pill otherwise.
+  Widget _modelBubbleWrap({required Widget child}) {
+    const pad = EdgeInsets.symmetric(horizontal: 16, vertical: 8);
+    if (_isGlass(context)) {
+      return GlassSurface(
+        borderRadius: BorderRadius.circular(20),
+        padding: pad,
+        child: child,
+      );
+    }
+    return Container(
+      padding: pad,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _sub(context).withValues(alpha: 0.3)),
+      ),
+      child: child,
     );
   }
 
@@ -3999,6 +4354,36 @@ class _ChatScreenState extends State<ChatScreen> {
     bool active = false,
     String? tooltip,
   }) {
+    final iconWidget = Icon(
+      icon,
+      color: active ? const Color(0xFF2F6BFF) : _txt(context),
+      size: 22,
+    );
+    // Glass style (non-active) → translucent blurred circle; active state
+    // keeps its blue tint in both styles. Standard style → the original
+    // solid circle.
+    final Widget face = (_isGlass(context) && !active)
+        ? GlassSurface(
+            circle: true,
+            child: SizedBox(width: 48, height: 48, child: Center(child: iconWidget)),
+          )
+        : Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: active
+                    ? const Color(0xFF2F6BFF)
+                    : _sub(context).withValues(alpha: 0.3),
+                width: active ? 1.5 : 1,
+              ),
+              color: active
+                  ? const Color(0xFF2F6BFF).withValues(alpha: 0.18)
+                  : _card(context).withValues(alpha: 0.4),
+            ),
+            child: iconWidget,
+          );
     final btn = InkResponse(
       onTap: () {
         if (!mounted) return;
@@ -4006,27 +4391,7 @@ class _ChatScreenState extends State<ChatScreen> {
         onTap();
       },
       radius: 28,
-      child: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: active
-                ? const Color(0xFF2F6BFF)
-                : _sub(context).withValues(alpha: 0.3),
-            width: active ? 1.5 : 1,
-          ),
-          color: active
-              ? const Color(0xFF2F6BFF).withValues(alpha: 0.18)
-              : _card(context).withValues(alpha: 0.4),
-        ),
-        child: Icon(
-          icon,
-          color: active ? const Color(0xFF2F6BFF) : _txt(context),
-          size: 22,
-        ),
-      ),
+      child: face,
     );
     return tooltip == null ? btn : Tooltip(message: tooltip, child: btn);
   }
@@ -4369,12 +4734,12 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _compressionBanner(Conversation conv, AppState app) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: _card(context).withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
+      child: _glassCard(
+        context,
+        radius: 14,
+        alpha: 0.6,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
         children: [
           Icon(Icons.inventory_2_outlined, color: _sub(context), size: 18),
           const SizedBox(width: 8),
@@ -4400,6 +4765,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 : Text(app.t('rpCompressButton')),
           ),
         ],
+        ),
       ),
     );
   }
@@ -4500,12 +4866,7 @@ class _ChatScreenState extends State<ChatScreen> {
       child: AnimatedBorder(
         radius: 20,
         strokeWidth: 2,
-        child: Container(
-          decoration: BoxDecoration(
-            color: _card(context),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: _inputSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -4625,6 +4986,7 @@ class _ChatScreenState extends State<ChatScreen> {
     required VoidCallback onTap,
     required IconData icon,
   }) {
+    final iconWidget = Icon(icon, color: _txt(context), size: 20);
     return AnimatedBorder(
       radius: 20,
       strokeWidth: 2,
@@ -4633,14 +4995,20 @@ class _ChatScreenState extends State<ChatScreen> {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _card(context),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: _txt(context), size: 20),
-          ),
+          child: _isGlass(context)
+              ? GlassSurface(
+                  circle: true,
+                  padding: const EdgeInsets.all(8),
+                  child: iconWidget,
+                )
+              : Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _card(context),
+                    shape: BoxShape.circle,
+                  ),
+                  child: iconWidget,
+                ),
         ),
       ),
     );
@@ -4725,11 +5093,9 @@ class _RecentAttachSheetState extends State<_RecentAttachSheet> {
       maxChildSize: 0.92,
       expand: false,
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: _card(context),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
+        return _sheetSurface(
+          context,
+          solid: _card(context),
           child: Column(
             children: [
               const SizedBox(height: 10),
@@ -5725,7 +6091,13 @@ class _VoiceScreenState extends State<VoiceScreen>
 /* ============================ ЭКРАН БЕСЕД ============================ */
 
 class ConversationsSheet extends StatefulWidget {
-  const ConversationsSheet({super.key});
+  // embedded == true → rendered full-height inside the chat screen's left
+  // Drawer (opened by an edge swipe) instead of as a bottom sheet: drops the
+  // drag handle / rounded-top / DraggableScrollableSheet sizing. The close
+  // (X) button still works in both modes — closing a Drawer is done with
+  // Navigator.pop too (it sits on the route's local-history stack).
+  final bool embedded;
+  const ConversationsSheet({super.key, this.embedded = false});
   @override
   State<ConversationsSheet> createState() => _ConversationsSheetState();
 }
@@ -5735,6 +6107,34 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: _sheetSurface(
+          context,
+          rounded: false,
+          child: SafeArea(child: _content(context, null)),
+        ),
+      );
+    }
+    return DraggableScrollableSheet(
+      initialChildSize: 0.92,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      builder: (_, scrollCtrl) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: _sheetSurface(
+          context,
+          rounded: true,
+          child: _content(context, scrollCtrl),
+        ),
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context, ScrollController? scrollCtrl) {
     final app = context.watch<AppState>();
     final filtered =
         app.conversations
@@ -5749,29 +6149,19 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
             .toList()
           ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
-    return DraggableScrollableSheet(
-      initialChildSize: 0.92,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: Container(
-        decoration: BoxDecoration(
-          color: _bg(context),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
+    return Column(
           children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _sub(context),
-                borderRadius: BorderRadius.circular(2),
+            if (!widget.embedded) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _sub(context),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
               child: Row(
@@ -5879,10 +6269,7 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
               ),
             ),
           ],
-        ),
-        ),
-      ),
-    );
+        );
   }
 
   Widget _stat(
@@ -5893,43 +6280,43 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
     bool small = false,
   }) {
     return Expanded(
-      child: Container(
+      child: SizedBox(
         height: 150,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: _card(context).withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
+        child: _glassCard(
+          context,
+          radius: 20,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 22),
               ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const Spacer(),
-            Text(
-              value,
-              style: TextStyle(
-                color: _txt(context),
-                fontSize: small ? 16 : 26,
-                fontWeight: FontWeight.w700,
+              const Spacer(),
+              Text(
+                value,
+                style: TextStyle(
+                  color: _txt(context),
+                  fontSize: small ? 16 : 26,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: _sub(context),
-                fontSize: 12,
-                letterSpacing: 1,
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: _sub(context),
+                  fontSize: 12,
+                  letterSpacing: 1,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -5990,12 +6377,11 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
   }
 
   Widget _emptyRecent(AppState app) {
-    return Container(
+    return _glassCard(
+      context,
+      radius: 20,
+      alpha: 0.4,
       padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: _card(context).withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Column(
         children: [
           Container(
@@ -6167,70 +6553,131 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
   }
 
   Widget _chatTile(Conversation c, AppState app) {
+    final tile = ListTile(
+      onTap: () {
+        app.openChat(c);
+        Navigator.pop(context);
+      },
+      leading: Icon(
+        c.pinned ? Icons.push_pin : Icons.chat_bubble_outline,
+        color: _txt(context),
+      ),
+      title: Text(
+        c.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: _txt(context), fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text(
+        '${c.messages.length} ${app.t('messages')} · ${_ago(app, c.updatedAt)}',
+        style: TextStyle(color: _sub(context)),
+      ),
+      trailing: PopupMenuButton<String>(
+        color: _isGlass(context)
+            ? _card(context).withValues(alpha: 0.85)
+            : _card(context),
+        icon: Icon(Icons.more_vert, color: _sub(context)),
+        onSelected: (v) {
+          if (v == 'rename') _promptRename(c, app);
+          if (v == 'pin') app.togglePin(c);
+          if (v == 'delete') app.deleteChat(c);
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'rename',
+            child: Text(
+              app.t('rename'),
+              style: TextStyle(color: _txt(context)),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'pin',
+            child: Text(
+              c.pinned ? app.t('unpin') : app.t('pin'),
+              style: TextStyle(color: _txt(context)),
+            ),
+          ),
+          PopupMenuItem(
+            value: 'delete',
+            child: Text(
+              app.t('delete'),
+              style: TextStyle(color: _txt(context)),
+            ),
+          ),
+        ],
+      ),
+    );
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16)),
-      child: Material(
-        color: _card(context).withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(16),
-        child: ListTile(
-          onTap: () {
-            app.openChat(c);
-            Navigator.pop(context);
+      child: _isGlass(context)
+          ? GlassSurface(
+              borderRadius: BorderRadius.circular(16),
+              child: Material(type: MaterialType.transparency, child: tile),
+            )
+          : Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Material(
+                color: _card(context).withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(16),
+                child: tile,
+              ),
+            ),
+    );
+  }
+
+  // Rename dialog for a chat. Pre-fills the current title; saving an empty
+  // title is a no-op (keeps the old one).
+  void _promptRename(Conversation c, AppState app) {
+    final ctrl = TextEditingController(text: c.title);
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: _isGlass(context)
+            ? _card(context).withValues(alpha: 0.9)
+            : _card(context),
+        title: Text(app.t('renameChat'), style: TextStyle(color: _txt(context))),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: _txt(context)),
+          decoration: InputDecoration(
+            hintText: app.t('renameChatHint'),
+            hintStyle: TextStyle(color: _sub(context)),
+          ),
+          onSubmitted: (_) {
+            app.renameChat(c, ctrl.text);
+            Navigator.pop(dialogContext);
           },
-          leading: Icon(
-            c.pinned ? Icons.push_pin : Icons.chat_bubble_outline,
-            color: _txt(context),
-          ),
-          title: Text(
-            c.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: _txt(context), fontWeight: FontWeight.w600),
-          ),
-          subtitle: Text(
-            '${c.messages.length} ${app.t('messages')} · ${_ago(app, c.updatedAt)}',
-            style: TextStyle(color: _sub(context)),
-          ),
-          trailing: PopupMenuButton<String>(
-            color: _card(context),
-            icon: Icon(Icons.more_vert, color: _sub(context)),
-            onSelected: (v) {
-              if (v == 'pin') app.togglePin(c);
-              if (v == 'delete') app.deleteChat(c);
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'pin',
-                child: Text(
-                  c.pinned ? app.t('unpin') : app.t('pin'),
-                  style: TextStyle(color: _txt(context)),
-                ),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                child: Text(
-                  app.t('delete'),
-                  style: TextStyle(color: _txt(context)),
-                ),
-              ),
-            ],
-          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(app.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () {
+              app.renameChat(c, ctrl.text);
+              Navigator.pop(dialogContext);
+            },
+            child: Text(app.t('save')),
+          ),
+        ],
       ),
     );
   }
 
   Widget _searchField(AppState app) {
-    return TextField(
+    final field = TextField(
       style: TextStyle(color: _txt(context)),
       onChanged: (v) => setState(() => _query = v),
       decoration: InputDecoration(
         hintText: app.t('searchChats'),
         hintStyle: TextStyle(color: _sub(context)),
         prefixIcon: Icon(Icons.search, color: _sub(context)),
-        filled: true,
+        filled: !_isGlass(context),
         fillColor: _card(context).withValues(alpha: 0.4),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(28),
@@ -6238,6 +6685,10 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
         ),
       ),
     );
+    if (_isGlass(context)) {
+      return GlassSurface(borderRadius: BorderRadius.circular(28), child: field);
+    }
+    return field;
   }
 
   String _ago(AppState app, DateTime t) {
@@ -6261,11 +6712,8 @@ class SettingsSheet extends StatelessWidget {
       initialChildSize: 0.92,
       minChildSize: 0.5,
       maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => Container(
-        decoration: BoxDecoration(
-          color: _bg(context),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        ),
+      builder: (_, scrollCtrl) => _sheetSurface(
+        context,
         child: Column(
           children: [
             const SizedBox(height: 10),
@@ -6400,6 +6848,19 @@ class SettingsSheet extends StatelessWidget {
                       ),
                       onTap: () => _openThemeDialog(context),
                     ),
+                    _nav(
+                      context,
+                      Icons.tune,
+                      app.t('appStyle'),
+                      trailing: Text(
+                        switch (app.appStyle) {
+                          AppStyle.standard => app.t('appStyleStandard'),
+                          AppStyle.liquidGlass => app.t('appStyleGlass'),
+                        },
+                        style: TextStyle(color: _sub(context)),
+                      ),
+                      onTap: () => _openAppStyleDialog(context),
+                    ),
                     _switch(
                       context,
                       Icons.vibration,
@@ -6479,15 +6940,23 @@ class SettingsSheet extends StatelessWidget {
   );
 
   Widget _group(List<Widget> children) => Builder(
-    builder: (context) => Container(
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
-      child: Material(
-        color: _card(context).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(20),
-        child: Column(children: children),
-      ),
-    ),
+    builder: (context) => _isGlass(context)
+        ? GlassSurface(
+            borderRadius: BorderRadius.circular(20),
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(children: children),
+            ),
+          )
+        : Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+            child: Material(
+              color: _card(context).withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(20),
+              child: Column(children: children),
+            ),
+          ),
   );
 
   Widget _badge(String s) => Container(
@@ -6600,16 +7069,16 @@ class SettingsSheet extends StatelessWidget {
     bool value,
     ValueChanged<bool> onChanged,
   ) {
-    return SwitchListTile(
-      value: value,
-      activeThumbColor: Colors.white,
-      activeTrackColor: const Color(0xFF34C759),
-      onChanged: (v) {
-        c.read<AppState>().buzz();
-        onChanged(v);
-      },
-      secondary: Icon(icon, color: _txt(c)),
+    void handle(bool v) {
+      c.read<AppState>().buzz();
+      onChanged(v);
+    }
+
+    return ListTile(
+      onTap: () => handle(!value),
+      leading: Icon(icon, color: _txt(c)),
       title: Text(label, style: TextStyle(color: _txt(c), fontSize: 18)),
+      trailing: _iosSwitch(c, value, handle),
     );
   }
 
@@ -6739,6 +7208,43 @@ class SettingsSheet extends StatelessWidget {
                 (AppThemeMode.gray, app.t('themeGray')),
               ])
                 RadioListTile<AppThemeMode>(
+                  value: entry.$1,
+                  activeColor: const Color(0xFF2F8DFF),
+                  title: Text(entry.$2, style: TextStyle(color: _txt(context))),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openAppStyleDialog(BuildContext context) {
+    final app = context.read<AppState>();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: _card(context),
+        title: Text(
+          app.t('appStyleDialogTitle'),
+          style: TextStyle(color: _txt(context)),
+        ),
+        content: RadioGroup<AppStyle>(
+          groupValue: app.appStyle,
+          onChanged: (v) {
+            if (v != null) {
+              app.setAppStyle(v);
+              Navigator.pop(context);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final entry in [
+                (AppStyle.standard, app.t('appStyleStandard')),
+                (AppStyle.liquidGlass, app.t('appStyleGlass')),
+              ])
+                RadioListTile<AppStyle>(
                   value: entry.$1,
                   activeColor: const Color(0xFF2F8DFF),
                   title: Text(entry.$2, style: TextStyle(color: _txt(context))),
@@ -7097,12 +7603,11 @@ class LocalModelsScreen extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _card(context).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
+      child: _glassCard(
+        context,
+        radius: 14,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
         children: [
           Icon(Icons.memory, color: _txt(context), size: 20),
           const SizedBox(width: 10),
@@ -7187,6 +7692,7 @@ class LocalModelsScreen extends StatelessWidget {
             ),
           ],
         ],
+        ),
       ),
     );
   }
@@ -7249,6 +7755,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
   // rpModeEnabled, mirrors the same clone-while-editing pattern as `p`.
   late RPSessionConfig rp;
   late final TextEditingController _rpUserName;
+  late final TextEditingController _rpUserDesc;
   late final TextEditingController _rpAiName;
   late final TextEditingController _rpSystemPrompt;
   late final TextEditingController _rpScenario;
@@ -7272,6 +7779,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
 
     rp = (widget.conversation?.rpConfig ?? RPSessionConfig()).clone();
     _rpUserName = TextEditingController(text: rp.userCharacterName);
+    _rpUserDesc = TextEditingController(text: rp.userCharacterDescription);
     _rpAiName = TextEditingController(text: rp.aiCharacterName);
     _rpSystemPrompt = TextEditingController(text: rp.systemPrompt);
     _rpScenario = TextEditingController(text: rp.scenario);
@@ -7290,6 +7798,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     _location.dispose();
     _avoid.dispose();
     _rpUserName.dispose();
+    _rpUserDesc.dispose();
     _rpAiName.dispose();
     _rpSystemPrompt.dispose();
     _rpScenario.dispose();
@@ -7315,6 +7824,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     }
     if (widget.conversation != null) {
       rp.userCharacterName = _rpUserName.text;
+      rp.userCharacterDescription = _rpUserDesc.text;
       rp.aiCharacterName = _rpAiName.text;
       rp.systemPrompt = _rpSystemPrompt.text;
       rp.scenario = _rpScenario.text;
@@ -7922,7 +8432,20 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
             ),
           ),
         _section(app.t('rpMyCharacter'), app.t('rpMyCharacterDesc')),
-        _card2(child: _field(_rpUserName, app.t('rpUserName'))),
+        _card2(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _field(_rpUserName, app.t('rpUserName')),
+              const SizedBox(height: 12),
+              _label(
+                app.t('rpUserDescription'),
+                desc: app.t('rpUserDescriptionDesc'),
+              ),
+              _field(_rpUserDesc, app.t('rpUserDescriptionHint'), maxLines: 4),
+            ],
+          ),
+        ),
         const SizedBox(height: 20),
         _section(app.t('rpAiRole'), app.t('rpAiRoleDesc')),
         _card2(
@@ -8423,12 +8946,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           ),
         ),
         const SizedBox(width: 8),
-        Switch(
-          value: value,
-          activeThumbColor: Colors.white,
-          activeTrackColor: const Color(0xFF34C759),
-          onChanged: onChanged,
-        ),
+        _iosSwitch(context, value, onChanged),
       ],
     );
   }
@@ -8438,12 +8956,9 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     required String title,
     required String desc,
   }) {
-    return Container(
+    return _glassCard(
+      context,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _card(context).withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(18),
-      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -8607,14 +9122,20 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
     ),
   );
 
-  Widget _card2({required Widget child}) => Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: _card(context).withValues(alpha: 0.5),
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: child,
-  );
+  Widget _card2({required Widget child}) => _isGlass(context)
+      ? GlassSurface(
+          borderRadius: BorderRadius.circular(18),
+          padding: const EdgeInsets.all(16),
+          child: child,
+        )
+      : Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _card(context).withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: child,
+        );
 
   Widget _label(String s, {String? desc}) => Padding(
     padding: const EdgeInsets.only(bottom: 8),

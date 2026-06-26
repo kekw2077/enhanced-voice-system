@@ -1,7 +1,7 @@
 name: mirai
 description: Mirai — local & remote AI chat client
 publish_to: "none"
-version: 2.12.0+37
+version: 2.13.0+39
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -62,11 +62,14 @@ flutter_launcher_icons:
   web:
     generate: true
 
+# Color-only native splash now: the old static orb image was replaced by the
+# in-app animated ImmersiveSplash (the sphere "fly-in"). Native splash is just
+# a solid brand-background frame shown during native init, matching the app
+# background (_bg) so it blends straight into the animated sphere with no
+# visible image swap. Colors track _bg: white (light) / #0E0E15 (dark).
 flutter_native_splash:
-  color: "#ebf4fc"
-  color_dark: "#0f182f"
-  image: assets/splash/splash_orb.png
-  image_dark: assets/splash/splash_orb.png
+  color: "#FFFFFF"
+  color_dark: "#0E0E15"
   # Must stay false: true makes the generator set UIStatusBarHidden=true in
   # ios/Runner/Info.plist, which hides the status bar (time/signal/battery)
   # app-wide on iOS, not just during the splash -- this has bitten the
@@ -77,11 +80,8 @@ flutter_native_splash:
   ios: true
   web: true
 
-  # Android 12+ enforces its own splash screen layout (a small icon on a
-  # solid color background, no full-bleed artwork), so it gets its own
-  # color-only config; it falls back to the app's launcher icon.
+  # Android 12+ enforces its own splash (centered launcher icon on a solid
+  # color), so it only gets the background color here.
   android_12:
-    color: "#ebf4fc"
-    color_dark: "#0f182f"
-    icon_background_color: "#ebf4fc"
-    icon_background_color_dark: "#0f182f"
+    color: "#FFFFFF"
+    color_dark: "#0E0E15"
