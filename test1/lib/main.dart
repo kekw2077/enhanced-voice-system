@@ -1757,6 +1757,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.14.1', [
+    'На iPhone — системный шрифт iOS (San Francisco), как в самой системе. На Android/ПК остаётся Nunito.',
+    'Мелкие правки оформления: точки «печатает…» выровнены по центру пузыря; область названия модели в шапке — по размеру текста.',
+  ]),
   ChangelogEntry('2.14.0', [
     'Под последним ответом нейросети — три кнопки (во всех чатах): Редактировать (правка прямо в пузыре), Перегенерировать (заново сгенерировать ответ), Продолжить (следующий ход ассистента по контексту, без вашей реплики).',
   ]),
@@ -3303,6 +3307,13 @@ class MiraiApp extends StatelessWidget {
     }
   }
 
+  // On iOS, use the system font (San Francisco) — exactly the iOS typography —
+  // by NOT forcing a bundled family (Flutter then falls back to the platform
+  // default, which is SF on iOS). Apple's SF can't be bundled for other
+  // platforms (proprietary), so Android/desktop/web keep the bundled Nunito.
+  String? get _appFontFamily =>
+      defaultTargetPlatform == TargetPlatform.iOS ? null : 'Nunito';
+
   ThemeData _buildTheme(bool dark) {
     final scheme = dark
         ? const ColorScheme.dark(
@@ -3318,7 +3329,7 @@ class MiraiApp extends StatelessWidget {
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: bg,
-      fontFamily: 'Nunito',
+      fontFamily: _appFontFamily,
     );
   }
 
@@ -3332,7 +3343,7 @@ class MiraiApp extends StatelessWidget {
         surface: Color(0xFF1C1C1E),
       ),
       scaffoldBackgroundColor: const Color(0xFF000000),
-      fontFamily: 'Nunito',
+      fontFamily: _appFontFamily,
     );
   }
 }
@@ -4743,8 +4754,12 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           _circleBtn(Icons.settings_outlined, _openSettings),
           const SizedBox(width: 8),
+          // Centered between the two buttons but hugging the model name (not
+          // stretched full-width); long names still ellipsize within the
+          // available space.
           Expanded(
-            child: InkWell(
+            child: Center(
+              child: InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: () {
                 app.buzz();
@@ -4758,6 +4773,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Opacity(
                   opacity: lockedModel != null ? 0.6 : 1,
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (app.loadingModels) ...[
@@ -4805,6 +4821,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
               ),
+            ),
             ),
           ),
           const SizedBox(width: 8),
@@ -5964,7 +5981,7 @@ class _ThinkingDotsState extends State<_ThinkingDots>
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 16,
+      height: 18,
       child: AnimatedBuilder(
         animation: _ctrl,
         builder: (_, __) {
@@ -5978,7 +5995,10 @@ class _ThinkingDotsState extends State<_ThinkingDots>
               return Padding(
                 padding: EdgeInsets.only(right: i == 2 ? 0 : 6),
                 child: Transform.translate(
-                  offset: Offset(0, -6 * lift),
+                  // Bob symmetrically around the bubble's vertical center
+                  // (rest sits slightly below center, peak slightly above)
+                  // instead of only travelling upward.
+                  offset: Offset(0, 3 - 6 * lift),
                   child: Container(
                     width: 7,
                     height: 7,
