@@ -50,6 +50,8 @@ const Map<String, Map<String, String>> _i18n = {
     'yesterday': 'Вчера',
     'microphone': 'Микрофон',
     'ready': 'Готов',
+    'micListening': 'Слушаю',
+    'apiKeyHint': 'API-ключ (если нужен)',
     'statusLocalModel': 'Локальная нейросеть',
     'statusRemoteModel': 'Удалённая нейросеть',
     'statusOnline': 'онлайн',
@@ -604,6 +606,8 @@ const Map<String, Map<String, String>> _i18n = {
     'yesterday': 'Yesterday',
     'microphone': 'Microphone',
     'ready': 'Ready',
+    'micListening': 'Listening',
+    'apiKeyHint': 'API key (if required)',
     'statusLocalModel': 'Local model',
     'statusRemoteModel': 'Remote model',
     'statusOnline': 'online',
@@ -5548,20 +5552,19 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.mic_none,
-                        size: 13, color: Color(0xFF6E7280)),
-                    const SizedBox(width: 6),
-                    Text(app.t('microphone'),
-                        style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF6E7280))),
-                  ],
+                const Icon(Icons.mic_none, size: 13, color: Color(0xFF6E7280)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(app.t('microphone'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF6E7280))),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
@@ -5570,7 +5573,8 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
                     color: const Color(0x1A54E08A),
                     border: Border.all(color: const Color(0x4054E08A)),
                   ),
-                  child: Text(live ? app.t('listening') : app.t('ready'),
+                  child: Text(live ? app.t('micListening') : app.t('ready'),
+                      maxLines: 1,
                       style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
@@ -5721,6 +5725,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   late final TextEditingController _nameCtrl;
   late final TextEditingController _promptCtrl;
+  late final TextEditingController _serverCtrl;
+  late final TextEditingController _apiKeyCtrl;
   bool _ctrlInit = false;
 
   @override
@@ -5728,9 +5734,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     super.didChangeDependencies();
     if (_ctrlInit) return;
     _ctrlInit = true;
-    final p = context.read<AppState>().persona;
+    final app = context.read<AppState>();
+    final p = app.persona;
     _nameCtrl = TextEditingController(text: p.assistantName);
     _promptCtrl = TextEditingController(text: p.customPrompt);
+    _serverCtrl = TextEditingController(text: app.serverUrl);
+    _apiKeyCtrl = TextEditingController(text: app.apiKey);
   }
 
   @override
@@ -5738,6 +5747,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     if (_ctrlInit) {
       _nameCtrl.dispose();
       _promptCtrl.dispose();
+      _serverCtrl.dispose();
+      _apiKeyCtrl.dispose();
     }
     _activatorCtrl.dispose();
     super.dispose();
@@ -6138,6 +6149,48 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   String _fmtSize(int bytes) => '${(bytes / 1e9).toStringAsFixed(1)} GB';
 
+  // Editable server address (and optional API key) for the local-server /
+  // remote connection modes — writes straight to AppState.serverUrl/apiKey.
+  Widget _serverField(AppState app, {required String hint, bool withKey = false}) {
+    Widget field(TextEditingController c, String hintText,
+        ValueChanged<String> onChanged) {
+      return Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        alignment: Alignment.centerLeft,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: Colors.white.withValues(alpha: 0.04),
+          border: Border.all(color: _evsStroke),
+        ),
+        child: TextField(
+          controller: c,
+          onChanged: onChanged,
+          style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+          decoration: InputDecoration(
+            isDense: true,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.zero,
+            hintText: hintText,
+            hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        field(_serverCtrl, hint, (v) => app.setServer(v, app.apiKey)),
+        if (withKey) ...[
+          const SizedBox(height: 6),
+          field(_apiKeyCtrl, app.t('apiKeyHint'),
+              (v) => app.setServer(app.serverUrl, v)),
+        ],
+      ],
+    );
+  }
+
   // =================== SECTION 2: VOICE COMMANDS ===================
   List<_CardSpec> _voiceCommandCards(AppState app) {
     final cmds = app.voiceCommands;
@@ -6177,7 +6230,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           label: app.t('cmdModel'),
           desc: app.t('cmdModelDesc'),
           control: evsSelectButton(
-              app.modelDisplayName(app.selectedModel, withSuffix: false)),
+              app.modelDisplayName(app.selectedModel, withSuffix: false),
+              onTap: () => _stubSnack(app)),
         ),
       ])),
       _CardSpec(evsCard(context,
@@ -6376,7 +6430,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   title: app.t('modeLocalServer'),
                   desc: app.t('modeLocalServerDesc'),
                   onTap: () => app.setInferenceMode('localServer'),
-                  extra: app.baseUrl,
+                  extra: app.inferenceMode == 'localServer'
+                      ? _serverField(app, hint: 'localhost:11434')
+                      : null,
                 ),
                 const SizedBox(height: 8),
                 evsRadioCard(
@@ -6384,7 +6440,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   title: app.t('modeRemote'),
                   desc: app.t('modeRemoteDesc'),
                   onTap: () => app.setInferenceMode('remote'),
-                  extra: app.serverUrl.isEmpty ? null : app.baseUrl,
+                  extra: app.inferenceMode == 'remote'
+                      ? _serverField(app,
+                          hint: 'https://api.openai.com/v1', withKey: true)
+                      : null,
                 ),
               ],
             ),
@@ -6855,7 +6914,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             control: _stubToggle('autoUpdate')),
         evsRow(
             label: app.t('checkNow'),
-            control: evsGhostButton(app.t('checkUpdate'), Icons.refresh)),
+            control: evsGhostButton(app.t('checkUpdate'), Icons.refresh,
+                onTap: () => _stubSnack(app))),
       ])),
     ];
   }
@@ -6929,12 +6989,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           evsRow(
             label: app.t('whisperModel'),
             desc: app.t('whisperModelDesc'),
-            control: evsSelectButton('small (244 MB)'),
+            control: evsSelectButton('small (244 MB)',
+                onTap: () => _stubSnack(app)),
           ),
           evsRow(
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
-            control: evsSelectButton(app.lang == 'ru' ? 'Русский' : 'English'),
+            control: evsSelectButton(app.lang == 'ru' ? 'Русский' : 'English',
+                onTap: () => _stubSnack(app)),
           ),
         ],
       )),
@@ -6946,12 +7008,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           evsRow(
             label: app.t('inputDevice'),
             desc: app.t('inputDeviceDesc'),
-            control: evsSelectButton(app.t('defaultDevice')),
+            control: evsSelectButton(app.t('defaultDevice'),
+                onTap: () => _stubSnack(app)),
           ),
           evsRow(
             label: app.t('micTest'),
             desc: app.t('micTestDesc'),
-            control: evsGhostButton(app.t('runTest'), Icons.play_arrow),
+            control: evsGhostButton(app.t('runTest'), Icons.play_arrow,
+              onTap: () => _stubSnack(app)),
           ),
           evsRow(
             label: app.t('inputLevel'),
@@ -7369,7 +7433,7 @@ Widget evsRadioCard({
   required String title,
   required String desc,
   required VoidCallback onTap,
-  String? extra,
+  Widget? extra,
 }) {
   return InkWell(
     onTap: onTap,
@@ -7422,18 +7486,7 @@ Widget evsRadioCard({
                 if (extra != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        color: Colors.white.withValues(alpha: 0.04),
-                        border: Border.all(color: _evsStroke),
-                      ),
-                      child: Text(extra,
-                          style: const TextStyle(
-                              fontSize: 12.5, color: Color(0xFF8890A8))),
-                    ),
+                    child: extra,
                   ),
               ],
             ),
