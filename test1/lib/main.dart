@@ -11,6 +11,7 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:record/record.dart';
 import 'package:uuid/uuid.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -5436,7 +5437,59 @@ class _DesktopSystemWidget extends StatelessWidget {
   }
 }
 
-// Microphone widget — animated equalizer bars (decorative for Phase 1).
+// Live microphone amplitude meter: streams raw PCM via `record` and turns it
+// into a smoothed 0..1 level (RMS). If streaming is unavailable on this
+// platform/device, `active` stays false and the widget falls back to a
+// decorative animation.
+class MicMeter {
+  final AudioRecorder _rec = AudioRecorder();
+  final ValueNotifier<double> level = ValueNotifier(0.0);
+  StreamSubscription<Uint8List>? _sub;
+  bool active = false;
+
+  Future<void> start() async {
+    try {
+      if (!await _rec.hasPermission()) return;
+      final stream = await _rec.startStream(const RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: 16000,
+        numChannels: 1,
+      ));
+      active = true;
+      _sub = stream.listen(_onData, onError: (_) {});
+    } catch (_) {
+      active = false;
+    }
+  }
+
+  void _onData(Uint8List bytes) {
+    final count = bytes.lengthInBytes ~/ 2;
+    if (count == 0) return;
+    final bd = ByteData.sublistView(bytes);
+    double sum = 0;
+    for (int i = 0; i < count; i++) {
+      final v = bd.getInt16(i * 2, Endian.little) / 32768.0;
+      sum += v * v;
+    }
+    final rms = math.sqrt(sum / count);
+    // Speech RMS is small (~0.01..0.2); boost then clamp, and smooth so the
+    // bars glide rather than flicker.
+    final norm = (rms * 8).clamp(0.0, 1.0);
+    level.value = level.value + (norm - level.value) * 0.5;
+  }
+
+  Future<void> dispose() async {
+    await _sub?.cancel();
+    try {
+      await _rec.stop();
+    } catch (_) {}
+    await _rec.dispose();
+    level.dispose();
+  }
+}
+
+// Microphone widget: a live equalizer driven by MicMeter (reacts to the mic),
+// with a decorative animated fallback when no live level is available.
 class _DesktopMicWidget extends StatefulWidget {
   const _DesktopMicWidget();
   @override
@@ -5449,16 +5502,39 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
       AnimationController(vsync: this, duration: const Duration(seconds: 2))
         ..repeat();
   static const _n = 22;
+  final MicMeter _meter = MicMeter();
+  // Scrolling history of recent levels → a real moving waveform.
+  final List<double> _hist = List<double>.filled(_n, 0.0);
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _meter.start().then((_) {
+      if (!mounted) return;
+      setState(() {});
+      _tick = Timer.periodic(const Duration(milliseconds: 60), (_) {
+        if (!mounted) return;
+        setState(() {
+          _hist.removeAt(0);
+          _hist.add(_meter.level.value);
+        });
+      });
+    });
+  }
 
   @override
   void dispose() {
+    _tick?.cancel();
     _c.dispose();
+    _meter.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
+    final live = _meter.active;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       decoration: BoxDecoration(
@@ -5494,7 +5570,7 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
                     color: const Color(0x1A54E08A),
                     border: Border.all(color: const Color(0x4054E08A)),
                   ),
-                  child: Text(app.t('ready'),
+                  child: Text(live ? app.t('listening') : app.t('ready'),
                       style: const TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
@@ -5505,38 +5581,50 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
           ),
           SizedBox(
             height: 28,
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (_, __) {
-                final t = _c.value * 2 * math.pi * 3;
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    for (int i = 0; i < _n; i++) ...[
-                      Expanded(
-                        child: Container(
-                          height: 6 + ((math.sin(t + i * 0.5) + 1) / 2) * 22,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(2),
-                            gradient: const LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [_evsViolet, Color(0xFFB681E6)],
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (i < _n - 1) const SizedBox(width: 2.5),
+            child: live
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      for (int i = 0; i < _n; i++) ...[
+                        Expanded(child: _bar(3 + _hist[i].clamp(0.0, 1.0) * 25)),
+                        if (i < _n - 1) const SizedBox(width: 2.5),
+                      ],
                     ],
-                  ],
-                );
-              },
-            ),
+                  )
+                : AnimatedBuilder(
+                    animation: _c,
+                    builder: (_, __) {
+                      final t = _c.value * 2 * math.pi * 3;
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          for (int i = 0; i < _n; i++) ...[
+                            Expanded(
+                                child: _bar(
+                                    6 + ((math.sin(t + i * 0.5) + 1) / 2) * 22)),
+                            if (i < _n - 1) const SizedBox(width: 2.5),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
+
+  Widget _bar(double height) => Container(
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(2),
+          gradient: const LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [_evsViolet, Color(0xFFB681E6)],
+          ),
+        ),
+      );
 }
 
 /* ----------------------- EVS DESKTOP SETTINGS ----------------------------
