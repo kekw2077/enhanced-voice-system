@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  EVS update feed (WinSparkle / auto_updater).
+
+  The app polls this file (DesktopIntegration.effectiveFeedUrl, default = the
+  raw.githubusercontent URL below; override with the EVS_UPDATE_FEED env var).
+  WinSparkle picks the newest <item> whose sparkle:version is greater than the
+  installed build's product version, verifies the enclosure's DSA signature
+  against the embedded dsa_pub.pem, then downloads and runs the installer.
+
+  To publish a new version, see dist/README.md. In short:
+    1. Bump `version:` in pubspec.yaml and rebuild release.
+    2. Build the installer (dist/installer.iss) -> EVS-Setup-X.Y.Z.exe.
+    3. Sign it:  dist/sign_update.ps1 EVS-Setup-X.Y.Z.exe  -> prints signature.
+    4. Upload the .exe to a GitHub Release and add a new <item> below with the
+       real url, length (file size in bytes) and sparkle:dsaSignature.
+    5. Commit this file on the `desktop` branch (the feed is raw.githubusercontent).
+-->
+<rss version="2.0"
+     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>EVS</title>
+    <link>https://raw.githubusercontent.com/kekw2077/mirai/desktop/dist/appcast.xml</link>
+    <description>EVS desktop (Windows) updates</description>
+    <language>ru</language>
+
+    <!-- Newest release first. Duplicate this block for each new version. -->
+    <item>
+      <title>EVS 1.0.0</title>
+      <description><![CDATA[
+        <ul>
+          <li>Новый десктопный интерфейс EVS.</li>
+          <li>Системный трей, автозапуск, глобальная горячая клавиша.</li>
+          <li>Голосовой ввод и команды (через Python-сайдкар).</li>
+        </ul>
+      ]]></description>
+      <pubDate>Tue, 30 Jun 2026 12:05:07 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.0/EVS-Setup-1.0.0.exe"
+        sparkle:version="1.0.0"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD0CHCFbF+0ZNPgZalLniml4A2y27/1ddcC+ceT2OxkCHQCAZkRPjG+2GL4ElLsxo5bCV676QAlbaodR79kN"
+        length="114949034"
+        type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>
