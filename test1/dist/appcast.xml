@@ -40,8 +40,8 @@
         url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.0/EVS-Setup-1.0.0.exe"
         sparkle:version="1.0.0"
         sparkle:os="windows"
-        sparkle:dsaSignature="MDwCHCU/YBSi4gQTpfRyIyGGdLGyEu4pButMkNiADa8CHFJIiIauamt0vQL8yJkJ7+TXt+VssGdvzoH5XVc="
-        length="114948807"
+        sparkle:dsaSignature="MDwCHCIioSPEIDVTPTT3HvwWr8Y+nDaZiqY8tJR9J1UCHAeP39y/JQ+upZsbiOyhVaPICKoexfgL3hHLA4A="
+        length="114948802"
         type="application/octet-stream" />
     </item>
   </channel>

@@ -38,12 +38,12 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-; Allow a non-admin per-user install too (WinSparkle relaunches the installer
-; in the same context the app runs as).
-PrivilegesRequiredOverridesAllowed=dialog
-; --- WinSparkle silent-update support ---
-; WinSparkle launches the downloaded installer with these flags, so the update
-; runs without prompting and relaunches EVS afterwards.
+; Per-user install by default (installs to %LocalAppData%\Programs\EVS, no UAC).
+; This keeps WinSparkle auto-updates frictionless — each update relaunches the
+; installer in the same non-elevated context, so no elevation prompt per update.
+; An admin can still pick an all-users install via the dialog or /ALLUSERS.
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog commandline
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
