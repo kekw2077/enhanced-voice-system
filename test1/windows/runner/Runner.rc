@@ -57,6 +57,19 @@ IDI_APP_ICON            ICON                    "resources\\app_icon.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //
+// WinSparkle DSA public key (auto_updater)
+//
+// Embeds dsa_pub.pem so WinSparkle can verify the DSA signature of every
+// downloaded update against the matching private key (dsa_priv.pem, kept
+// secret / git-ignored). Path is relative to this .rc file: ../../ == the
+// Flutter project root (test1/). Regenerate the pair only if compromised —
+// losing dsa_priv.pem makes existing installs un-upgradable.
+//
+DSAPub      DSAPEM      "..\\..\\dsa_pub.pem"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // Version
 //
 

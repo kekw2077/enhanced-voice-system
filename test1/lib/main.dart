@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi' hide Size;
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +19,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
+import 'package:auto_updater/auto_updater.dart';
 import 'package:uuid/uuid.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -38,6 +41,19 @@ void main() async {
   if (isWindows) {
     await windowManager.ensureInitialized();
     await hotKeyManager.unregisterAll();
+    // Frameless window — hide the native title bar; EVS draws its own controls
+    // (see _WindowTitleBar). Window stays resizable.
+    const windowOptions = WindowOptions(
+      size: Size(1280, 720),
+      minimumSize: Size(900, 600),
+      center: true,
+      title: 'EVS',
+      titleBarStyle: TitleBarStyle.hidden,
+    );
+    unawaited(windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    }));
   }
   final prefs = await SharedPreferences.getInstance();
   final app = AppState(prefs);
@@ -89,6 +105,7 @@ const Map<String, Map<String, String>> _i18n = {
     'interfaceLanguageDesc': 'Язык меню, кнопок и уведомлений',
     'recognitionLanguage': 'Язык распознавания (STT)',
     'recognitionLanguageDesc': 'По умолчанию совпадает с языком интерфейса',
+    'sttAuto': 'Авто',
     'cardAppearance': 'Внешний вид',
     'appStyleDesc': 'Liquid Glass — размытие и акриловые эффекты',
     'styleClassic': 'Классический',
@@ -108,6 +125,11 @@ const Map<String, Map<String, String>> _i18n = {
     'notificationsDesc': 'Показывать системные уведомления Windows',
     'uiAnimations': 'Анимации интерфейса',
     'uiAnimationsDesc': 'Плавные переходы и эффекты',
+    'sidecar': 'Голосовой движок (Python)',
+    'sidecarDesc': 'Отдельный процесс EVS для Whisper, VAD и озвучки',
+    'sidecarConnected': 'Подключён',
+    'sidecarStarting': 'Запуск…',
+    'sidecarStopped': 'Не запущен',
     'cardStt': 'Движок STT',
     'sttEngine': 'Движок распознавания',
     'sttEngineDesc': 'Whisper работает офлайн на вашем железе',
@@ -170,6 +192,10 @@ const Map<String, Map<String, String>> _i18n = {
     'cmdAdd': 'Добавить команду',
     'cmdPhrase': 'Фраза-триггер',
     'cmdValue': 'Значение (путь, URL, действие)',
+    'run': 'Запустить',
+    'cmdRunTitle': 'Выполнить команду?',
+    'cmdRunOk': 'Команда выполнена',
+    'cmdRunFail': 'Не удалось выполнить команду',
     'typeApp': 'Приложение',
     'typeFile': 'Файл',
     'typeWeb': 'Сайт',
@@ -651,6 +677,7 @@ const Map<String, Map<String, String>> _i18n = {
     'interfaceLanguageDesc': 'Language of menus, buttons and notifications',
     'recognitionLanguage': 'Recognition language (STT)',
     'recognitionLanguageDesc': 'Defaults to the interface language',
+    'sttAuto': 'Auto',
     'cardAppearance': 'Appearance',
     'appStyleDesc': 'Liquid Glass — blur and acrylic effects',
     'styleClassic': 'Classic',
@@ -670,6 +697,11 @@ const Map<String, Map<String, String>> _i18n = {
     'notificationsDesc': 'Show Windows system notifications',
     'uiAnimations': 'UI animations',
     'uiAnimationsDesc': 'Smooth transitions and effects',
+    'sidecar': 'Voice engine (Python)',
+    'sidecarDesc': 'Separate EVS process for Whisper, VAD and TTS',
+    'sidecarConnected': 'Connected',
+    'sidecarStarting': 'Starting…',
+    'sidecarStopped': 'Stopped',
     'cardStt': 'STT engine',
     'sttEngine': 'Recognition engine',
     'sttEngineDesc': 'Whisper runs offline on your hardware',
@@ -732,6 +764,10 @@ const Map<String, Map<String, String>> _i18n = {
     'cmdAdd': 'Add command',
     'cmdPhrase': 'Trigger phrase',
     'cmdValue': 'Value (path, URL, action)',
+    'run': 'Run',
+    'cmdRunTitle': 'Run this command?',
+    'cmdRunOk': 'Command executed',
+    'cmdRunFail': 'Command failed',
     'typeApp': 'App',
     'typeFile': 'File',
     'typeWeb': 'Site',
@@ -2978,6 +3014,14 @@ class AppState extends ChangeNotifier {
   // Null until detected or if the platform/plugin can't report it.
   int? deviceRamMb;
 
+  // Set by the Win32 SystemMonitor on Windows (system_info_plus returns null
+  // there), so the context-size ceiling reflects real RAM instead of 4096.
+  void setDeviceRamMb(int mb) {
+    if (mb <= 0 || mb == deviceRamMb) return;
+    deviceRamMb = mb;
+    notifyListeners();
+  }
+
   Future<void> _detectDeviceRam() async {
     try {
       final mb = await SystemInfoPlus.physicalMemory;
@@ -3045,6 +3089,14 @@ class AppState extends ChangeNotifier {
   bool autostart = false;
   bool minimizeToTray = true;
   bool closeToTray = true;
+  // Voice input preferences.
+  String inputDeviceId = ''; // '' = system default microphone
+  String listenMode = 'continuous'; // 'continuous' | 'ptt'
+  String sttLanguage = 'auto'; // 'auto' | 'ru' | 'en'
+
+  // STT language resolved against the UI language when set to 'auto'.
+  String get effectiveSttLanguage =>
+      sttLanguage == 'auto' ? lang : sttLanguage;
 
   List<Conversation> conversations = [];
   Conversation? current;
@@ -3115,6 +3167,9 @@ class AppState extends ChangeNotifier {
     autostart = prefs.getBool('autostart') ?? false;
     minimizeToTray = prefs.getBool('minimizeToTray') ?? true;
     closeToTray = prefs.getBool('closeToTray') ?? true;
+    inputDeviceId = prefs.getString('inputDeviceId') ?? '';
+    listenMode = prefs.getString('listenMode') ?? 'continuous';
+    sttLanguage = prefs.getString('sttLanguage') ?? 'auto';
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -3177,6 +3232,9 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('autostart', autostart);
     await prefs.setBool('minimizeToTray', minimizeToTray);
     await prefs.setBool('closeToTray', closeToTray);
+    await prefs.setString('inputDeviceId', inputDeviceId);
+    await prefs.setString('listenMode', listenMode);
+    await prefs.setString('sttLanguage', sttLanguage);
     await prefs.setString(
       'voiceCommands',
       jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
@@ -3207,6 +3265,24 @@ class AppState extends ChangeNotifier {
 
   void setCloseToTray(bool v) {
     closeToTray = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setInputDeviceId(String v) {
+    inputDeviceId = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setListenMode(String v) {
+    listenMode = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setSttLanguage(String v) {
+    sttLanguage = v;
     _save();
     notifyListeners();
   }
@@ -5212,6 +5288,235 @@ String _evsRelTime(AppState app, DateTime dt) {
   return '${dt.day}.${two(dt.month)}';
 }
 
+// Executes user-defined voice commands on Windows. Launching apps/files/URLs
+// and running shell commands go through dart:io Process; media and volume keys
+// use Win32 keybd_event (user32) via FFI. Phrase matching is deterministic
+// (exact -> contains -> token overlap); semantic matching is the sidecar's job.
+typedef _KeybdEventNative = Void Function(Uint8, Uint8, Uint32, IntPtr);
+typedef _KeybdEventDart = void Function(int, int, int, int);
+
+class CommandExecutor {
+  CommandExecutor._();
+  static final CommandExecutor instance = CommandExecutor._();
+
+  _KeybdEventDart? _keybd;
+  bool _keybdTried = false;
+
+  _KeybdEventDart? get _keybdFn {
+    if (!_keybdTried) {
+      _keybdTried = true;
+      try {
+        _keybd = DynamicLibrary.open('user32.dll')
+            .lookupFunction<_KeybdEventNative, _KeybdEventDart>('keybd_event');
+      } catch (_) {}
+    }
+    return _keybd;
+  }
+
+  void _tapKey(int vk) {
+    final fn = _keybdFn;
+    if (fn == null) return;
+    fn(vk, 0, 0, 0); // key down
+    fn(vk, 0, 2, 0); // key up (KEYEVENTF_KEYUP)
+  }
+
+  Future<bool> execute(VoiceCommand c) async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return false;
+    try {
+      switch (c.type) {
+        case VoiceCommandType.app:
+          await io.Process.start(c.value, const [], runInShell: true);
+          return true;
+        case VoiceCommandType.file:
+        case VoiceCommandType.url:
+          await io.Process.start('cmd', ['/c', 'start', '', c.value],
+              runInShell: true);
+          return true;
+        case VoiceCommandType.shell:
+          await io.Process.start('cmd', ['/c', c.value], runInShell: true);
+          return true;
+        case VoiceCommandType.system:
+          return _system(c.value);
+        case VoiceCommandType.media:
+          return _media(c.value);
+      }
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _system(String v) {
+    final t = v.toLowerCase();
+    if (t.contains('lock') || t.contains('блок')) {
+      io.Process.run('rundll32', ['user32.dll,LockWorkStation']);
+      return true;
+    }
+    if (t.contains('sleep') || t.contains('сон') || t.contains('сп')) {
+      io.Process.run('rundll32', ['powrprof.dll,SetSuspendState', '0', '1', '0']);
+      return true;
+    }
+    if (t.contains('mute') || t.contains('звук')) {
+      _tapKey(0xAD);
+      return true;
+    }
+    final up = t.contains('up') || t.contains('+') || t.contains('гром');
+    final down = t.contains('down') || t.contains('-') || t.contains('тиш');
+    if (t.contains('vol') || t.contains('гром') || up || down) {
+      _tapKey(down ? 0xAE : 0xAF); // volume down / up
+      return true;
+    }
+    return false;
+  }
+
+  bool _media(String v) {
+    final t = v.toLowerCase();
+    if (t.contains('next') || t.contains('след')) {
+      _tapKey(0xB0);
+    } else if (t.contains('prev') || t.contains('пред')) {
+      _tapKey(0xB1);
+    } else {
+      _tapKey(0xB3); // play/pause
+    }
+    return true;
+  }
+
+  String _norm(String s) => s
+      .toLowerCase()
+      .trim()
+      .replaceAll(RegExp(r'[^0-9a-zа-яё ]'), '')
+      .replaceAll(RegExp(r'\s+'), ' ');
+
+  // Best deterministic match for a spoken phrase, or null if below threshold.
+  VoiceCommand? match(String text, List<VoiceCommand> cmds,
+      {double threshold = 0.5}) {
+    final t = _norm(text);
+    if (t.isEmpty) return null;
+    VoiceCommand? best;
+    double bestScore = 0;
+    for (final c in cmds) {
+      final p = _norm(c.phrase);
+      if (p.isEmpty) continue;
+      double s;
+      if (t == p) {
+        s = 1.0;
+      } else if (t.contains(p) || p.contains(t)) {
+        s = 0.9;
+      } else {
+        final ta = t.split(' ').toSet();
+        final pa = p.split(' ').toSet();
+        final inter = ta.intersection(pa).length;
+        final union = ta.union(pa).length;
+        s = union == 0 ? 0 : inter / union;
+      }
+      if (s > bestScore) {
+        bestScore = s;
+        best = c;
+      }
+    }
+    return bestScore >= threshold ? best : null;
+  }
+}
+
+typedef _GmsExNative = Int32 Function(Pointer<Uint8>);
+typedef _GmsExDart = int Function(Pointer<Uint8>);
+typedef _GetSystemTimesNative = Int32 Function(
+    Pointer<Uint64>, Pointer<Uint64>, Pointer<Uint64>);
+typedef _GetSystemTimesDart = int Function(
+    Pointer<Uint64>, Pointer<Uint64>, Pointer<Uint64>);
+
+class SystemStats {
+  final double cpu; // 0..1
+  final double ram; // 0..1
+  final int totalRamBytes;
+  final int usedRamBytes;
+  const SystemStats(
+      {this.cpu = 0, this.ram = 0, this.totalRamBytes = 0, this.usedRamBytes = 0});
+}
+
+// Win32 CPU + RAM monitor via kernel32 (GlobalMemoryStatusEx / GetSystemTimes).
+// Windows-only; silently no-ops elsewhere. Also feeds real total RAM back into
+// AppState so the local-model context ceiling stops defaulting to 4096 on PC.
+class SystemMonitor {
+  SystemMonitor._();
+  static final SystemMonitor instance = SystemMonitor._();
+
+  final ValueNotifier<SystemStats> stats = ValueNotifier(const SystemStats());
+  Timer? _timer;
+  _GmsExDart? _gmsEx;
+  _GetSystemTimesDart? _getSystemTimes;
+  int _prevIdle = 0, _prevKernel = 0, _prevUser = 0;
+
+  void start(AppState app) {
+    if (defaultTargetPlatform != TargetPlatform.windows || _timer != null) return;
+    try {
+      final k32 = DynamicLibrary.open('kernel32.dll');
+      _gmsEx =
+          k32.lookupFunction<_GmsExNative, _GmsExDart>('GlobalMemoryStatusEx');
+      _getSystemTimes = k32.lookupFunction<_GetSystemTimesNative,
+          _GetSystemTimesDart>('GetSystemTimes');
+    } catch (_) {
+      return;
+    }
+    _sample(app, first: true);
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _sample(app));
+  }
+
+  void _sample(AppState app, {bool first = false}) {
+    final mem = _readMemory();
+    final cpu = _readCpu();
+    final prev = stats.value;
+    stats.value = SystemStats(
+      cpu: cpu ?? prev.cpu,
+      ram: mem?.$1 ?? prev.ram,
+      totalRamBytes: mem?.$2 ?? prev.totalRamBytes,
+      usedRamBytes: mem?.$3 ?? prev.usedRamBytes,
+    );
+    if (first && mem != null && mem.$2 > 0) {
+      app.setDeviceRamMb((mem.$2 / (1024 * 1024)).round());
+    }
+  }
+
+  (double, int, int)? _readMemory() {
+    final fn = _gmsEx;
+    if (fn == null) return null;
+    final buf = calloc<Uint8>(64);
+    try {
+      final bd = ByteData.sublistView(buf.asTypedList(64));
+      bd.setUint32(0, 64, Endian.little); // dwLength
+      if (fn(buf) == 0) return null;
+      final load = bd.getUint32(4, Endian.little) / 100.0;
+      final total = bd.getUint64(8, Endian.little);
+      final avail = bd.getUint64(16, Endian.little);
+      return (load.clamp(0.0, 1.0), total, total - avail);
+    } finally {
+      calloc.free(buf);
+    }
+  }
+
+  double? _readCpu() {
+    final fn = _getSystemTimes;
+    if (fn == null) return null;
+    final idle = calloc<Uint64>();
+    final kernel = calloc<Uint64>();
+    final user = calloc<Uint64>();
+    try {
+      if (fn(idle, kernel, user) == 0) return null;
+      final i = idle.value, k = kernel.value, u = user.value;
+      final dIdle = i - _prevIdle;
+      final dTotal = (k - _prevKernel) + (u - _prevUser);
+      _prevIdle = i;
+      _prevKernel = k;
+      _prevUser = u;
+      if (dTotal <= 0) return null;
+      return ((dTotal - dIdle) / dTotal).clamp(0.0, 1.0);
+    } finally {
+      calloc.free(idle);
+      calloc.free(kernel);
+      calloc.free(user);
+    }
+  }
+}
+
 // Windows desktop integration: system tray, minimize/close-to-tray, a global
 // "show window" hotkey (Ctrl+Shift+Space) and launch-at-startup. All calls are
 // guarded to Windows and wrapped in try/catch so an unsupported platform or a
@@ -5219,6 +5524,26 @@ String _evsRelTime(AppState app, DateTime dt) {
 class DesktopIntegration with WindowListener, TrayListener {
   DesktopIntegration._();
   static final DesktopIntegration instance = DesktopIntegration._();
+
+  // WinSparkle update feed (auto_updater). Points at the appcast.xml hosted on
+  // the desktop branch; each <item> carries a DSA-signed Windows installer
+  // enclosure (see dist/appcast.xml + dist/README.md). Updating the app =
+  // publishing a new installer + bumping this feed. Unlike Shorebird this
+  // delivers FULL builds, native code included.
+  static const String updateFeedUrl =
+      'https://raw.githubusercontent.com/kekw2077/mirai/desktop/dist/appcast.xml';
+
+  // Effective feed: an EVS_UPDATE_FEED env var overrides the baked-in URL. Lets
+  // you point a build at a staging/local appcast (e.g. http://localhost:8000/
+  // appcast.xml) to test the whole WinSparkle flow without publishing — and is
+  // handy for a self-hosted feed later. Empty/unset -> production URL.
+  static String get effectiveFeedUrl {
+    try {
+      final env = io.Platform.environment['EVS_UPDATE_FEED'];
+      if (env != null && env.trim().isNotEmpty) return env.trim();
+    } catch (_) {}
+    return updateFeedUrl;
+  }
 
   AppState? _app;
 
@@ -5247,6 +5572,29 @@ class DesktopIntegration with WindowListener, TrayListener {
         scope: HotKeyScope.system,
       );
       await hotKeyManager.register(hk, keyDownHandler: (_) => _show());
+
+      SystemMonitor.instance.start(app);
+      unawaited(MicMeter.instance.start(deviceId: app.inputDeviceId));
+      unawaited(SidecarClient.instance.start());
+
+      // Auto-update: register the feed and let WinSparkle poll periodically in
+      // the background (it shows its own native update prompt). The "Проверить
+      // обновления" button triggers an immediate check via checkForUpdates().
+      try {
+        await autoUpdater.setFeedURL(effectiveFeedUrl);
+        await autoUpdater.setScheduledCheckInterval(6 * 3600);
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  /// User-initiated update check (from Settings → «О приложении»). WinSparkle
+  /// drives the whole flow itself — finding, downloading and launching the
+  /// signed installer — so there's no separate in-app download UI to manage.
+  Future<void> checkForUpdates() async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
+    try {
+      await autoUpdater.setFeedURL(effectiveFeedUrl);
+      await autoUpdater.checkForUpdates();
     } catch (_) {}
   }
 
@@ -5278,6 +5626,9 @@ class DesktopIntegration with WindowListener, TrayListener {
   }
 
   Future<void> _quit() async {
+    try {
+      await SidecarClient.instance.stop();
+    } catch (_) {}
     try {
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
@@ -5317,6 +5668,157 @@ class DesktopIntegration with WindowListener, TrayListener {
   }
 }
 
+enum SidecarStatus { stopped, starting, connected }
+
+// Manages the Python voice/ML sidecar: spawns the process (bundled
+// evs_sidecar.exe in release, `python sidecar/main.py` in dev), reads its
+// chosen port from stdout, connects over a localhost WebSocket and exposes
+// STT/VAD/TTS/intent. Everything is best-effort: if Python or the sidecar is
+// missing, status stays `stopped` and the app keeps working with system STT.
+class SidecarClient {
+  SidecarClient._();
+  static final SidecarClient instance = SidecarClient._();
+
+  final ValueNotifier<SidecarStatus> status =
+      ValueNotifier(SidecarStatus.stopped);
+  bool sttAvailable = false;
+  bool ttsAvailable = false;
+
+  final _partial = StreamController<String>.broadcast();
+  final _finalText = StreamController<String>.broadcast();
+  final _vad = StreamController<bool>.broadcast();
+  Stream<String> get partial => _partial.stream;
+  Stream<String> get finalText => _finalText.stream;
+  Stream<bool> get vad => _vad.stream;
+
+  io.Process? _proc;
+  io.WebSocket? _ws;
+  bool _starting = false;
+
+  Future<void> start() async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
+    if (_starting || status.value == SidecarStatus.connected) return;
+    _starting = true;
+    status.value = SidecarStatus.starting;
+    try {
+      final launch = _resolveLaunch();
+      if (launch == null) {
+        status.value = SidecarStatus.stopped;
+        return;
+      }
+      _proc = await io.Process.start(launch.$1, launch.$2, runInShell: false);
+      _proc!.stderr.listen((_) {}); // drain
+      final ready = Completer<int>();
+      _proc!.stdout
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (line.startsWith('EVS_SIDECAR_READY')) {
+          final p = int.tryParse(line.split(' ').last.trim());
+          if (p != null && !ready.isCompleted) ready.complete(p);
+        }
+      });
+      _proc!.exitCode.then((_) {
+        if (status.value != SidecarStatus.connected) {
+          status.value = SidecarStatus.stopped;
+        }
+      });
+      final port = await ready.future.timeout(const Duration(seconds: 25));
+      await _connect(port);
+    } catch (_) {
+      status.value = SidecarStatus.stopped;
+    } finally {
+      _starting = false;
+    }
+  }
+
+  (String, List<String>)? _resolveLaunch() {
+    try {
+      final sep = io.Platform.pathSeparator;
+      final exeDir = io.File(io.Platform.resolvedExecutable).parent.path;
+      // Release: frozen sidecar bundled next to the app exe.
+      final bundled = io.File('$exeDir${sep}evs_sidecar.exe');
+      if (bundled.existsSync()) return (bundled.path, ['--port', '0']);
+      // Dev: run from source. Search the working dir and a few parents of the
+      // exe (build\windows\x64\runner\Debug -> ... -> test1) for sidecar\main.py,
+      // preferring the project venv interpreter over system python.
+      final roots = <String>[io.Directory.current.path];
+      var dir = io.Directory(exeDir);
+      for (int i = 0; i < 7; i++) {
+        roots.add(dir.path);
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+      for (final base in roots) {
+        final main = io.File('$base${sep}sidecar${sep}main.py');
+        if (!main.existsSync()) continue;
+        final venvPy =
+            io.File('$base${sep}sidecar$sep.venv${sep}Scripts${sep}python.exe');
+        final py = venvPy.existsSync() ? venvPy.path : 'python';
+        return (py, [main.path, '--port', '0']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _connect(int port) async {
+    _ws = await io.WebSocket.connect('ws://127.0.0.1:$port');
+    status.value = SidecarStatus.connected;
+    _ws!.listen((data) {
+      try {
+        final m = jsonDecode(data as String) as Map<String, dynamic>;
+        switch (m['type']) {
+          case 'ready':
+            final c = m['capabilities'] as Map?;
+            sttAvailable = c?['stt'] == true;
+            ttsAvailable = c?['tts'] == true;
+            break;
+          case 'stt.partial':
+            _partial.add(m['text'] as String? ?? '');
+            break;
+          case 'stt.final':
+            _finalText.add(m['text'] as String? ?? '');
+            break;
+          case 'vad':
+            _vad.add(m['speaking'] == true);
+            break;
+        }
+      } catch (_) {}
+    }, onDone: () => status.value = SidecarStatus.stopped,
+        onError: (_) => status.value = SidecarStatus.stopped);
+  }
+
+  void _send(Map<String, dynamic> m) {
+    try {
+      _ws?.add(jsonEncode(m));
+    } catch (_) {}
+  }
+
+  void sttStart(String language) =>
+      _send({'type': 'stt.start', 'language': language});
+  void sttStop() => _send({'type': 'stt.stop'});
+  void speak(String text) => _send({'type': 'tts.speak', 'text': text});
+  void parseIntent(String text, List<Map<String, dynamic>> commands,
+          {double threshold = 0.5}) =>
+      _send({
+        'type': 'intent.parse',
+        'text': text,
+        'commands': commands,
+        'threshold': threshold,
+      });
+
+  Future<void> stop() async {
+    try {
+      await _ws?.close();
+    } catch (_) {}
+    try {
+      _proc?.kill();
+    } catch (_) {}
+    status.value = SidecarStatus.stopped;
+  }
+}
+
 // On Windows the EVS desktop shell is the root; every other platform keeps
 // the existing mobile ChatScreen. Uses defaultTargetPlatform (not dart:io)
 // so the shared file still compiles for web.
@@ -5337,10 +5839,17 @@ class DesktopHome extends StatelessWidget {
       backgroundColor: _evsBgSolid,
       body: Container(
         decoration: _evsBgDecoration,
-        child: const Row(
+        child: const Column(
           children: [
-            _DesktopSidebar(),
-            Expanded(child: ChatScreen(desktop: true)),
+            _WindowTitleBar(),
+            Expanded(
+              child: Row(
+                children: [
+                  _DesktopSidebar(),
+                  Expanded(child: ChatScreen(desktop: true)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -5528,10 +6037,13 @@ class _DesktopSidebar extends StatelessWidget {
   }
 }
 
-// System monitor widget — STUB for Phase 1 (static values). Real CPU/RAM via
-// FFI/PowerShell comes in the native phase (see plan: монитор системы).
+// System monitor widget — live CPU/RAM from SystemMonitor (Win32 FFI). VRAM
+// has no reliable cross-vendor API, so it stays "—".
 class _DesktopSystemWidget extends StatelessWidget {
   const _DesktopSystemWidget();
+
+  String _gb(int bytes, {int digits = 1}) =>
+      (bytes / (1024 * 1024 * 1024)).toStringAsFixed(digits);
 
   Widget _bar(String name, String value, double frac, List<Color> grad,
       Color numColor) {
@@ -5591,9 +6103,26 @@ class _DesktopSystemWidget extends StatelessWidget {
                     letterSpacing: 0.3,
                     color: Color(0xFF6E7280))),
           ),
-          _bar('CPU', '—', 0.0, const [_evsViolet], const Color(0xFFA99DE8)),
-          _bar('RAM', '—', 0.0, const [Color(0xFF5DE0D8)], const Color(0xFF5DE0D8)),
-          _bar('VRAM', '—', 0.0, const [Color(0xFFE08A5D)], const Color(0xFFE08A5D)),
+          ValueListenableBuilder<SystemStats>(
+            valueListenable: SystemMonitor.instance.stats,
+            builder: (_, s, __) {
+              final active = s.totalRamBytes > 0;
+              final ramTxt = active
+                  ? '${_gb(s.usedRamBytes)} / ${_gb(s.totalRamBytes, digits: 0)} GB'
+                  : '—';
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _bar('CPU', active ? '${(s.cpu * 100).round()}%' : '—', s.cpu,
+                      const [_evsViolet], const Color(0xFFA99DE8)),
+                  _bar('RAM', ramTxt, s.ram, const [Color(0xFF5DE0D8)],
+                      const Color(0xFF5DE0D8)),
+                  _bar('VRAM', '—', 0.0, const [Color(0xFFE08A5D)],
+                      const Color(0xFFE08A5D)),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -5605,24 +6134,76 @@ class _DesktopSystemWidget extends StatelessWidget {
 // platform/device, `active` stays false and the widget falls back to a
 // decorative animation.
 class MicMeter {
+  MicMeter._();
+  static final MicMeter instance = MicMeter._();
+
   final AudioRecorder _rec = AudioRecorder();
   final ValueNotifier<double> level = ValueNotifier(0.0);
   StreamSubscription<Uint8List>? _sub;
   bool active = false;
+  String _deviceId = '';
+  bool _starting = false;
 
-  Future<void> start() async {
+  // Start (or restart, if the selected device changed) the live meter on the
+  // given input device ('' = system default). Idempotent for the same device.
+  Future<void> start({String deviceId = '', bool retry = true}) async {
+    if (_starting) return;
+    if (active && deviceId == _deviceId) return;
+    _starting = true;
     try {
-      if (!await _rec.hasPermission()) return;
-      final stream = await _rec.startStream(const RecordConfig(
+      await _stopStream();
+      _deviceId = deviceId;
+      // hasPermission() is unreliable on Windows desktop (no per-app prompt);
+      // call it to nudge any permission flow but don't gate on it — just try
+      // to open the stream and fall back gracefully if it throws.
+      try {
+        await _rec.hasPermission();
+      } catch (_) {}
+      InputDevice? device;
+      if (deviceId.isNotEmpty) {
+        for (final d in await listDevices()) {
+          if (d.id == deviceId) {
+            device = d;
+            break;
+          }
+        }
+      }
+      final stream = await _rec.startStream(RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
+        device: device,
       ));
       active = true;
       _sub = stream.listen(_onData, onError: (_) {});
     } catch (_) {
       active = false;
+    } finally {
+      _starting = false;
     }
+    // One delayed retry if the first attempt didn't produce a live stream
+    // (e.g. the device was briefly busy at launch).
+    if (!active && retry) {
+      Future.delayed(const Duration(milliseconds: 1200),
+          () => start(deviceId: deviceId, retry: false));
+    }
+  }
+
+  Future<List<InputDevice>> listDevices() async {
+    try {
+      return await _rec.listInputDevices();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _stopStream() async {
+    await _sub?.cancel();
+    _sub = null;
+    try {
+      await _rec.stop();
+    } catch (_) {}
+    active = false;
   }
 
   void _onData(Uint8List bytes) {
@@ -5640,15 +6221,6 @@ class MicMeter {
     final norm = (rms * 8).clamp(0.0, 1.0);
     level.value = level.value + (norm - level.value) * 0.5;
   }
-
-  Future<void> dispose() async {
-    await _sub?.cancel();
-    try {
-      await _rec.stop();
-    } catch (_) {}
-    await _rec.dispose();
-    level.dispose();
-  }
 }
 
 // Microphone widget: a live equalizer driven by MicMeter (reacts to the mic),
@@ -5665,7 +6237,6 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
       AnimationController(vsync: this, duration: const Duration(seconds: 2))
         ..repeat();
   static const _n = 22;
-  final MicMeter _meter = MicMeter();
   // Scrolling history of recent levels → a real moving waveform.
   final List<double> _hist = List<double>.filled(_n, 0.0);
   Timer? _tick;
@@ -5673,15 +6244,17 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
   @override
   void initState() {
     super.initState();
-    _meter.start().then((_) {
+    MicMeter.instance
+        .start(deviceId: context.read<AppState>().inputDeviceId)
+        .then((_) {
       if (!mounted) return;
       setState(() {});
-      _tick = Timer.periodic(const Duration(milliseconds: 60), (_) {
-        if (!mounted) return;
-        setState(() {
-          _hist.removeAt(0);
-          _hist.add(_meter.level.value);
-        });
+    });
+    _tick = Timer.periodic(const Duration(milliseconds: 60), (_) {
+      if (!mounted) return;
+      setState(() {
+        _hist.removeAt(0);
+        _hist.add(MicMeter.instance.level.value);
       });
     });
   }
@@ -5690,14 +6263,13 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
   void dispose() {
     _tick?.cancel();
     _c.dispose();
-    _meter.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
-    final live = _meter.active;
+    final live = MicMeter.instance.active;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       decoration: BoxDecoration(
@@ -5887,6 +6459,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   late final TextEditingController _serverCtrl;
   late final TextEditingController _apiKeyCtrl;
   bool _ctrlInit = false;
+  List<InputDevice> _micDevices = [];
 
   @override
   void didChangeDependencies() {
@@ -5899,6 +6472,40 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     _promptCtrl = TextEditingController(text: p.customPrompt);
     _serverCtrl = TextEditingController(text: app.serverUrl);
     _apiKeyCtrl = TextEditingController(text: app.apiKey);
+    // Keep the meter alive for the input-level bar, and enumerate mics.
+    MicMeter.instance.start(deviceId: app.inputDeviceId);
+    _loadMicDevices();
+  }
+
+  Future<void> _loadMicDevices() async {
+    final devs = await MicMeter.instance.listDevices();
+    if (mounted) setState(() => _micDevices = devs);
+  }
+
+  Widget _inputDeviceControl(AppState app) {
+    final items = <(String, String)>[('', app.t('defaultDevice'))];
+    for (final d in _micDevices) {
+      items.add((d.id, d.label));
+    }
+    final current = items.firstWhere((e) => e.$1 == app.inputDeviceId,
+        orElse: () => items.first);
+    return PopupMenuButton<String>(
+      tooltip: '',
+      color: const Color(0xFF1C1C26),
+      onSelected: (id) {
+        app.setInputDeviceId(id);
+        MicMeter.instance.start(deviceId: id);
+      },
+      itemBuilder: (_) => [
+        for (final it in items)
+          PopupMenuItem<String>(
+            value: it.$1,
+            child: Text(it.$2,
+                style: const TextStyle(color: Color(0xFFD0D4E2), fontSize: 13)),
+          ),
+      ],
+      child: evsSelectButton(current.$2, minWidth: 120),
+    );
   }
 
   @override
@@ -5936,10 +6543,17 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       backgroundColor: _evsBgSolid,
       body: Container(
         decoration: _evsBgDecoration,
-        child: Row(
+        child: Column(
           children: [
-            _nav(app),
-            Expanded(child: _sectionScaffold(app)),
+            const _WindowTitleBar(),
+            Expanded(
+              child: Row(
+                children: [
+                  _nav(app),
+                  Expanded(child: _sectionScaffold(app)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -6103,7 +6717,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             child: LayoutBuilder(
               builder: (ctx, cons) {
                 const gap = 14.0;
-                final colW = (cons.maxWidth - 56 - gap) / 2;
+                final inner = cons.maxWidth - 56; // minus horizontal padding
+                // Collapse to a single column on narrow windows.
+                final oneCol = inner < 720;
+                final colW = oneCol ? inner : (inner - gap) / 2;
                 final cards = _cardsFor(app);
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
@@ -6113,7 +6730,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     children: [
                       for (final c in cards)
                         SizedBox(
-                          width: c.full ? cons.maxWidth - 56 : colW,
+                          width: (c.full || oneCol) ? inner : colW,
                           child: c.child,
                         ),
                     ],
@@ -6169,9 +6786,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
             control: evsSegmented<String>(
-              const [('auto', 'Авто'), ('ru', 'RU'), ('en', 'EN')],
-              'auto',
-              (_) {},
+              [('auto', app.t('sttAuto')), ('ru', 'RU'), ('en', 'EN')],
+              app.sttLanguage,
+              (v) => app.setSttLanguage(v),
             ),
           ),
         ],
@@ -6290,6 +6907,39 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   void _stubSnack(AppState app) =>
       showAppSnackBar(context, app.t('sectionStub'));
+
+  Widget _sidecarChip(AppState app, SidecarStatus s) {
+    final (label, color) = switch (s) {
+      SidecarStatus.connected => (
+          '${app.t('sidecarConnected')}'
+              '${SidecarClient.instance.sttAvailable ? ' · Whisper' : ''}',
+          const Color(0xFF54E08A)
+        ),
+      SidecarStatus.starting => (app.t('sidecarStarting'), const Color(0xFFE0C07A)),
+      SidecarStatus.stopped => (app.t('sidecarStopped'), const Color(0xFFE05D5D)),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: color)),
+          const SizedBox(width: 7),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w700, color: color)),
+        ],
+      ),
+    );
+  }
 
   Widget _inlineField(TextEditingController c,
       {bool mono = false, int maxLines = 1, ValueChanged<String>? onChanged}) {
@@ -6479,6 +7129,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   style: const TextStyle(fontSize: 12.5, color: Color(0xFF6E7280)))),
           InkResponse(
             radius: 18,
+            onTap: () => _runCommand(app, c),
+            child: Container(
+              width: 28,
+              height: 28,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0x268A7BE0)),
+              child: const Icon(Icons.play_arrow_rounded,
+                  size: 15, color: Color(0xFFB0A8F0)),
+            ),
+          ),
+          InkResponse(
+            radius: 18,
             onTap: () => app.removeVoiceCommand(c),
             child: Container(
               width: 28,
@@ -6493,6 +7157,31 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         ],
       ),
     );
+  }
+
+  Future<void> _runCommand(AppState app, VoiceCommand c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => AlertDialog(
+        backgroundColor: const Color(0xFF15151E),
+        title: Text(app.t('cmdRunTitle'),
+            style: const TextStyle(color: Colors.white, fontSize: 16)),
+        content: Text('${c.phrase}\n${c.value}',
+            style: const TextStyle(color: Color(0xFFC0C4D4))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(d, false),
+              child: Text(app.t('cancel'))),
+          TextButton(
+              onPressed: () => Navigator.pop(d, true),
+              child: Text(app.t('run'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final success = await CommandExecutor.instance.execute(c);
+    if (!mounted) return;
+    showAppSnackBar(context, success ? app.t('cmdRunOk') : app.t('cmdRunFail'));
   }
 
   Widget _cmdTypeChip(AppState app, VoiceCommandType t) {
@@ -6973,45 +7662,57 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   }
 
   Widget _permGrid(AppState app, List<(String, String)> items) {
-    return Wrap(
-      children: [
-        for (final it in items)
-          SizedBox(
-            width: 200,
-            child: InkWell(
-              onTap: () => setState(
-                  () => _stub[it.$1] = !(_stub[it.$1] ?? false)),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        color: (_stub[it.$1] ?? false)
-                            ? const Color(0x4D8A7BE0)
-                            : Colors.transparent,
-                        border: Border.all(
-                            color: const Color(0x668A7BE0), width: 2),
-                      ),
-                      child: (_stub[it.$1] ?? false)
-                          ? const Icon(Icons.check, size: 12, color: Color(0xFFD0CCF6))
-                          : null,
+    return LayoutBuilder(
+      builder: (ctx, cons) {
+        // Two columns that always fit the card; one column on a very narrow pane.
+        final w = cons.maxWidth < 360 ? cons.maxWidth : cons.maxWidth / 2;
+        return Wrap(
+          children: [
+            for (final it in items)
+              SizedBox(
+                width: w,
+                child: InkWell(
+                  onTap: () => setState(
+                      () => _stub[it.$1] = !(_stub[it.$1] ?? false)),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: (_stub[it.$1] ?? false)
+                                ? const Color(0x4D8A7BE0)
+                                : Colors.transparent,
+                            border: Border.all(
+                                color: const Color(0x668A7BE0), width: 2),
+                          ),
+                          child: (_stub[it.$1] ?? false)
+                              ? const Icon(Icons.check,
+                                  size: 12, color: Color(0xFFD0CCF6))
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(it.$2,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFFD0D4E2))),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    Text(it.$2,
-                        style: const TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFFD0D4E2))),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -7087,7 +7788,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         evsRow(
             label: app.t('checkNow'),
             control: evsGhostButton(app.t('checkUpdate'), Icons.refresh,
-                onTap: () => _stubSnack(app))),
+                onTap: () => DesktopIntegration.instance.checkForUpdates())),
       ])),
     ];
   }
@@ -7151,6 +7852,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         title: app.t('cardStt'),
         rows: [
           evsRow(
+            label: app.t('sidecar'),
+            desc: app.t('sidecarDesc'),
+            control: ValueListenableBuilder<SidecarStatus>(
+              valueListenable: SidecarClient.instance.status,
+              builder: (_, s, __) => _sidecarChip(app, s),
+            ),
+          ),
+          evsRow(
             label: app.t('sttEngine'),
             desc: app.t('sttEngineDesc'),
             control: _stubSegmented('sttEngine', [
@@ -7167,8 +7876,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           evsRow(
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
-            control: evsSelectButton(app.lang == 'ru' ? 'Русский' : 'English',
-                onTap: () => _stubSnack(app)),
+            control: evsSegmented<String>(
+              [('auto', app.t('sttAuto')), ('ru', 'RU'), ('en', 'EN')],
+              app.sttLanguage,
+              (v) => app.setSttLanguage(v),
+            ),
           ),
         ],
       )),
@@ -7180,26 +7892,22 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           evsRow(
             label: app.t('inputDevice'),
             desc: app.t('inputDeviceDesc'),
-            control: evsSelectButton(app.t('defaultDevice'),
-                onTap: () => _stubSnack(app)),
-          ),
-          evsRow(
-            label: app.t('micTest'),
-            desc: app.t('micTestDesc'),
-            control: evsGhostButton(app.t('runTest'), Icons.play_arrow,
-              onTap: () => _stubSnack(app)),
+            control: _inputDeviceControl(app),
           ),
           evsRow(
             label: app.t('inputLevel'),
-            control: const SizedBox(
+            control: SizedBox(
               width: 180,
               child: ClipRRect(
-                borderRadius: BorderRadius.all(Radius.circular(3)),
-                child: LinearProgressIndicator(
-                  value: 0.0,
-                  minHeight: 6,
-                  backgroundColor: Color(0x14FFFFFF),
-                  valueColor: AlwaysStoppedAnimation(_evsGMid),
+                borderRadius: const BorderRadius.all(Radius.circular(3)),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: MicMeter.instance.level,
+                  builder: (_, lvl, __) => LinearProgressIndicator(
+                    value: lvl.clamp(0.0, 1.0),
+                    minHeight: 6,
+                    backgroundColor: const Color(0x14FFFFFF),
+                    valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                  ),
                 ),
               ),
             ),
@@ -7214,10 +7922,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           evsRow(
             label: app.t('activationMode'),
             desc: app.t('activationModeDesc'),
-            control: _stubSegmented('activation', [
-              ('continuous', app.t('continuous')),
-              ('ptt', 'Push-to-Talk'),
-            ]),
+            control: evsSegmented<String>(
+              [('continuous', app.t('continuous')), ('ptt', 'Push-to-Talk')],
+              app.listenMode,
+              (v) => app.setListenMode(v),
+            ),
           ),
           evsRow(
             label: app.t('autoSendPause'),
@@ -7332,6 +8041,7 @@ Widget evsRow({
     child: Row(
       children: [
         Expanded(
+          flex: 3,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -7350,7 +8060,12 @@ Widget evsRow({
           ),
         ),
         const SizedBox(width: 12),
-        control,
+        // Bound the control so a long select / wide segmented can't squeeze
+        // the label (it ellipsizes or wraps within its share instead).
+        Flexible(
+          flex: 2,
+          child: Align(alignment: Alignment.centerRight, child: control),
+        ),
       ],
     ),
   );
@@ -7368,14 +8083,17 @@ Widget evsSegmented<T>(
       color: Colors.white.withValues(alpha: 0.055),
       border: Border.all(color: _evsStroke),
     ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
+    // Wrap (not Row) so the options flow onto a second line in narrow cards
+    // instead of overflowing.
+    child: Wrap(
+      spacing: 2,
+      runSpacing: 2,
+      alignment: WrapAlignment.end,
       children: [
         for (final o in options)
           GestureDetector(
             onTap: () => onChanged(o.$1),
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 1),
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
@@ -7501,8 +8219,10 @@ Widget evsSlider({
   required String label,
   required ValueChanged<double> onChanged,
 }) {
-  return SizedBox(
-    width: 210,
+  // Up to 210px wide, but shrinks to fit narrow cards (no fixed width that
+  // would overflow inside evsRow's bounded control slot).
+  return ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 210),
     child: Row(
       children: [
         Expanded(
@@ -7742,6 +8462,57 @@ class _VersionText extends StatelessWidget {
   }
 }
 
+// Custom frameless-window title bar: a draggable region + minimize / maximize
+// / close controls (the native Windows title bar is hidden via window_manager).
+class _WindowTitleBar extends StatelessWidget {
+  const _WindowTitleBar();
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: Row(
+        children: [
+          const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
+          _WinBtn(Icons.remove, () => windowManager.minimize()),
+          _WinBtn(Icons.crop_square, () async {
+            if (await windowManager.isMaximized()) {
+              await windowManager.unmaximize();
+            } else {
+              await windowManager.maximize();
+            }
+          }, iconSize: 13),
+          _WinBtn(Icons.close, () => windowManager.close(), danger: true),
+        ],
+      ),
+    );
+  }
+}
+
+class _WinBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool danger;
+  final double iconSize;
+  const _WinBtn(this.icon, this.onTap, {this.danger = false, this.iconSize = 16});
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 46,
+      height: 36,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          hoverColor:
+              danger ? const Color(0x33E05D5D) : const Color(0x14FFFFFF),
+          child: Center(
+              child: Icon(icon, size: iconSize, color: const Color(0xFF9AA0B0))),
+        ),
+      ),
+    );
+  }
+}
+
 class _KeyCap extends StatelessWidget {
   final String label;
   const _KeyCap(this.label);
@@ -7794,10 +8565,21 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _editingMessageId;
   final _editController = TextEditingController();
 
+  // Desktop sidecar voice input (Whisper STT via the Python sidecar).
+  bool _scListening = false;
+  StreamSubscription<String>? _scPartialSub;
+  StreamSubscription<String>? _scFinalSub;
+
   @override
   void initState() {
     super.initState();
     _controller.addListener(() => setState(() {}));
+    if (widget.desktop) {
+      _scPartialSub = SidecarClient.instance.partial.listen((t) {
+        if (mounted && _scListening) _controller.text = t;
+      });
+      _scFinalSub = SidecarClient.instance.finalText.listen(_onVoiceFinal);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final app = context.read<AppState>();
@@ -7839,11 +8621,57 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _scPartialSub?.cancel();
+    _scFinalSub?.cancel();
+    if (_scListening) SidecarClient.instance.sttStop();
     _controller.dispose();
     _scroll.dispose();
     _inputFocus.dispose();
     _editController.dispose();
     super.dispose();
+  }
+
+  // Desktop voice button: use the sidecar's Whisper STT when connected,
+  // otherwise fall back to the existing speech_to_text VoiceScreen.
+  void _desktopVoice() {
+    final sc = SidecarClient.instance;
+    if (sc.status.value != SidecarStatus.connected || !sc.sttAvailable) {
+      _openVoice();
+      return;
+    }
+    final app = context.read<AppState>();
+    if (_scListening) {
+      sc.sttStop();
+      setState(() => _scListening = false);
+    } else {
+      sc.sttStart(app.effectiveSttLanguage);
+      setState(() => _scListening = true);
+    }
+  }
+
+  // Final transcript from the sidecar: if it matches a voice command, run it
+  // (with spoken feedback); otherwise drop it into the input and auto-send.
+  void _onVoiceFinal(String text) {
+    if (!mounted || !_scListening) return;
+    final app = context.read<AppState>();
+    SidecarClient.instance.sttStop();
+    setState(() => _scListening = false);
+    final t = text.trim();
+    if (t.isEmpty) return;
+    if (app.voiceCommands.isNotEmpty) {
+      final cmd = CommandExecutor.instance.match(t, app.voiceCommands);
+      if (cmd != null) {
+        CommandExecutor.instance.execute(cmd);
+        if (SidecarClient.instance.ttsAvailable) {
+          SidecarClient.instance.speak(app.t('cmdRunOk'));
+        }
+        _controller.clear();
+        showAppSnackBar(context, '${app.t('cmdRunOk')}: ${cmd.phrase}');
+        return;
+      }
+    }
+    _controller.text = t;
+    if (app.micAutoSend) _send(t);
   }
 
   // Regenerate the last assistant reply (drops it, generates a fresh one).
@@ -9098,7 +9926,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               // Кнопка голосового ввода с анимированной обводкой
-              _buildAnimatedBtn(onTap: _openVoice, icon: Icons.graphic_eq),
+              _buildAnimatedBtn(
+                onTap: widget.desktop ? _desktopVoice : _openVoice,
+                icon: (widget.desktop && _scListening)
+                    ? Icons.stop_rounded
+                    : Icons.graphic_eq,
+              ),
               const SizedBox(width: 4),
               // Кнопка отправки (фиксированный размер, чтобы не "скакать"
               // между обычным и состоянием отправки)
@@ -9880,7 +10713,7 @@ class _VoiceScreenState extends State<VoiceScreen>
             // leaving the screen, never on its own mid-sentence. Auto-send
             // detects the pause itself via _resetAutoSendIdleTimer instead.
             pauseFor: const Duration(minutes: 30),
-            localeId: app.lang == 'ru' ? 'ru_RU' : 'en_US',
+            localeId: app.effectiveSttLanguage == 'ru' ? 'ru_RU' : 'en_US',
           ),
         )
         // On web, calling start() while the browser hasn't fully torn down a
