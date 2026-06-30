@@ -5838,7 +5838,14 @@ class DesktopIntegration with WindowListener, TrayListener {
     try {
       await ComponentManager.instance.loadManifest();
       SidecarClient.instance.setSttModel(app.whisperModel);
-      if (!await SidecarClient.instance.hasLocalSidecar()) {
+      final compPresent = await ComponentManager.instance
+              .installedPath('sidecar', fileName: 'evs_sidecar.exe') !=
+          null;
+      if (compPresent) {
+        // Already using the component — refresh it if a newer version shipped.
+        await ComponentManager.instance.ensure('sidecar');
+      } else if (!await SidecarClient.instance.hasLocalSidecar()) {
+        // No component, no bundled exe, no dev source — fetch the component.
         await ComponentManager.instance.ensure('sidecar');
       }
       await SidecarClient.instance.start();
@@ -6025,14 +6032,31 @@ class ComponentManager {
     }
   }
 
-  // Ensure a component is present (download if missing). Returns its path.
+  // Ensure a component is present AND current (download if missing or if the
+  // manifest advertises a newer version). Returns its path.
   Future<String?> ensure(String id) async {
+    final info = _manifest[id];
     final existing = await installedPath(id);
     if (existing != null) {
-      statusOf(id).value = const ComponentStatus(ComponentState.ready);
-      return existing;
+      // Up to date if we have no manifest info or the stored version matches.
+      if (info == null || await _readVersion(id) == info.version) {
+        statusOf(id).value = const ComponentStatus(ComponentState.ready);
+        return existing;
+      }
+      // Otherwise a newer version is published — fall through to re-download.
     }
     return download(id);
+  }
+
+  Future<String> _versionMarkerPath(String id) async =>
+      '${await _componentsDir()}${io.Platform.pathSeparator}.$id.version';
+
+  Future<String?> _readVersion(String id) async {
+    try {
+      return await io.File(await _versionMarkerPath(id)).readAsString();
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> download(String id) async {
@@ -6060,6 +6084,9 @@ class ComponentManager {
             error: 'checksum mismatch');
         return null;
       }
+      try {
+        await io.File(await _versionMarkerPath(id)).writeAsString(info.version);
+      } catch (_) {}
       st.value = const ComponentStatus(ComponentState.ready);
       return dest;
     } catch (e) {
@@ -10296,14 +10323,19 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(height: 20),
-            ParticleSphere(
-              size: 200,
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : const Color(0xFF2F6BFF),
-              scattered: keyboardOpen,
-            ),
+            // Voice visualization on the home screen, gated by settings
+            // (vizType 'none' or showVizBg off hides it; waves/bars currently
+            // render as the sphere).
+            if (app.showVizBg && app.vizType != 'none') ...[
+              const SizedBox(height: 20),
+              ParticleSphere(
+                size: 200,
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.white
+                    : const Color(0xFF2F6BFF),
+                scattered: keyboardOpen,
+              ),
+            ],
             const SizedBox(height: 20),
             Text(
               app.isModelLoading ? app.t('gettingReady') : app.t('howCanIHelp'),
