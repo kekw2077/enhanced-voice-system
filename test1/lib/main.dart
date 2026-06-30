@@ -5837,16 +5837,17 @@ class DesktopIntegration with WindowListener, TrayListener {
   Future<void> _bootstrapSidecar(AppState app) async {
     try {
       await ComponentManager.instance.loadManifest();
+      // Apply any update staged on a previous run (before the exe is launched).
+      await ComponentManager.instance.applyStagedUpdates();
       SidecarClient.instance.setSttModel(app.whisperModel);
-      final compPresent = await ComponentManager.instance
-              .installedPath('sidecar', fileName: 'evs_sidecar.exe') !=
-          null;
-      if (compPresent) {
-        // Already using the component — refresh it if a newer version shipped.
+      // Start with whatever sidecar is available now (component / bundled /
+      // dev). Only download if nothing is present — never block startup on an
+      // update. A newer component version is staged in the background for the
+      // next launch (applied by applyStagedUpdates above).
+      if (!await SidecarClient.instance.hasLocalSidecar()) {
         await ComponentManager.instance.ensure('sidecar');
-      } else if (!await SidecarClient.instance.hasLocalSidecar()) {
-        // No component, no bundled exe, no dev source — fetch the component.
-        await ComponentManager.instance.ensure('sidecar');
+      } else {
+        unawaited(ComponentManager.instance.stageUpdate('sidecar'));
       }
       await SidecarClient.instance.start();
     } catch (_) {}
@@ -6032,18 +6033,14 @@ class ComponentManager {
     }
   }
 
-  // Ensure a component is present AND current (download if missing or if the
-  // manifest advertises a newer version). Returns its path.
+  // Ensure a component is present (download if missing). Returns its path.
+  // Updates to an already-present component go through stageUpdate/apply, not
+  // here — you can't replace a running exe in place.
   Future<String?> ensure(String id) async {
-    final info = _manifest[id];
     final existing = await installedPath(id);
     if (existing != null) {
-      // Up to date if we have no manifest info or the stored version matches.
-      if (info == null || await _readVersion(id) == info.version) {
-        statusOf(id).value = const ComponentStatus(ComponentState.ready);
-        return existing;
-      }
-      // Otherwise a newer version is published — fall through to re-download.
+      statusOf(id).value = const ComponentStatus(ComponentState.ready);
+      return existing;
     }
     return download(id);
   }
@@ -6057,6 +6054,55 @@ class ComponentManager {
     } catch (_) {
       return null;
     }
+  }
+
+  // If the manifest advertises a newer version than what's installed, download
+  // it to a staged "<file>.new" beside the current one. Non-blocking and safe
+  // while the component is running (the live exe isn't touched). Applied on the
+  // next launch by applyStagedUpdates(), before the component starts.
+  Future<void> stageUpdate(String id) async {
+    final info = _manifest[id];
+    if (info == null || info.url.isEmpty) return;
+    if (await installedPath(id) == null) return; // nothing installed to update
+    if (await _readVersion(id) == info.version) return; // already current
+    final sep = io.Platform.pathSeparator;
+    final staged = '${await _componentsDir()}$sep${info.fileName}.new';
+    if (await io.File(staged).exists() && await _verify(staged, info.sha256)) {
+      return; // already staged
+    }
+    try {
+      await downloadFileWithProgress(info.url, staged, (_, __) {}, () => false);
+      if (!await _verify(staged, info.sha256)) {
+        try {
+          await io.File(staged).delete();
+        } catch (_) {}
+      }
+    } catch (_) {
+      try {
+        await io.File('$staged.part').delete();
+      } catch (_) {}
+    }
+  }
+
+  // Swap in any staged "<file>.new" updates. Call before launching components
+  // (so the target exe isn't locked).
+  Future<void> applyStagedUpdates() async {
+    try {
+      final dir = await _componentsDir();
+      final sep = io.Platform.pathSeparator;
+      for (final entry in _manifest.entries) {
+        final name = entry.value.fileName;
+        final staged = io.File('$dir$sep$name.new');
+        if (!await staged.exists()) continue;
+        final target = '$dir$sep$name';
+        try {
+          if (await io.File(target).exists()) await io.File(target).delete();
+          await staged.rename(target);
+          await io.File(await _versionMarkerPath(entry.key))
+              .writeAsString(entry.value.version);
+        } catch (_) {}
+      }
+    } catch (_) {}
   }
 
   Future<String?> download(String id) async {
