@@ -1,0 +1,12 @@
+# EVS sidecar — voice/ML brain (STT, VAD, TTS, intent).
+# Python 3.10–3.12 recommended on Windows.
+faster-whisper>=1.0.0
+sounddevice>=0.4.6
+webrtcvad>=2.0.10
+pyttsx3>=2.90
+rapidfuzz>=3.0.0
+websockets>=12.0
+numpy>=1.24
+# webrtcvad 2.0.10 imports pkg_resources, removed in setuptools>=81. Pin below
+# that so the import keeps working (frozen exe and dev venv alike).
+setuptools<81
