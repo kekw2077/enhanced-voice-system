@@ -27,6 +27,24 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 1.0.1</title>
+      <description><![CDATA[
+        <ul>
+          <li>Тестовый релиз для проверки авто-обновления.</li>
+          <li>Версия в «О приложении» теперь 1.0.1.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Tue, 30 Jun 2026 13:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.1/EVS-Setup-1.0.1.exe"
+        sparkle:version="1.0.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD0CHQC1m1sR45YaEodPHkS8VKpQHSa3aXYSMyLimD/rAhwmcgGDWILjt5jl2AtfWQ5kfe0XVX7x05CXDgQ6"
+        length="114953152"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.0.0</title>
       <description><![CDATA[
         <ul>
