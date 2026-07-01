@@ -8070,13 +8070,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       showAppSnackBar(context, app.t('cloneNeedSample'));
       return;
     }
-    final p = await ComponentManager.instance.ensure('tts-clone');
+    // ensureStarted resolves the downloaded component OR the dev source; only
+    // fails if neither is available (then the user needs to download it).
+    final ok = await TtsCloneClient.instance.ensureStarted();
     if (!mounted) return;
-    if (p == null) {
+    if (!ok) {
       showAppSnackBar(context, app.t('cloneNeedEngine'));
       return;
     }
-    await TtsCloneClient.instance.ensureStarted();
     TtsCloneClient.instance.speak(app.t('cloneTestPhrase'),
         speakerWav: app.cloneSamplePath,
         language: app.lang == 'ru' ? 'ru' : 'en');
