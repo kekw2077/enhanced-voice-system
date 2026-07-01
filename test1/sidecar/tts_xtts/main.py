@@ -83,6 +83,9 @@ async def _handle(ws, eng: XttsEngine) -> None:
 
 async def _main(args) -> None:
     eng = XttsEngine()
+    if eng.init_error:
+        # Surface why the ML deps didn't import (frozen-build diagnostics).
+        print(f"EVS_TTS_DIAG {eng.init_error}", file=sys.stderr, flush=True)
 
     async def handler(ws):
         await _handle(ws, eng)

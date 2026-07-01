@@ -19,6 +19,7 @@ import threading
 class XttsEngine:
     def __init__(self) -> None:
         self._available = False
+        self.init_error: str | None = None
         try:
             import torch  # noqa: F401
             from TTS.api import TTS  # noqa: F401
@@ -28,6 +29,8 @@ class XttsEngine:
             self._available = True
         except Exception:
             self._available = False
+            import traceback
+            self.init_error = traceback.format_exc()
         self._tts = None
         self._speaker_wav: str | None = None
         self._lock = threading.Lock()
