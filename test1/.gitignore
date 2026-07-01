@@ -56,10 +56,10 @@ dsaparam.pem
 # Python sidecar build artifacts — rebuilt via sidecar/build_exe.ps1.
 # (The frozen evs_sidecar.exe is ~95 MB; the venv is huge. Source stays,
 # artifacts don't.)
-sidecar/.venv/
-sidecar/build/
-sidecar/dist/
-sidecar/*.spec
+sidecar/**/.venv/
+sidecar/**/build/
+sidecar/**/dist/
+sidecar/**/*.spec
 **/__pycache__/
 
 # Built installers — shipped as GitHub Release assets, not committed (~110 MB).

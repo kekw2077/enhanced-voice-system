@@ -188,6 +188,19 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsRate': 'Скорость речи',
     'ttsRateDesc': 'Темп проговаривания',
     'ttsVolume': 'Громкость',
+    'cardClone': 'Клонирование голоса',
+    'cloneSample': 'Образец голоса',
+    'cloneSampleDesc': 'WAV с чистой речью 6–10 секунд',
+    'cloneNoSample': 'Не выбран',
+    'cloneEngine': 'Движок клонирования',
+    'cloneEngineDesc': 'XTTS v2 (офлайн), догружается отдельно (~1.8 ГБ)',
+    'cloneTest': 'Тест голоса',
+    'cloneTestDesc': 'Проговорить фразу клонированным голосом',
+    'cloneTestBtn': 'Прослушать',
+    'cloneNeedSample': 'Сначала выберите образец голоса (WAV)',
+    'cloneNeedEngine': 'Сначала скачайте движок клонирования',
+    'cloneTestPhrase': 'Привет! Это мой клонированный голос.',
+    'cloneLoading': 'Загрузка модели…',
     'cardCmdExec': 'Выполнение команд',
     'cmdAllow': 'Разрешить выполнение команд',
     'cmdAllowDesc':
@@ -791,6 +804,19 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsRate': 'Speech rate',
     'ttsRateDesc': 'Speaking tempo',
     'ttsVolume': 'Volume',
+    'cardClone': 'Voice cloning',
+    'cloneSample': 'Voice sample',
+    'cloneSampleDesc': 'A clean 6–10 s speech WAV',
+    'cloneNoSample': 'Not selected',
+    'cloneEngine': 'Cloning engine',
+    'cloneEngineDesc': 'XTTS v2 (offline), downloaded separately (~1.8 GB)',
+    'cloneTest': 'Test voice',
+    'cloneTestDesc': 'Speak a phrase in the cloned voice',
+    'cloneTestBtn': 'Play',
+    'cloneNeedSample': 'Pick a voice sample (WAV) first',
+    'cloneNeedEngine': 'Download the cloning engine first',
+    'cloneTestPhrase': 'Hello! This is my cloned voice.',
+    'cloneLoading': 'Loading model…',
     'cardCmdExec': 'Command execution',
     'cmdAllow': 'Allow command execution',
     'cmdAllowDesc':
@@ -3179,6 +3205,7 @@ class AppState extends ChangeNotifier {
   String ttsVoice = 'system'; // 'system' | 'cloned'
   double ttsRate = 1.0;
   double ttsVolume = 1.0;
+  String cloneSamplePath = ''; // reference .wav for XTTS voice cloning
 
   // STT language resolved against the UI language when set to 'auto'.
   String get effectiveSttLanguage =>
@@ -3292,6 +3319,7 @@ class AppState extends ChangeNotifier {
     ttsVoice = prefs.getString('ttsVoice') ?? 'system';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
+    cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -3373,6 +3401,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('ttsVoice', ttsVoice);
     await prefs.setDouble('ttsRate', ttsRate);
     await prefs.setDouble('ttsVolume', ttsVolume);
+    await prefs.setString('cloneSamplePath', cloneSamplePath);
     await prefs.setString(
       'voiceCommands',
       jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
@@ -3519,6 +3548,12 @@ class AppState extends ChangeNotifier {
 
   void setTtsVolume(double v) {
     ttsVolume = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setCloneSamplePath(String v) {
+    cloneSamplePath = v;
     _save();
     notifyListeners();
   }
@@ -5951,18 +5986,22 @@ class ComponentStatus {
 
 class ComponentInfo {
   final String id;
-  final String fileName;
+  final String fileName; // downloaded file (an .exe, or an .zip if archive)
   final String version;
   final String url;
   final String sha256;
   final int size;
+  final bool archive; // fileName is a zip to extract into <dir>/<id>/
+  final String exe; // for archives: path to the launchable exe inside the dir
   const ComponentInfo(
       {required this.id,
       required this.fileName,
       required this.version,
       required this.url,
       required this.sha256,
-      required this.size});
+      required this.size,
+      this.archive = false,
+      this.exe = ''});
 
   factory ComponentInfo.fromJson(String id, Map<String, dynamic> j) =>
       ComponentInfo(
@@ -5972,6 +6011,8 @@ class ComponentInfo {
         url: (j['url'] ?? '') as String,
         sha256: (j['sha256'] ?? '') as String,
         size: (j['size'] ?? 0) as int,
+        archive: j['archive'] == true,
+        exe: (j['exe'] ?? '') as String,
       );
 }
 
@@ -5993,10 +6034,18 @@ class ComponentManager {
 
   Future<String> _componentsDir() async => _dir ??= await componentsDirPath();
 
-  // Absolute path to a component's file if it's present on disk, else null.
+  // Absolute path to a component's launchable file if present, else null. For
+  // an archive component this is the extracted exe (<dir>/<id>/<exe>).
   Future<String?> installedPath(String id, {String? fileName}) async {
-    final name = fileName ?? _manifest[id]?.fileName ?? '$id.bin';
-    final p = '${await _componentsDir()}${io.Platform.pathSeparator}$name';
+    final sep = io.Platform.pathSeparator;
+    final dir = await _componentsDir();
+    final info = _manifest[id];
+    if (info != null && info.archive) {
+      final p = '$dir$sep$id$sep${info.exe}';
+      return await io.File(p).exists() ? p : null;
+    }
+    final name = fileName ?? info?.fileName ?? '$id.bin';
+    final p = '$dir$sep$name';
     return await io.File(p).exists() ? p : null;
   }
 
@@ -6063,6 +6112,7 @@ class ComponentManager {
   Future<void> stageUpdate(String id) async {
     final info = _manifest[id];
     if (info == null || info.url.isEmpty) return;
+    if (info.archive) return; // archives update via re-download, not staging
     if (await installedPath(id) == null) return; // nothing installed to update
     if (await _readVersion(id) == info.version) return; // already current
     final sep = io.Platform.pathSeparator;
@@ -6091,6 +6141,7 @@ class ComponentManager {
       final dir = await _componentsDir();
       final sep = io.Platform.pathSeparator;
       for (final entry in _manifest.entries) {
+        if (entry.value.archive) continue; // archives aren't staged
         final name = entry.value.fileName;
         final staged = io.File('$dir$sep$name.new');
         if (!await staged.exists()) continue;
@@ -6130,13 +6181,48 @@ class ComponentManager {
             error: 'checksum mismatch');
         return null;
       }
+      String result = dest;
+      if (info.archive) {
+        final extracted = await _extract(id, dest);
+        if (extracted == null) {
+          st.value = const ComponentStatus(ComponentState.error,
+              error: 'extract failed');
+          return null;
+        }
+        try {
+          await io.File(dest).delete(); // drop the zip, keep the folder
+        } catch (_) {}
+        result = extracted;
+      }
       try {
         await io.File(await _versionMarkerPath(id)).writeAsString(info.version);
       } catch (_) {}
       st.value = const ComponentStatus(ComponentState.ready);
-      return dest;
+      return result;
     } catch (e) {
       st.value = ComponentStatus(ComponentState.error, error: e.toString());
+      return null;
+    }
+  }
+
+  // Extract an archive component's zip into <dir>/<id>/ (via PowerShell
+  // Expand-Archive — Windows only). Returns the launchable exe path.
+  Future<String?> _extract(String id, String zipPath) async {
+    final sep = io.Platform.pathSeparator;
+    final dir = await _componentsDir();
+    final target = '$dir$sep$id';
+    try {
+      final t = io.Directory(target);
+      if (await t.exists()) await t.delete(recursive: true);
+      final r = await io.Process.run('powershell', [
+        '-NoProfile',
+        '-Command',
+        'Expand-Archive -Path "$zipPath" -DestinationPath "$target" -Force'
+      ]);
+      if (r.exitCode != 0) return null;
+      final exe = '$target$sep${_manifest[id]?.exe ?? ''}';
+      return await io.File(exe).exists() ? exe : null;
+    } catch (_) {
       return null;
     }
   }
@@ -6338,6 +6424,175 @@ class SidecarClient {
   }
 }
 
+// ===================== XTTS VOICE-CLONE CLIENT =====================
+// Talks to the on-demand `evs_tts.exe` component (Coqui XTTS v2). Spawns it,
+// loads the model, and synthesizes speech in the user's cloned voice from a
+// reference wav. Heavy + optional — only started when ttsVoice == 'cloned'.
+
+enum TtsCloneStatus { stopped, starting, loading, ready, error }
+
+class TtsCloneClient {
+  TtsCloneClient._();
+  static final TtsCloneClient instance = TtsCloneClient._();
+
+  final ValueNotifier<TtsCloneStatus> status =
+      ValueNotifier(TtsCloneStatus.stopped);
+  bool available = false;
+  String? lastError;
+
+  io.Process? _proc;
+  io.WebSocket? _ws;
+  bool _starting = false;
+
+  // Start the engine + load the model if not already running. Returns true once
+  // the process is up (model load continues asynchronously -> status `ready`).
+  Future<bool> ensureStarted() async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return false;
+    if (status.value == TtsCloneStatus.ready ||
+        status.value == TtsCloneStatus.loading) {
+      return true;
+    }
+    if (_starting) return false;
+    _starting = true;
+    try {
+      final launch = await _resolveLaunch();
+      if (launch == null) {
+        status.value = TtsCloneStatus.stopped;
+        return false;
+      }
+      // COQUI_TOS_AGREED auto-accepts the XTTS model license so the first
+      // model download doesn't block on an interactive prompt. TTS_HOME/HF_HOME
+      // keep the ~1.8 GB model inside the app data folder.
+      final env = <String, String>{'COQUI_TOS_AGREED': '1'};
+      try {
+        final dir = await componentsDirPath();
+        final sep = io.Platform.pathSeparator;
+        env['TTS_HOME'] = '$dir${sep}tts-cache';
+        env['HF_HOME'] = '$dir${sep}hf-cache';
+      } catch (_) {}
+      status.value = TtsCloneStatus.starting;
+      _proc = await io.Process.start(launch.$1, launch.$2,
+          runInShell: false, environment: env);
+      _proc!.stderr.listen((_) {});
+      final ready = Completer<int>();
+      _proc!.stdout
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (line.startsWith('EVS_TTS_READY')) {
+          final p = int.tryParse(line.split(' ').last.trim());
+          if (p != null && !ready.isCompleted) ready.complete(p);
+        }
+      });
+      _proc!.exitCode.then((_) {
+        if (status.value != TtsCloneStatus.ready) {
+          status.value = TtsCloneStatus.stopped;
+        }
+      });
+      // Generous: a frozen onefile torch build can take a while to unpack on
+      // the first launch before it prints EVS_TTS_READY.
+      final port = await ready.future.timeout(const Duration(seconds: 120));
+      await _connect(port);
+      return true;
+    } catch (e) {
+      lastError = e.toString();
+      status.value = TtsCloneStatus.error;
+      return false;
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<(String, List<String>)?> _resolveLaunch() async {
+    try {
+      final comp = await ComponentManager.instance
+          .installedPath('tts-clone', fileName: 'evs_tts.exe');
+      if (comp != null) return (comp, ['--port', '0']);
+    } catch (_) {}
+    // Dev: run from source (sidecar/tts_xtts/main.py + its venv).
+    try {
+      final sep = io.Platform.pathSeparator;
+      final exeDir = io.File(io.Platform.resolvedExecutable).parent.path;
+      final roots = <String>[io.Directory.current.path];
+      var dir = io.Directory(exeDir);
+      for (int i = 0; i < 7; i++) {
+        roots.add(dir.path);
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+      for (final base in roots) {
+        final main =
+            io.File('$base${sep}sidecar${sep}tts_xtts${sep}main.py');
+        if (!main.existsSync()) continue;
+        final venvPy = io.File(
+            '$base${sep}sidecar${sep}tts_xtts$sep.venv${sep}Scripts${sep}python.exe');
+        final py = venvPy.existsSync() ? venvPy.path : 'python';
+        return (py, [main.path, '--port', '0']);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _connect(int port) async {
+    _ws = await io.WebSocket.connect('ws://127.0.0.1:$port');
+    status.value = TtsCloneStatus.loading;
+    _ws!.listen((data) {
+      try {
+        final m = jsonDecode(data as String) as Map<String, dynamic>;
+        switch (m['type']) {
+          case 'ready':
+            available = (m['capabilities'] as Map?)?['tts'] == true;
+            if (!available) {
+              lastError = 'engine unavailable';
+              status.value = TtsCloneStatus.error;
+            }
+            break;
+          case 'tts.loaded':
+            status.value = m['ok'] == true
+                ? TtsCloneStatus.ready
+                : TtsCloneStatus.error;
+            break;
+          case 'tts.error':
+            lastError = m['message'] as String?;
+            break;
+        }
+      } catch (_) {}
+    },
+        onDone: () => status.value = TtsCloneStatus.stopped,
+        onError: (_) => status.value = TtsCloneStatus.stopped);
+    _send({'type': 'tts.load'}); // kick off model load (downloads on first use)
+  }
+
+  void _send(Map<String, dynamic> m) {
+    try {
+      _ws?.add(jsonEncode(m));
+    } catch (_) {}
+  }
+
+  void speak(String text,
+          {required String speakerWav, String language = 'ru'}) =>
+      _send({
+        'type': 'tts.speak',
+        'text': text,
+        'language': language,
+        'speaker_wav': speakerWav,
+      });
+  void setSpeaker(String wav) =>
+      _send({'type': 'tts.clone', 'speaker_wav': wav});
+  void stopSpeaking() => _send({'type': 'tts.stop'});
+
+  Future<void> shutdown() async {
+    try {
+      await _ws?.close();
+    } catch (_) {}
+    try {
+      _proc?.kill();
+    } catch (_) {}
+    status.value = TtsCloneStatus.stopped;
+  }
+}
+
 // ============================ VOICE ASSISTANT ============================
 // Alice-like always-listening loop. When wake-word mode is on, it keeps the
 // sidecar's Whisper STT running, watches finalized transcripts for the wake
@@ -6486,7 +6741,13 @@ class VoiceAssistant {
   }
 
   void _speak(AppState app, String text) {
-    // Phase 4 routes to the cloned-voice engine when ttsVoice == 'cloned'.
+    if (app.ttsVoice == 'cloned' && app.cloneSamplePath.isNotEmpty) {
+      unawaited(TtsCloneClient.instance.ensureStarted());
+      TtsCloneClient.instance.speak(text,
+          speakerWav: app.cloneSamplePath,
+          language: app.effectiveSttLanguage == 'ru' ? 'ru' : 'en');
+      return;
+    }
     SidecarClient.instance.speak(text, rate: app.ttsRate, volume: app.ttsVolume);
   }
 
@@ -7787,6 +8048,102 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     if (p != null) await SidecarClient.instance.start();
   }
 
+  Future<void> _pickCloneSample(AppState app) async {
+    try {
+      final res = await FilePicker.pickFiles(
+          type: FileType.custom, allowedExtensions: ['wav']);
+      final path = res?.files.single.path;
+      if (path != null && path.isNotEmpty) {
+        app.setCloneSamplePath(path);
+        TtsCloneClient.instance.setSpeaker(path);
+        if (mounted) setState(() {});
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _downloadTts(AppState app) async {
+    await ComponentManager.instance.ensure('tts-clone');
+  }
+
+  Future<void> _testClone(AppState app) async {
+    if (app.cloneSamplePath.isEmpty) {
+      showAppSnackBar(context, app.t('cloneNeedSample'));
+      return;
+    }
+    final p = await ComponentManager.instance.ensure('tts-clone');
+    if (!mounted) return;
+    if (p == null) {
+      showAppSnackBar(context, app.t('cloneNeedEngine'));
+      return;
+    }
+    await TtsCloneClient.instance.ensureStarted();
+    TtsCloneClient.instance.speak(app.t('cloneTestPhrase'),
+        speakerWav: app.cloneSamplePath,
+        language: app.lang == 'ru' ? 'ru' : 'en');
+  }
+
+  // Download/engine status for the XTTS voice-clone component (~big). Engine
+  // states (loading/ready/error) take priority over the download state.
+  Widget _ttsComponentControl(AppState app) {
+    return ValueListenableBuilder<TtsCloneStatus>(
+      valueListenable: TtsCloneClient.instance.status,
+      builder: (_, es, __) => ValueListenableBuilder<ComponentStatus>(
+        valueListenable: ComponentManager.instance.statusOf('tts-clone'),
+        builder: (_, cs, __) {
+          if (es == TtsCloneStatus.ready) {
+            return _compBadge(app.t('componentReady'), const Color(0xFF54E08A));
+          }
+          if (es == TtsCloneStatus.loading || es == TtsCloneStatus.starting) {
+            return _compBadge(app.t('cloneLoading'), const Color(0xFFE0C07A));
+          }
+          if (es == TtsCloneStatus.error) {
+            return evsGhostButton(app.t('retry'), Icons.refresh,
+                onTap: () => _downloadTts(app));
+          }
+          switch (cs.state) {
+            case ComponentState.downloading:
+              return SizedBox(
+                width: 160,
+                child: Row(children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.all(Radius.circular(3)),
+                      child: LinearProgressIndicator(
+                        value: cs.progress > 0 ? cs.progress : null,
+                        minHeight: 6,
+                        backgroundColor: const Color(0x14FFFFFF),
+                        valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${(cs.progress * 100).round()}%',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF6E7280))),
+                ]),
+              );
+            case ComponentState.verifying:
+              return _compBadge(
+                  app.t('componentVerifying'), const Color(0xFFE0C07A));
+            case ComponentState.ready:
+              return _compBadge(
+                  app.t('componentReady'), const Color(0xFF54E08A));
+            case ComponentState.error:
+              return evsGhostButton(app.t('retry'), Icons.refresh,
+                  onTap: () => _downloadTts(app));
+            case ComponentState.absent:
+              final info = ComponentManager.instance.infoOf('tts-clone');
+              final gb = info != null && info.size > 0
+                  ? ' (${(info.size / 1e9).toStringAsFixed(1)} GB)'
+                  : '';
+              return evsGhostButton('${app.t('download')}$gb', Icons.download,
+                  onTap: () => _downloadTts(app));
+          }
+        },
+      ),
+    );
+  }
+
   Widget _inlineField(TextEditingController c,
       {bool mono = false, int maxLines = 1, ValueChanged<String>? onChanged}) {
     return Container(
@@ -8868,6 +9225,35 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               label: '${(app.ttsVolume * 100).round()}%',
               onChanged: (v) => app.setTtsVolume(v / 100),
             ),
+          ),
+        ],
+      )),
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.spatial_audio_off_outlined,
+        title: app.t('cardClone'),
+        rows: [
+          evsRow(
+            label: app.t('cloneSample'),
+            desc: app.t('cloneSampleDesc'),
+            control: evsSelectButton(
+              app.cloneSamplePath.isEmpty
+                  ? app.t('cloneNoSample')
+                  : app.cloneSamplePath.split(RegExp(r'[\\/]')).last,
+              minWidth: 120,
+              onTap: () => _pickCloneSample(app),
+            ),
+          ),
+          evsRow(
+            label: app.t('cloneEngine'),
+            desc: app.t('cloneEngineDesc'),
+            control: _ttsComponentControl(app),
+          ),
+          evsRow(
+            label: app.t('cloneTest'),
+            desc: app.t('cloneTestDesc'),
+            control: evsGhostButton(app.t('cloneTestBtn'), Icons.play_arrow,
+                onTap: () => _testClone(app)),
           ),
         ],
       )),

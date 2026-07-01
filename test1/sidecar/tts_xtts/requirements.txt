@@ -1,0 +1,14 @@
+# EVS XTTS voice-clone sidecar. Heavy: torch + Coqui XTTS v2 model (~1.8 GB,
+# downloaded on first load). Python 3.12 recommended.
+coqui-tts>=0.24.0
+# torch isn't pulled transitively by coqui-tts on Windows — require it here.
+# Pin <2.9: from torch 2.9 coqui-tts needs torchcodec (painful on Windows);
+# 2.8 uses torchaudio's built-in audio IO.
+torch==2.8.0
+torchaudio==2.8.0
+# XTTS isn't compatible with transformers 5.x; pin to 4.x.
+transformers>=4.40,<5
+sounddevice>=0.4.6
+soundfile>=0.12.0
+websockets>=12.0
+setuptools<81
