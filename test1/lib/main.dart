@@ -223,6 +223,8 @@ const Map<String, Map<String, String>> _i18n = {
     'vaRunning': 'Выполняю…',
     'vaDone': 'Готово',
     'vaFailed': 'Не удалось выполнить команду',
+    'vaCmdDisabled': 'Команда распознана, но выполнение выключено (включите «Разрешить выполнение команд»)',
+    'vaSttOffline': 'Голосовой движок не подключён',
     'vaConfirmTitle': 'Выполнить команду?',
     'vaConfirmBody': 'EVS распознал команду:',
     'cardSecurity': 'Безопасность',
@@ -450,6 +452,8 @@ const Map<String, Map<String, String>> _i18n = {
     'deleteModel': 'Удалить',
     'localModelMissing':
         'Файл модели не найден. Скачайте модель ещё раз в разделе «Локальные модели».',
+    'modelCrashWarn':
+        'Локальная модель вызвала сбой при загрузке и отключена:',
     'deleteLocalModelTitle': 'Удалить модель?',
     'deleteLocalModelBody':
         'Файл модели будет удалён с устройства. Скачать её снова можно в любой момент.',
@@ -839,6 +843,8 @@ const Map<String, Map<String, String>> _i18n = {
     'vaRunning': 'Running…',
     'vaDone': 'Done',
     'vaFailed': 'Could not run the command',
+    'vaCmdDisabled': 'Command recognized, but execution is off (enable "Allow command execution")',
+    'vaSttOffline': 'Voice engine not connected',
     'vaConfirmTitle': 'Run command?',
     'vaConfirmBody': 'EVS recognized a command:',
     'cardSecurity': 'Security',
@@ -1062,6 +1068,7 @@ const Map<String, Map<String, String>> _i18n = {
     'deleteModel': 'Delete',
     'localModelMissing':
         'Model file not found. Download it again from the Local models screen.',
+    'modelCrashWarn': 'A local model crashed on load and was disabled:',
     'deleteLocalModelTitle': 'Delete this model?',
     'deleteLocalModelBody':
         'The model file will be removed from your device. You can download it again anytime.',
@@ -2588,7 +2595,10 @@ class LocalLLMService implements ILLMService {
     Conversation conv,
     List<ChatMessage> history,
   ) async {
-    final spec = app.localSpecFor(_effectiveModelFor(app, conv));
+    final key = _effectiveModelFor(app, conv);
+    // Refuse a model that hard-crashed the native loader (would crash again).
+    if (app.crashedLocalModels.contains(key)) return null;
+    final spec = app.localSpecFor(key);
     if (spec == null) return null;
     final dir = await localModelsDirPath();
     final modelPath = '$dir/${spec.fileName}';
@@ -2683,6 +2693,7 @@ class LocalLLMService implements ILLMService {
     final (modelPath, messages) = prepared;
 
     final completer = Completer<String>();
+    await setModelLoadingFlag(modelPath);
     try {
       await fllamaChat(_buildRequest(conv, modelPath, messages), (
         response,
@@ -2696,6 +2707,7 @@ class LocalLLMService implements ILLMService {
         completer.complete('${app.t('unreachable')} ($e)');
       }
     }
+    await clearModelLoadingFlag();
     return completer.future;
   }
 
@@ -2710,10 +2722,17 @@ class LocalLLMService implements ILLMService {
         return;
       }
       final (modelPath, messages) = prepared;
+      await setModelLoadingFlag(modelPath);
+      var cleared = false;
       try {
         final requestId = await fllamaChat(
           _buildRequest(conv, modelPath, messages),
           (response, openaiJson, done) {
+            // First callback = native side loaded past the crash-prone point.
+            if (!cleared) {
+              cleared = true;
+              unawaited(clearModelLoadingFlag());
+            }
             if (!controller.isClosed) controller.add(response);
             if (done && !controller.isClosed) controller.close();
           },
@@ -2724,6 +2743,8 @@ class LocalLLMService implements ILLMService {
           controller.add('${app.t('unreachable')} ($e)');
           await controller.close();
         }
+      } finally {
+        if (!cleared) await clearModelLoadingFlag();
       }
     }();
     return controller.stream;
@@ -2743,6 +2764,9 @@ class LocalLLMService implements ILLMService {
     final modelPath = '$dir/${spec.fileName}';
     if (!await localModelFileExists(modelPath)) return;
     final completer = Completer<void>();
+    // Native load can hard-crash the process — mark it so a crash is detected
+    // on the next launch (see AppState.load / crashed-model handling).
+    await setModelLoadingFlag(modelKey);
     try {
       // Minimal 1-token request just to force the GGUF to load into memory
       // (and warm the OS file cache). We don't care about the output.
@@ -2750,7 +2774,7 @@ class LocalLLMService implements ILLMService {
         OpenAiRequest(
           messages: [Message(Role.user, '.')],
           modelPath: modelPath,
-          contextSize: 256,
+          contextSize: 2048,
           maxTokens: 1,
         ),
         (response, openaiJson, done) {
@@ -2760,6 +2784,7 @@ class LocalLLMService implements ILLMService {
     } catch (_) {
       if (!completer.isCompleted) completer.complete();
     }
+    await clearModelLoadingFlag();
     return completer.future;
   }
 }
@@ -3050,6 +3075,11 @@ class AppState extends ChangeNotifier {
   String? modelsError;
 
   Set<String> downloadedLocalModelIds = {};
+  // Local models whose native load crashed the process — never auto-warm these.
+  Set<String> crashedLocalModels = {};
+  // Set for one run if the last launch crashed loading this local model (used
+  // to warn the user once).
+  String? lastModelCrash;
   final Map<String, double> localDownloadProgress = {};
   final Set<String> _cancelledLocalDownloads = {};
 
@@ -3083,6 +3113,8 @@ class AppState extends ChangeNotifier {
     }
     final spec = localSpecFor(key);
     if (spec == null) return;
+    // Never auto-warm a model that hard-crashed the native loader before.
+    if (crashedLocalModels.contains(key)) return;
     if (_warmedModelKey == key || isGenerating || isModelLoading) return;
     final dir = await localModelsDirPath();
     if (!await localModelFileExists('$dir/${spec.fileName}')) return;
@@ -3295,6 +3327,27 @@ class AppState extends ChangeNotifier {
     }
     downloadedLocalModelIds =
         (prefs.getStringList('downloadedLocalModelIds') ?? []).toSet();
+    crashedLocalModels =
+        (prefs.getStringList('crashedLocalModels') ?? []).toSet();
+    // Detect a native model-load crash from the previous run: if the loading
+    // sentinel survived (fllama crashed the whole process before it could be
+    // cleared), disable that model and switch to a remote one so the app can
+    // start instead of crash-looping.
+    final crashedFlag = await readModelLoadingFlag();
+    if (crashedFlag != null) {
+      await clearModelLoadingFlag();
+      if (isLocalModel(selectedModel)) {
+        crashedLocalModels.add(selectedModel);
+        lastModelCrash = selectedModel;
+        final remote = models.where((m) => !isLocalModel(m)).toList();
+        selectedModel = remote.isNotEmpty ? remote.first : '';
+        // Persist immediately so a force-kill before the next save can't leave
+        // the crashing model selected again.
+        await prefs.setString('selectedModel', selectedModel);
+        await prefs.setStringList(
+            'crashedLocalModels', crashedLocalModels.toList());
+      }
+    }
     lastSeenVersion = prefs.getString('lastSeenVersion');
     inferenceMode = prefs.getString('inferenceMode') ?? 'local';
     autostart = prefs.getBool('autostart') ?? false;
@@ -3377,6 +3430,8 @@ class AppState extends ChangeNotifier {
       'downloadedLocalModelIds',
       downloadedLocalModelIds.toList(),
     );
+    await prefs.setStringList(
+        'crashedLocalModels', crashedLocalModels.toList());
     await prefs.setString('persona', jsonEncode(persona.toJson()));
     await prefs.setString('inferenceMode', inferenceMode);
     await prefs.setBool('autostart', autostart);
@@ -3738,6 +3793,9 @@ class AppState extends ChangeNotifier {
 
   void selectModel(String m) {
     selectedModel = m;
+    // Explicitly choosing a model = the user wants to try it again, so lift any
+    // previous crash block (a fresh crash will just re-arm it).
+    crashedLocalModels.remove(m);
     _save();
     notifyListeners();
     // Warm up the newly selected local model so its "preparing" screen shows
@@ -5596,20 +5654,30 @@ class CommandExecutor {
     fn(vk, 0, 2, 0); // key up (KEYEVENTF_KEYUP)
   }
 
+  // Strip surrounding quotes users often paste around a path.
+  static String _unquote(String s) {
+    var t = s.trim();
+    if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) {
+      t = t.substring(1, t.length - 1);
+    }
+    return t;
+  }
+
   Future<bool> execute(VoiceCommand c) async {
     if (defaultTargetPlatform != TargetPlatform.windows) return false;
     try {
       switch (c.type) {
         case VoiceCommandType.app:
-          await io.Process.start(c.value, const [], runInShell: true);
-          return true;
         case VoiceCommandType.file:
         case VoiceCommandType.url:
-          await io.Process.start('cmd', ['/c', 'start', '', c.value],
-              runInShell: true);
-          return true;
+          // `start` resolves .lnk shortcuts, exes, folders and URLs alike. The
+          // empty "" is the window-title arg `start` requires before the path.
+          final r = await io.Process.run(
+              'cmd', ['/c', 'start', '', _unquote(c.value)],
+              runInShell: false);
+          return r.exitCode == 0;
         case VoiceCommandType.shell:
-          await io.Process.start('cmd', ['/c', c.value], runInShell: true);
+          await io.Process.start('cmd', ['/c', c.value], runInShell: false);
           return true;
         case VoiceCommandType.system:
           return _system(c.value);
@@ -6612,6 +6680,11 @@ class VoiceAssistant {
 
   // UI signals (home-screen indicator).
   final ValueNotifier<VaState> state = ValueNotifier(VaState.idle);
+  // The last phrase Whisper heard (shown so the user can confirm recognition
+  // works and see how their wake word is actually transcribed).
+  final ValueNotifier<String> lastHeard = ValueNotifier('');
+
+  bool get isListening => _listening;
 
   void attach(AppState app) {
     _app = app;
@@ -6621,6 +6694,29 @@ class VoiceAssistant {
     SidecarClient.instance.status.addListener(_sync);
     SidecarClient.instance.finalText.listen(_onFinal);
     _sync();
+  }
+
+  void _toast(String msg) {
+    final ctx = rootNavKey.currentContext;
+    if (ctx != null) showAppSnackBar(ctx, msg);
+  }
+
+  // Cyrillic → Latin so a Latin wake word ("EVS") still matches when Whisper
+  // transcribes Russian speech in Cyrillic ("евс", "ивэс", …).
+  static const Map<String, String> _translitMap = {
+    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+    'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'i', 'к': 'k', 'л': 'l', 'м': 'm',
+    'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+    'ф': 'f', 'х': 'h', 'ц': 'c', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+    'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'u', 'я': 'ya',
+  };
+
+  String _translit(String s) {
+    final b = StringBuffer();
+    for (final ch in s.toLowerCase().split('')) {
+      b.write(_translitMap[ch] ?? ch);
+    }
+    return b.toString();
   }
 
   // Start/stop continuous listening based on settings + sidecar availability.
@@ -6649,6 +6745,8 @@ class VoiceAssistant {
     if (app == null || _busy || !_listening) return;
     final raw = text.trim();
     if (raw.isEmpty) return;
+    // Surface what was heard so the user can confirm recognition works.
+    lastHeard.value = raw;
 
     String? command;
     if (app.cmdMode == 'wakeword') {
@@ -6675,20 +6773,33 @@ class VoiceAssistant {
   // Strip a leading wake word; returns the remaining command, or null if the
   // utterance doesn't start with the wake word (fuzzy on the first token).
   String? _stripWakeWord(String text, String wake) {
-    final w = wake.trim().toLowerCase();
+    final w = _translit(wake.trim());
     if (w.isEmpty) return text;
     final lower = text.toLowerCase();
-    if (lower.startsWith(w)) {
-      return text
-          .substring(w.length)
-          .replaceFirst(RegExp(r'^[\s,.:;!?]+'), '');
-    }
-    final tokens = lower.split(RegExp(r'[\s,.:;!?]+'))..removeWhere((t) => t.isEmpty);
+    final tokens = lower.split(RegExp(r'[\s,.:;!?]+'))
+      ..removeWhere((t) => t.isEmpty);
     if (tokens.isEmpty) return null;
-    if (_ratio(tokens.first, w) >= 0.6) {
-      final idx = lower.indexOf(tokens.first);
-      final rest = idx >= 0 ? text.substring(idx + tokens.first.length) : text;
-      return rest.replaceFirst(RegExp(r'^[\s,.:;!?]+'), '');
+
+    // Whisper often renders a short acronym as 1-3 tokens ("евс" / "и в эс"),
+    // sometimes in Cyrillic. Try transliterated matches over the first few
+    // tokens, keeping the leftover as the command.
+    for (var take = 1; take <= 3 && take <= tokens.length; take++) {
+      final headTokens = tokens.take(take).toList();
+      final head = _translit(headTokens.join());
+      final ratio = _ratio(head, w);
+      // Lenient: acronyms are hard; accept a decent transliterated match, or a
+      // prefix/containment.
+      if (head == w ||
+          ratio >= 0.5 ||
+          (w.length >= 2 && (head.startsWith(w) || w.startsWith(head)))) {
+        // Drop the first `take` tokens from the original text.
+        var rest = text;
+        for (final t in headTokens) {
+          final idx = rest.toLowerCase().indexOf(t);
+          if (idx >= 0) rest = rest.substring(idx + t.length);
+        }
+        return rest.replaceFirst(RegExp(r'^[\s,.:;!?]+'), '');
+      }
     }
     return null;
   }
@@ -6697,7 +6808,11 @@ class VoiceAssistant {
     state.value = VaState.thinking;
     // 1) Try the user's command catalog.
     final match = _matchCommand(app, command);
-    if (match != null && app.cmdEnabled) {
+    if (match != null) {
+      if (!app.cmdEnabled) {
+        _toast(app.t('vaCmdDisabled'));
+        return;
+      }
       final risky = match.type == VoiceCommandType.shell ||
           match.type == VoiceCommandType.system;
       final needConfirm = app.cmdConfirm == 'always' ||
@@ -6706,13 +6821,16 @@ class VoiceAssistant {
         return;
       }
       state.value = VaState.running;
+      _toast('${app.t('vaRunning')} ${match.phrase}');
       final ok = await CommandExecutor.instance.execute(match);
+      if (!ok) _toast(app.t('vaFailed'));
       if (app.voiceResponses) {
         _speak(app, ok ? app.t('vaDone') : app.t('vaFailed'));
       }
       return;
     }
     // 2) Otherwise treat it as a chat turn.
+    _toast('${app.t('vaThinking')} $command');
     final reply = await app.sendMessage(command);
     if (app.voiceResponses && reply.trim().isNotEmpty) _speak(app, reply);
   }
@@ -9933,6 +10051,13 @@ class _ChatScreenState extends State<ChatScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final app = context.read<AppState>();
+      // Warn once if the last run crashed loading a local model (we've since
+      // switched away from it so the app could start).
+      if (app.lastModelCrash != null) {
+        final name = app.modelDisplayName(app.lastModelCrash!, withSuffix: false);
+        app.lastModelCrash = null;
+        showAppSnackBar(context, '${app.t('modelCrashWarn')} $name');
+      }
       // Preload the current chat's local model so the "preparing model"
       // screen shows on open (no-op for remote / already-warmed models).
       unawaited(app.warmUpModelFor(app.current));
@@ -10252,44 +10377,71 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Voice-assistant activity pill (listening / thinking / running). Hidden
-  // when idle. Tapping it opens the voice screen.
+  // Voice-assistant status pill in the top bar. Only shown when the user turned
+  // on always-listening (wake-word mode). Reflects the real state: STT offline,
+  // listening (+ last heard phrase), thinking, or running.
   Widget _vaIndicator(AppState app) {
-    return ValueListenableBuilder<VaState>(
-      valueListenable: VoiceAssistant.instance.state,
-      builder: (_, s, __) {
-        if (s == VaState.idle) return const SizedBox.shrink();
-        final (label, color) = switch (s) {
-          VaState.listening => (app.t('vaListening'), const Color(0xFF8A7BE0)),
-          VaState.thinking => (app.t('vaThinking'), const Color(0xFF54E08A)),
-          VaState.running => (app.t('vaRunning'), const Color(0xFFE0C07A)),
-          VaState.idle => ('', const Color(0x00000000)),
-        };
-        return Padding(
-          padding: const EdgeInsets.only(right: 12),
-          child: Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(21),
-              border: Border.all(color: color.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.graphic_eq, size: 15, color: color),
-                const SizedBox(width: 8),
-                Text(label,
-                    style: TextStyle(
-                        color: Color.lerp(color, const Color(0xFFFFFFFF), 0.4)!,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
+    if (app.cmdMode != 'wakeword' || app.sttEngine != 'whisper') {
+      return const SizedBox.shrink();
+    }
+    return ValueListenableBuilder<SidecarStatus>(
+      valueListenable: SidecarClient.instance.status,
+      builder: (_, sc, __) {
+        if (sc != SidecarStatus.connected) {
+          return _vaPill(
+              Icons.mic_off, app.t('vaSttOffline'), const Color(0xFFE0985D));
+        }
+        return ValueListenableBuilder<VaState>(
+          valueListenable: VoiceAssistant.instance.state,
+          builder: (_, s, __) {
+            final (label, color) = switch (s) {
+              VaState.thinking => (app.t('vaThinking'), const Color(0xFF54E08A)),
+              VaState.running => (app.t('vaRunning'), const Color(0xFFE0C07A)),
+              _ => (app.t('vaListening'), const Color(0xFF8A7BE0)),
+            };
+            if (s == VaState.listening || s == VaState.idle) {
+              return ValueListenableBuilder<String>(
+                valueListenable: VoiceAssistant.instance.lastHeard,
+                builder: (_, heard, __) => _vaPill(Icons.graphic_eq,
+                    heard.isEmpty ? label : '🎤 $heard', color),
+              );
+            }
+            return _vaPill(Icons.graphic_eq, label, color);
+          },
         );
       },
+    );
+  }
+
+  Widget _vaPill(IconData icon, String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(21),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 240),
+              child: Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Color.lerp(color, const Color(0xFFFFFFFF), 0.4)!,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

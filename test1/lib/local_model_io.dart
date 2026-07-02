@@ -25,6 +25,37 @@ Future<String> componentsDirPath() async {
   return c.path;
 }
 
+// Crash sentinel for native local-model loads (fllama can hard-crash the whole
+// process, which Dart can't catch). We write this file right before calling
+// into fllama and delete it right after; if it survives to the next launch, the
+// previous load crashed and we must not auto-load that model again.
+Future<File> _modelLoadingFlagFile() async {
+  final dir = await getApplicationSupportDirectory();
+  return File('${dir.path}/model_loading.lock');
+}
+
+Future<void> setModelLoadingFlag(String modelKey) async {
+  try {
+    await (await _modelLoadingFlagFile()).writeAsString(modelKey);
+  } catch (_) {}
+}
+
+Future<String?> readModelLoadingFlag() async {
+  try {
+    final f = await _modelLoadingFlagFile();
+    return await f.exists() ? (await f.readAsString()).trim() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<void> clearModelLoadingFlag() async {
+  try {
+    final f = await _modelLoadingFlagFile();
+    if (await f.exists()) await f.delete();
+  } catch (_) {}
+}
+
 Future<void> installApk(String path) async {
   final result = await OpenFilex.open(path);
   if (result.type != ResultType.done) {
