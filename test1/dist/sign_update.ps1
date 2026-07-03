@@ -52,8 +52,10 @@ try {
 }
 
 $len = (Get-Item $File).Length
+$sha = (Get-FileHash $File -Algorithm SHA256).Hash.ToLower()
 Write-Host ''
 Write-Host "File:    $File"
 Write-Host "length:  $len"
+Write-Host "evs:sha256: $sha"
 Write-Host "sparkle:dsaSignature:"
 Write-Host $sig

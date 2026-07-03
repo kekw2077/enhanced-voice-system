@@ -18,6 +18,7 @@
 -->
 <rss version="2.0"
      xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:evs="https://github.com/kekw2077/mirai"
      xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>EVS</title>
@@ -26,6 +27,34 @@
     <language>ru</language>
 
     <!-- Newest release first. Duplicate this block for each new version. -->
+    <item>
+      <title>EVS 1.0.4</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Обновления как в Discord: скачиваются в фоне, достаточно нажать «Перезапустить».</li>
+          <li>Виджет микрофона на главном экране снова реагирует на звук.</li>
+          <li>Убраны пер-чатовые настройки и ролевая игра — всё в настройках EVS.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Wed, 01 Jul 2026 14:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.4/EVS-Setup-1.0.4.exe"
+        sparkle:version="1.0.4"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHCCivs8IAbWv6VhTcoGtsPFkmxknXfplrtbeCCoCHCB3X4RTYlHf3ALyqB+8NlyZdGx32JIyWGJzUi0="
+        evs:sha256="d5fbe64e7d0693ed362b350047a02df6d72a6772815df14ca02a6b32cdaa2306"
+        length="15764201"
+        type="application/octet-stream" />
+    </item>
+
     <item>
       <title>EVS 1.0.3</title>
       <description><![CDATA[

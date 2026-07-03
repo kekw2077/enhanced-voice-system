@@ -19,7 +19,6 @@ import 'package:window_manager/window_manager.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
-import 'package:auto_updater/auto_updater.dart';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
 import 'package:file_picker/file_picker.dart';
@@ -225,6 +224,10 @@ const Map<String, Map<String, String>> _i18n = {
     'vaFailed': 'Не удалось выполнить команду',
     'vaCmdDisabled': 'Команда распознана, но выполнение выключено (включите «Разрешить выполнение команд»)',
     'vaSttOffline': 'Голосовой движок не подключён',
+    'updRestart': 'Перезапустить',
+    'updUpToDate': 'Актуальная версия',
+    'updReadyShort': 'Обновление',
+    'updFlowDesc': 'Обновление скачается в фоне — останется перезапустить',
     'vaConfirmTitle': 'Выполнить команду?',
     'vaConfirmBody': 'EVS распознал команду:',
     'cardSecurity': 'Безопасность',
@@ -845,6 +848,10 @@ const Map<String, Map<String, String>> _i18n = {
     'vaFailed': 'Could not run the command',
     'vaCmdDisabled': 'Command recognized, but execution is off (enable "Allow command execution")',
     'vaSttOffline': 'Voice engine not connected',
+    'updRestart': 'Restart',
+    'updUpToDate': 'Up to date',
+    'updReadyShort': 'Update',
+    'updFlowDesc': 'Downloads in the background — just restart to apply',
     'vaConfirmTitle': 'Run command?',
     'vaConfirmBody': 'EVS recognized a command:',
     'cardSecurity': 'Security',
@@ -3232,6 +3239,8 @@ class AppState extends ChangeNotifier {
   String vizType = 'sphere'; // 'sphere' | 'waves' | 'bars' | 'none'
   bool showVizBg = true;
   bool showPartial = true;
+  // Periodic background update checks (the in-app Discord-style updater).
+  bool autoUpdateCheck = true;
   // Voice responses (TTS).
   bool voiceResponses = false;
   String ttsVoice = 'system'; // 'system' | 'cloned'
@@ -3368,6 +3377,7 @@ class AppState extends ChangeNotifier {
     vizType = prefs.getString('vizType') ?? 'sphere';
     showVizBg = prefs.getBool('showVizBg') ?? true;
     showPartial = prefs.getBool('showPartial') ?? true;
+    autoUpdateCheck = prefs.getBool('autoUpdateCheck') ?? true;
     voiceResponses = prefs.getBool('voiceResponses') ?? false;
     ttsVoice = prefs.getString('ttsVoice') ?? 'system';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
@@ -3452,6 +3462,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('vizType', vizType);
     await prefs.setBool('showVizBg', showVizBg);
     await prefs.setBool('showPartial', showPartial);
+    await prefs.setBool('autoUpdateCheck', autoUpdateCheck);
     await prefs.setBool('voiceResponses', voiceResponses);
     await prefs.setString('ttsVoice', ttsVoice);
     await prefs.setDouble('ttsRate', ttsRate);
@@ -3579,6 +3590,12 @@ class AppState extends ChangeNotifier {
 
   void setShowPartial(bool v) {
     showPartial = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setAutoUpdateCheck(bool v) {
+    autoUpdateCheck = v;
     _save();
     notifyListeners();
   }
@@ -5924,15 +5941,16 @@ class DesktopIntegration with WindowListener, TrayListener {
       unawaited(_bootstrapSidecar(app));
       VoiceAssistant.instance.attach(app);
 
-      // Auto-update: register the feed and let WinSparkle poll periodically in
-      // the background (it shows its own native update prompt). The "Проверить
-      // обновления" button triggers an immediate check via checkForUpdates().
-      try {
-        await autoUpdater.setFeedURL(effectiveFeedUrl);
-        await autoUpdater.setScheduledCheckInterval(6 * 3600);
-      } catch (_) {}
+      // Auto-update (Discord-style): AppUpdater silently downloads the new
+      // installer in the background and shows an in-app "restart to update"
+      // banner — no native WinSparkle prompts.
+      AppUpdater.instance.start(app);
     } catch (_) {}
   }
+
+  // Cleanly shut everything down and exit so the (already launched, detached)
+  // silent installer can replace our files and relaunch the new version.
+  Future<void> quitForUpdate() => _quit();
 
   // Load the component manifest, then start the sidecar. On a slim install the
   // sidecar isn't present locally, so fetch the (essential) component first —
@@ -5953,17 +5971,6 @@ class DesktopIntegration with WindowListener, TrayListener {
         unawaited(ComponentManager.instance.stageUpdate('sidecar'));
       }
       await SidecarClient.instance.start();
-    } catch (_) {}
-  }
-
-  /// User-initiated update check (from Settings → «О приложении»). WinSparkle
-  /// drives the whole flow itself — finding, downloading and launching the
-  /// signed installer — so there's no separate in-app download UI to manage.
-  Future<void> checkForUpdates() async {
-    if (defaultTargetPlatform != TargetPlatform.windows) return;
-    try {
-      await autoUpdater.setFeedURL(effectiveFeedUrl);
-      await autoUpdater.checkForUpdates();
     } catch (_) {}
   }
 
@@ -6034,6 +6041,186 @@ class DesktopIntegration with WindowListener, TrayListener {
         _quit();
         break;
     }
+  }
+}
+
+// ============================ IN-APP UPDATER ============================
+// Discord-style updates: silently download the new installer in the
+// background, verify it (sha256 from the appcast, falling back to size), then
+// show an in-app "restart to update" banner. Applying runs the installer in
+// silent mode (detached) and exits; installer.iss relaunches the new version
+// when passed /RELAUNCH=1. Replaces WinSparkle's native prompt flow.
+
+enum UpdateStatus { idle, checking, downloading, ready, upToDate, error }
+
+class _FeedItem {
+  final String version;
+  final String url;
+  final int length;
+  final String sha256hex; // '' when the feed entry predates sha256 support
+  const _FeedItem(this.version, this.url, this.length, this.sha256hex);
+}
+
+class AppUpdater {
+  AppUpdater._();
+  static final AppUpdater instance = AppUpdater._();
+
+  final ValueNotifier<UpdateStatus> status = ValueNotifier(UpdateStatus.idle);
+  final ValueNotifier<double> progress = ValueNotifier(0);
+  String availableVersion = '';
+  String? lastError;
+  String? _installerPath;
+  Timer? _timer;
+  bool _busy = false;
+  AppState? _app;
+
+  void start(AppState app) {
+    _app = app;
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
+    unawaited(_cleanupOldInstallers());
+    // Don't auto-poll during development unless a staging feed is forced.
+    final hasOverride =
+        (io.Platform.environment['EVS_UPDATE_FEED'] ?? '').trim().isNotEmpty;
+    if (kDebugMode && !hasOverride) return;
+    unawaited(checkAndDownload());
+    _timer ??= Timer.periodic(const Duration(hours: 6), (_) {
+      if (_app?.autoUpdateCheck ?? true) unawaited(checkAndDownload());
+    });
+  }
+
+  // Downloaded installers are one-shot; drop leftovers from previous updates.
+  Future<void> _cleanupOldInstallers() async {
+    try {
+      final dir = io.File(await updateDownloadPath('x')).parent;
+      await for (final f in dir.list()) {
+        final name = f.uri.pathSegments.last;
+        if (f is io.File &&
+            name.startsWith('EVS-Setup-') &&
+            name.endsWith('.exe')) {
+          try {
+            await f.delete();
+          } catch (_) {} // pending installer may be locked — fine, keep it
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> checkAndDownload() async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
+    if (_busy || status.value == UpdateStatus.ready) return;
+    _busy = true;
+    status.value = UpdateStatus.checking;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final res = await http
+          .get(Uri.parse(DesktopIntegration.effectiveFeedUrl))
+          .timeout(const Duration(seconds: 20));
+      if (res.statusCode != 200) throw Exception('feed HTTP ${res.statusCode}');
+      final item = _newestItem(utf8.decode(res.bodyBytes));
+      if (item == null || !_isNewer(item.version, info.version)) {
+        status.value = UpdateStatus.upToDate;
+        debugPrint('EVS_UPDATER up-to-date (current ${info.version})');
+        return;
+      }
+      availableVersion = item.version;
+      final dest = await updateDownloadPath('EVS-Setup-${item.version}.exe');
+      if (!await _validFile(dest, item)) {
+        status.value = UpdateStatus.downloading;
+        progress.value = 0;
+        debugPrint('EVS_UPDATER downloading ${item.version}');
+        await downloadFileWithProgress(item.url, dest, (r, t) {
+          progress.value = t > 0 ? r / t : 0;
+        }, () => false);
+        if (!await _validFile(dest, item)) {
+          try {
+            await io.File(dest).delete();
+          } catch (_) {}
+          throw Exception('update failed verification');
+        }
+      }
+      _installerPath = dest;
+      status.value = UpdateStatus.ready;
+      debugPrint('EVS_UPDATER READY ${item.version}');
+    } catch (e) {
+      lastError = e.toString();
+      status.value = UpdateStatus.error;
+      debugPrint('EVS_UPDATER ERROR $e');
+    } finally {
+      _busy = false;
+    }
+  }
+
+  // Launch the verified installer silently (detached, so it survives our exit)
+  // and quit; the installer swaps the files and relaunches the new version.
+  Future<void> applyAndRestart() async {
+    final path = _installerPath;
+    if (path == null || status.value != UpdateStatus.ready) return;
+    try {
+      await io.Process.start(
+        path,
+        ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
+            '/RELAUNCH=1'],
+        mode: io.ProcessStartMode.detached,
+      );
+    } catch (e) {
+      lastError = e.toString();
+      status.value = UpdateStatus.error;
+      return;
+    }
+    await DesktopIntegration.instance.quitForUpdate();
+  }
+
+  Future<bool> _validFile(String path, _FeedItem item) async {
+    try {
+      final f = io.File(path);
+      if (!await f.exists()) return false;
+      if (item.sha256hex.isNotEmpty) {
+        final digest = await sha256.bind(f.openRead()).first;
+        return digest.toString().toLowerCase() == item.sha256hex.toLowerCase();
+      }
+      return item.length > 0 && await f.length() == item.length;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Minimal appcast parse (the feed is ours, format controlled): newest
+  // windows <item> by version.
+  _FeedItem? _newestItem(String xml) {
+    _FeedItem? best;
+    for (final m in RegExp(r'<item>([\s\S]*?)</item>').allMatches(xml)) {
+      final block = m.group(1)!;
+      if (!block.contains('sparkle:os="windows"')) continue;
+      final v = RegExp(r'sparkle:version="([^"]+)"').firstMatch(block)?.group(1);
+      final url = RegExp(r'url="([^"]+)"').firstMatch(block)?.group(1);
+      if (v == null || url == null) continue;
+      final len = int.tryParse(
+              RegExp(r'length="(\d+)"').firstMatch(block)?.group(1) ?? '') ??
+          0;
+      final sha = RegExp(r'evs:sha256="([0-9a-fA-F]{64})"')
+              .firstMatch(block)
+              ?.group(1) ??
+          '';
+      final item = _FeedItem(v, url, len, sha);
+      if (best == null || _isNewer(item.version, best.version)) best = item;
+    }
+    return best;
+  }
+
+  // True when a > b for dotted versions ("1.0.4" vs "1.0.3+4" — build ignored).
+  static bool _isNewer(String a, String b) {
+    List<int> parse(String v) => v
+        .split('+')
+        .first
+        .split('.')
+        .map((e) => int.tryParse(e.trim()) ?? 0)
+        .toList();
+    final x = parse(a), y = parse(b);
+    for (var i = 0; i < 3; i++) {
+      final ai = i < x.length ? x[i] : 0, bi = i < y.length ? y[i] : 0;
+      if (ai != bi) return ai > bi;
+    }
+    return false;
   }
 }
 
@@ -7340,8 +7527,10 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
       AnimationController(vsync: this, duration: const Duration(seconds: 2))
         ..repeat();
   static const _n = 22;
-  // Scrolling history of recent levels → a real moving waveform.
-  final List<double> _hist = List<double>.filled(_n, 0.0);
+  // Scrolling history of recent levels → a real moving waveform. Must be
+  // growable: the tick does removeAt(0)+add, which throws on a fixed-length
+  // list (that's why the waveform used to sit frozen).
+  final List<double> _hist = List<double>.filled(_n, 0.0, growable: true);
   Timer? _tick;
 
   @override
@@ -8164,6 +8353,62 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   Future<void> _downloadSidecar(AppState app) async {
     final p = await ComponentManager.instance.ensure('sidecar');
     if (p != null) await SidecarClient.instance.start();
+  }
+
+  // In-app update flow control: check → silent download progress → "restart".
+  Widget _updateControl(AppState app) {
+    return ValueListenableBuilder<UpdateStatus>(
+      valueListenable: AppUpdater.instance.status,
+      builder: (_, st, __) {
+        switch (st) {
+          case UpdateStatus.checking:
+            return const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2));
+          case UpdateStatus.downloading:
+            return SizedBox(
+              width: 160,
+              child: ValueListenableBuilder<double>(
+                valueListenable: AppUpdater.instance.progress,
+                builder: (_, p, __) => Row(children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.all(Radius.circular(3)),
+                      child: LinearProgressIndicator(
+                        value: p > 0 ? p : null,
+                        minHeight: 6,
+                        backgroundColor: const Color(0x14FFFFFF),
+                        valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('${(p * 100).round()}%',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF6E7280))),
+                ]),
+              ),
+            );
+          case UpdateStatus.ready:
+            return evsGhostButton(
+                '${app.t('updRestart')} · ${AppUpdater.instance.availableVersion}',
+                Icons.restart_alt,
+                onTap: () => AppUpdater.instance.applyAndRestart());
+          case UpdateStatus.upToDate:
+            return InkWell(
+              onTap: () => AppUpdater.instance.checkAndDownload(),
+              child: _compBadge(app.t('updUpToDate'), const Color(0xFF54E08A)),
+            );
+          case UpdateStatus.error:
+            return evsGhostButton(app.t('retry'), Icons.refresh,
+                onTap: () => AppUpdater.instance.checkAndDownload());
+          case UpdateStatus.idle:
+            return evsGhostButton(app.t('checkUpdate'), Icons.refresh,
+                onTap: () => AppUpdater.instance.checkAndDownload());
+        }
+      },
+    );
   }
 
   Future<void> _pickCloneSample(AppState app) async {
@@ -9110,11 +9355,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         evsRow(
             label: app.t('autoCheck'),
             desc: app.t('autoCheckDesc'),
-            control: _stubToggle('autoUpdate')),
+            control: evsToggle(app.autoUpdateCheck, app.setAutoUpdateCheck)),
         evsRow(
             label: app.t('checkNow'),
-            control: evsGhostButton(app.t('checkUpdate'), Icons.refresh,
-                onTap: () => DesktopIntegration.instance.checkForUpdates())),
+            desc: app.t('updFlowDesc'),
+            control: _updateControl(app)),
       ])),
     ];
   }
@@ -10364,16 +10609,34 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const Spacer(),
+          _updateReadyPill(app),
           _vaIndicator(app),
+          // Per-chat personalization / roleplay settings are intentionally not
+          // exposed on desktop — the assistant is configured globally in
+          // DesktopSettings («Личность и память»).
           _desktopStatusBadge(app, isLocal),
-          const SizedBox(width: 12),
-          _circleBtn(
-            Icons.manage_accounts_outlined,
-            _openChatPersonalization,
-            tooltip: app.t('persPersona'),
-          ),
         ],
       ),
+    );
+  }
+
+  // "Update ready — restart" pill (Discord-style): appears once the new
+  // installer is downloaded and verified; clicking applies it silently and
+  // relaunches the app on the new version.
+  Widget _updateReadyPill(AppState app) {
+    return ValueListenableBuilder<UpdateStatus>(
+      valueListenable: AppUpdater.instance.status,
+      builder: (_, st, __) {
+        if (st != UpdateStatus.ready) return const SizedBox.shrink();
+        return InkWell(
+          borderRadius: BorderRadius.circular(21),
+          onTap: () => AppUpdater.instance.applyAndRestart(),
+          child: _vaPill(
+              Icons.system_update_alt,
+              '${app.t('updReadyShort')} ${AppUpdater.instance.availableVersion} · ${app.t('updRestart')}',
+              const Color(0xFF54E08A)),
+        );
+      },
     );
   }
 

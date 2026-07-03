@@ -39,11 +39,25 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Per-user install by default (installs to %LocalAppData%\Programs\EVS, no UAC).
-; This keeps WinSparkle auto-updates frictionless — each update relaunches the
-; installer in the same non-elevated context, so no elevation prompt per update.
-; An admin can still pick an all-users install via the dialog or /ALLUSERS.
+; Silent in-app updates run the installer in the same non-elevated context, so
+; there is no elevation prompt per update. An admin can still pick an all-users
+; install via the dialog or /ALLUSERS.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
+; In-app updates: if EVS is still running when files are copied, close it via
+; Restart Manager instead of failing (the app normally exits itself first).
+CloseApplications=force
+RestartApplications=no
+
+[Code]
+// The in-app updater (AppUpdater.applyAndRestart) launches this installer with
+// /VERYSILENT ... /RELAUNCH=1 and exits; this relaunches the new version after
+// the silent install so the update feels like a plain restart (Discord-style).
+function ShouldRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;
+
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -64,6 +78,7 @@ Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-; Relaunch EVS after install/update. /SILENT updates won't show this checkbox,
-; but WinSparkle passes the flag so the app restarts.
+; Interactive install: offer to launch at the end.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+; Silent in-app update: relaunch the new version automatically (/RELAUNCH=1).
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait; Check: ShouldRelaunch
