@@ -75,7 +75,9 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),
                           volume=float(data.get("volume", 1.0)),
-                          on_done=lambda: emit({"type": "tts.done"}))
+                          on_done=lambda: emit({"type": "tts.done"}),
+                          on_level=lambda v: emit(
+                              {"type": "tts.level", "level": v}))
             elif t == "tts.stop":
                 tts.stop()
             elif t == "intent.parse":

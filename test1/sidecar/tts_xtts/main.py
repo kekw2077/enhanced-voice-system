@@ -69,6 +69,7 @@ async def _handle(ws, eng: XttsEngine) -> None:
                     str(data.get("language", "ru")),
                     on_done=lambda: emit({"type": "tts.done"}),
                     on_error=lambda e: emit({"type": "tts.error", "message": e}),
+                    on_level=lambda v: emit({"type": "tts.level", "level": v}),
                 )
             elif t == "tts.stop":
                 eng.stop()

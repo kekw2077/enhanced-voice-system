@@ -71,7 +71,7 @@ class XttsEngine:
         return False
 
     def speak(self, text: str, language: str = "ru",
-              on_done=None, on_error=None) -> None:
+              on_done=None, on_error=None, on_level=None) -> None:
         if not self._available or not text.strip():
             if on_done:
                 on_done()
@@ -89,8 +89,9 @@ class XttsEngine:
                     if on_error:
                         on_error("no speaker sample")
                     return
-                import soundfile as sf
+                import numpy as np
                 import sounddevice as sd
+                import soundfile as sf
 
                 lang = language if language in ("ru", "en") else "en"
                 out = os.path.join(tempfile.gettempdir(), "evs_xtts_out.wav")
@@ -103,13 +104,36 @@ class XttsEngine:
                     )
                 if self._stop.is_set():
                     return
+                # Chunked playback with live RMS levels so the app's voice
+                # visualizations react to the cloned speech in real time.
                 data, sr = sf.read(out, dtype="float32")
-                sd.play(data, sr)
-                sd.wait()
+                if getattr(data, "ndim", 1) > 1:
+                    data = data.mean(axis=1)
+                chunk = max(1, sr // 30)
+                stream = sd.OutputStream(
+                    samplerate=sr, channels=1, dtype="float32")
+                stream.start()
+                try:
+                    for i in range(0, len(data), chunk):
+                        if self._stop.is_set():
+                            break
+                        buf = data[i:i + chunk]
+                        stream.write(buf.reshape(-1, 1))
+                        if on_level is not None and len(buf):
+                            rms = float(np.sqrt(np.mean(buf * buf)))
+                            on_level(min(1.0, rms * 8.0))
+                finally:
+                    stream.stop()
+                    stream.close()
             except Exception as e:  # pragma: no cover
                 if on_error:
                     on_error(str(e))
             finally:
+                if on_level is not None:
+                    try:
+                        on_level(0.0)
+                    except Exception:
+                        pass
                 if on_done and not self._stop.is_set():
                     on_done()
 

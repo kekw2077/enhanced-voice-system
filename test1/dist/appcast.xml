@@ -28,6 +28,35 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 1.0.5</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Живые визуализации голоса: сфера, кольцо и бары — реагируют на микрофон и озвучку ответов.</li>
+          <li>Видимая реакция на слово-активатор «EVS» (вспышка «услышал, говорите!»).</li>
+          <li>Окно обновления в стиле EVS со списком изменений.</li>
+          <li>Обновлена история версий.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Wed, 01 Jul 2026 16:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.5/EVS-Setup-1.0.5.exe"
+        sparkle:version="1.0.5"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHGEkjSTuHikKoACLXSyJnwMvG7vjWf0Lxr6vZyECHFRe9GiOjdBgTTFbkg3m9v2EHdRwjPTEzcXli1M="
+        evs:sha256="3acd69a23415478aa72b893e00f17f1f121c023398838e45a5b16e1647481291"
+        length="15773268"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.0.4</title>
       <description><![CDATA[
         <style>

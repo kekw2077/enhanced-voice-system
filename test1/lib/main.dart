@@ -228,6 +228,10 @@ const Map<String, Map<String, String>> _i18n = {
     'updUpToDate': 'Актуальная версия',
     'updReadyShort': 'Обновление',
     'updFlowDesc': 'Обновление скачается в фоне — останется перезапустить',
+    'updAvailableTitle': 'Доступно обновление',
+    'updDialogHint': 'Обновление уже скачано. Перезапустите EVS, чтобы применить.',
+    'updLater': 'Позже',
+    'vaWakeHeard': 'услышал, говорите!',
     'vaConfirmTitle': 'Выполнить команду?',
     'vaConfirmBody': 'EVS распознал команду:',
     'cardSecurity': 'Безопасность',
@@ -852,6 +856,10 @@ const Map<String, Map<String, String>> _i18n = {
     'updUpToDate': 'Up to date',
     'updReadyShort': 'Update',
     'updFlowDesc': 'Downloads in the background — just restart to apply',
+    'updAvailableTitle': 'Update available',
+    'updDialogHint': 'The update is already downloaded. Restart EVS to apply.',
+    'updLater': 'Later',
+    'vaWakeHeard': 'heard you, go ahead!',
     'vaConfirmTitle': 'Run command?',
     'vaConfirmBody': 'EVS recognized a command:',
     'cardSecurity': 'Security',
@@ -2315,6 +2323,35 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('1.0.5', [
+    'Живые визуализации голоса: три варианта виджета (сфера, кольцо, бары) — реагируют на реальный звук с микрофона и на озвучку ответов, переключаются в настройках («Тип визуализации»).',
+    'Видимая реакция на слово-активатор: при «EVS…» плашка вспыхивает «услышал, говорите!», визуализация даёт импульс.',
+    'Окно обновления в стиле EVS: тёмный диалог со списком изменений и кнопками «Перезапустить»/«Позже» (появляется, когда обновление уже скачано).',
+    'Озвучка ответов теперь транслирует уровень звука в интерфейс (виджеты «дышат» голосом ассистента).',
+    'Обновлён список изменений (история версий EVS).',
+  ]),
+  ChangelogEntry('1.0.4', [
+    'Обновления как в Discord: скачиваются в фоне, в приложении появляется плашка «Обновление · Перезапустить» — один клик, и новая версия открывается сама.',
+    'Виджет микрофона на главном экране снова реагирует на звук (волна была заморожена из-за ошибки).',
+    'Убраны пер-чатовые настройки и ролевая игра из десктопного чата — ассистент настраивается глобально в настройках EVS.',
+    'Тогл «Автопроверка обновлений» стал рабочим.',
+  ]),
+  ChangelogEntry('1.0.3', [
+    'Исправлен вылет приложения при запуске после скачивания локальной модели (сбойная модель отключается автоматически).',
+    'Голосовые команды и кнопка запуска в каталоге теперь открывают приложения, ярлыки (.lnk) и ссылки.',
+    'Виден отклик ассистента: что услышано, статус движка, уведомления о выполнении команд.',
+    'Слово-активатор «EVS» распознаётся и в русской речи (транслитерация).',
+  ]),
+  ChangelogEntry('1.0.2', [
+    'Голосовой ассистент «как у Алисы»: постоянное прослушивание со словом-активатором, выполнение команд из каталога, озвучка ответов.',
+    'Клонирование голоса (XTTS): ответы вашим голосом из образца WAV 6–10 секунд, офлайн.',
+    'Тонкие обновления: установщик ~15 МБ, тяжёлые компоненты (голосовой движок, клонирование) догружаются отдельно по требованию.',
+    'Рабочий выбор модели Whisper, реальная плашка статуса нейросети с окном ошибки, настройки во всю ширину.',
+  ]),
+  ChangelogEntry('1.0.1', [
+    'Автообновления через собственный канал (appcast + подписанные установщики).',
+    'Первый цикл обновления проверен: 1.0.0 → 1.0.1.',
+  ]),
   ChangelogEntry('1.0.0', [
     'Проект переименован из «Mirai» в «EVS» (Enhanced Voice System — система усовершенствованного голосового управления): новое отображаемое имя, заголовок окна, имя ассистента и метаданные приложения; исполняемый файл теперь evs.exe.',
     'EVS — это десктоп-ответвление (только Windows) от разработки Mirai; нумерация версий начинается заново с 1.0.0.',
@@ -5938,6 +5975,7 @@ class DesktopIntegration with WindowListener, TrayListener {
 
       SystemMonitor.instance.start(app);
       unawaited(MicMeter.instance.start(deviceId: app.inputDeviceId));
+      VoiceLevels.instance; // start the combined-level history ticker
       unawaited(_bootstrapSidecar(app));
       VoiceAssistant.instance.attach(app);
 
@@ -6058,7 +6096,9 @@ class _FeedItem {
   final String url;
   final int length;
   final String sha256hex; // '' when the feed entry predates sha256 support
-  const _FeedItem(this.version, this.url, this.length, this.sha256hex);
+  final List<String> notes; // release notes (<li> items from <description>)
+  const _FeedItem(
+      this.version, this.url, this.length, this.sha256hex, this.notes);
 }
 
 class AppUpdater {
@@ -6068,8 +6108,10 @@ class AppUpdater {
   final ValueNotifier<UpdateStatus> status = ValueNotifier(UpdateStatus.idle);
   final ValueNotifier<double> progress = ValueNotifier(0);
   String availableVersion = '';
+  List<String> releaseNotes = const [];
   String? lastError;
   String? _installerPath;
+  String _promptedVersion = '';
   Timer? _timer;
   bool _busy = false;
   AppState? _app;
@@ -6123,6 +6165,7 @@ class AppUpdater {
         return;
       }
       availableVersion = item.version;
+      releaseNotes = item.notes;
       final dest = await updateDownloadPath('EVS-Setup-${item.version}.exe');
       if (!await _validFile(dest, item)) {
         status.value = UpdateStatus.downloading;
@@ -6141,6 +6184,7 @@ class AppUpdater {
       _installerPath = dest;
       status.value = UpdateStatus.ready;
       debugPrint('EVS_UPDATER READY ${item.version}');
+      _maybePrompt();
     } catch (e) {
       lastError = e.toString();
       status.value = UpdateStatus.error;
@@ -6148,6 +6192,127 @@ class AppUpdater {
     } finally {
       _busy = false;
     }
+  }
+
+  // EVS-styled "update ready" dialog (Discord-style: everything is already
+  // downloaded, one click restarts onto the new version). Shown once per
+  // version; declining leaves the top-bar pill available.
+  void _maybePrompt() {
+    if (_promptedVersion == availableVersion) return;
+    _promptedVersion = availableVersion;
+    final ctx = rootNavKey.currentContext;
+    final app = _app;
+    if (ctx == null || app == null) return;
+    showDialog(
+      context: ctx,
+      builder: (dctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: 440,
+          padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF12131C),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0x1AFFFFFF)),
+            boxShadow: const [
+              BoxShadow(
+                  color: Colors.black54, blurRadius: 40, offset: Offset(0, 16)),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const _EvsLogoMark(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '${app.t('updAvailableTitle')} — $availableVersion',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (releaseNotes.isNotEmpty) ...[
+                for (final n in releaseNotes.take(5))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 6),
+                          child: Icon(Icons.circle,
+                              size: 5, color: Color(0xFF8A7BE0)),
+                        ),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(n,
+                              style: const TextStyle(
+                                  color: Color(0xFFC8CCDA),
+                                  fontSize: 13,
+                                  height: 1.45)),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 6),
+              ],
+              Text(app.t('updDialogHint'),
+                  style:
+                      const TextStyle(color: Color(0xFF6E7280), fontSize: 12)),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dctx),
+                    child: Text(app.t('updLater'),
+                        style: const TextStyle(color: Color(0xFF9AA0B4))),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.pop(dctx);
+                      applyAndRestart();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: const LinearGradient(
+                            colors: [Color(0xFF5068D8), Color(0xFF8855CC)]),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.restart_alt,
+                              size: 16, color: Colors.white),
+                          const SizedBox(width: 7),
+                          Text(app.t('updRestart'),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   // Launch the verified installer silently (detached, so it survives our exit)
@@ -6201,7 +6366,22 @@ class AppUpdater {
               .firstMatch(block)
               ?.group(1) ??
           '';
-      final item = _FeedItem(v, url, len, sha);
+      // Release notes: the <li> items inside <description>, tags stripped.
+      final notes = <String>[];
+      final desc = RegExp(r'<description>([\s\S]*?)</description>')
+          .firstMatch(block)
+          ?.group(1);
+      if (desc != null) {
+        for (final li in RegExp(r'<li>([\s\S]*?)</li>').allMatches(desc)) {
+          final t = li
+              .group(1)!
+              .replaceAll(RegExp(r'<[^>]+>'), '')
+              .replaceAll(RegExp(r'\s+'), ' ')
+              .trim();
+          if (t.isNotEmpty) notes.add(t);
+        }
+      }
+      final item = _FeedItem(v, url, len, sha, notes);
       if (best == null || _isNewer(item.version, best.version)) best = item;
     }
     return best;
@@ -6637,6 +6817,15 @@ class SidecarClient {
           case 'vad':
             _vad.add(m['speaking'] == true);
             break;
+          // Live playback level of the assistant's speech — feeds the
+          // visualizations while TTS is talking.
+          case 'tts.level':
+            VoiceLevels.instance.tts.value =
+                ((m['level'] as num?)?.toDouble() ?? 0).clamp(0.0, 1.0);
+            break;
+          case 'tts.done':
+            VoiceLevels.instance.tts.value = 0;
+            break;
         }
       } catch (_) {}
     }, onDone: () => status.value = SidecarStatus.stopped,
@@ -6808,8 +6997,16 @@ class TtsCloneClient {
                 ? TtsCloneStatus.ready
                 : TtsCloneStatus.error;
             break;
+          case 'tts.level':
+            VoiceLevels.instance.tts.value =
+                ((m['level'] as num?)?.toDouble() ?? 0).clamp(0.0, 1.0);
+            break;
+          case 'tts.done':
+            VoiceLevels.instance.tts.value = 0;
+            break;
           case 'tts.error':
             lastError = m['message'] as String?;
+            VoiceLevels.instance.tts.value = 0;
             break;
         }
       } catch (_) {}
@@ -6870,6 +7067,21 @@ class VoiceAssistant {
   // The last phrase Whisper heard (shown so the user can confirm recognition
   // works and see how their wake word is actually transcribed).
   final ValueNotifier<String> lastHeard = ValueNotifier('');
+  // Wake-word feedback: `wakeActive` flips true for ~2.5 s so the UI can flash
+  // "heard you!"; `wakePulse` carries the trigger timestamp for the
+  // visualizers' glow burst.
+  final ValueNotifier<bool> wakeActive = ValueNotifier(false);
+  final ValueNotifier<int> wakePulse = ValueNotifier(0);
+  Timer? _wakeTimer;
+
+  void _flagWake() {
+    wakePulse.value = DateTime.now().millisecondsSinceEpoch;
+    wakeActive.value = true;
+    _wakeTimer?.cancel();
+    _wakeTimer = Timer(const Duration(milliseconds: 2500), () {
+      wakeActive.value = false;
+    });
+  }
 
   bool get isListening => _listening;
 
@@ -6939,6 +7151,7 @@ class VoiceAssistant {
     if (app.cmdMode == 'wakeword') {
       command = _stripWakeWord(raw, app.wakeWord);
       if (command == null) return; // wake word not heard — ignore
+      _flagWake(); // visible "heard you!" pulse in the pill + visualizers
     } else if (app.cmdMode == 'first') {
       command = raw;
     } else {
@@ -7419,6 +7632,227 @@ class _DesktopSystemWidget extends StatelessWidget {
   }
 }
 
+// Combined live audio level driving every voice visualization: microphone
+// input (MicMeter) + TTS playback level (`tts.level` events streamed by the
+// sidecars while the assistant speaks). Keeps a short rolling history so the
+// bar/ring visualizers show a real moving waveform, not a canned loop.
+class VoiceLevels {
+  VoiceLevels._() {
+    MicMeter.instance.level.addListener(_recompute);
+    tts.addListener(_recompute);
+    Timer.periodic(const Duration(milliseconds: 33), (_) => _tick());
+  }
+  static final VoiceLevels instance = VoiceLevels._();
+
+  /// Level of the assistant's speech output (0..1), fed by the sidecars.
+  final ValueNotifier<double> tts = ValueNotifier(0.0);
+
+  /// max(mic, tts) — "is there voice happening right now".
+  final ValueNotifier<double> combined = ValueNotifier(0.0);
+
+  static const int historyLen = 48;
+  final List<double> history =
+      List<double>.filled(historyLen, 0.0, growable: true);
+
+  /// Bumped ~30 Hz whenever the history scrolls — repaint trigger.
+  final ValueNotifier<int> tick = ValueNotifier(0);
+
+  void _recompute() {
+    final m = MicMeter.instance.level.value;
+    final t = tts.value;
+    combined.value = m > t ? m : t;
+  }
+
+  void _tick() {
+    history.removeAt(0);
+    history.add(combined.value.clamp(0.0, 1.0));
+    tick.value++;
+  }
+}
+
+// ---- Voice-reactive visualizations (home hero variants) ----
+// All amplitudes come from VoiceLevels.history (real mic/TTS levels) — only
+// the ring's slow rotation is decorative. A wake-word trigger adds a short
+// glow burst (VoiceAssistant.wakePulse).
+
+double _wakeGlow(int wakeMs) {
+  if (wakeMs == 0) return 0;
+  final dt = DateTime.now().millisecondsSinceEpoch - wakeMs;
+  if (dt >= 1400) return 0;
+  return 1.0 - dt / 1400.0;
+}
+
+// Mirrored bar spectrum (scrolling level history around a center axis).
+class EvsBarsViz extends StatelessWidget {
+  final double width;
+  final double height;
+  const EvsBarsViz({super.key, this.width = 340, this.height = 150});
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: ValueListenableBuilder<int>(
+        valueListenable: VoiceLevels.instance.tick,
+        builder: (_, __, ___) => CustomPaint(
+          size: Size(width, height),
+          painter: _BarsPainter(
+            List<double>.from(VoiceLevels.instance.history),
+            VoiceAssistant.instance.wakePulse.value,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BarsPainter extends CustomPainter {
+  final List<double> hist;
+  final int wakeMs;
+  _BarsPainter(this.hist, this.wakeMs);
+
+  static const _c1 = Color(0xFF5068D8);
+  static const _c2 = Color(0xFF8855CC);
+  static const _c3 = Color(0xFFC060D8);
+  static const _c4 = Color(0xFFF0D080);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final n = hist.length;
+    final midY = size.height / 2;
+    final slot = size.width / n;
+    final barW = slot * 0.55;
+    final glow = _wakeGlow(wakeMs);
+    canvas.drawLine(
+        Offset(0, midY),
+        Offset(size.width, midY),
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.06)
+          ..strokeWidth = 1);
+    for (var i = 0; i < n; i++) {
+      final v = (hist[i] * (1 + glow * 0.6)).clamp(0.0, 1.0);
+      final h = 2 + v * (size.height / 2 - 4);
+      final x = slot * i + slot / 2;
+      final color = v < 0.35
+          ? Color.lerp(_c1, _c2, v / 0.35)!
+          : v < 0.7
+              ? Color.lerp(_c2, _c3, (v - 0.35) / 0.35)!
+              : Color.lerp(_c3, _c4, (v - 0.7) / 0.3)!;
+      canvas.drawLine(
+          Offset(x, midY - h),
+          Offset(x, midY + h),
+          Paint()
+            ..color = color.withValues(alpha: 0.55 + 0.45 * v)
+            ..strokeWidth = barW
+            ..strokeCap = StrokeCap.round);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _BarsPainter old) => true;
+}
+
+// Circular ring with radial spikes (spike lengths = level history around the
+// circle), slowly rotating EVS-gradient stroke.
+class EvsRingViz extends StatefulWidget {
+  final double size;
+  const EvsRingViz({super.key, this.size = 230});
+  @override
+  State<EvsRingViz> createState() => _EvsRingVizState();
+}
+
+class _EvsRingVizState extends State<EvsRingViz>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _rot =
+      AnimationController(vsync: this, duration: const Duration(seconds: 24))
+        ..repeat();
+
+  @override
+  void dispose() {
+    _rot.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: Listenable.merge([_rot, VoiceLevels.instance.tick]),
+        builder: (_, __) => CustomPaint(
+          size: Size.square(widget.size),
+          painter: _RingPainter(
+            List<double>.from(VoiceLevels.instance.history),
+            _rot.value,
+            VoiceAssistant.instance.wakePulse.value,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  final List<double> hist;
+  final double phase; // 0..1 slow decorative rotation
+  final int wakeMs;
+  _RingPainter(this.hist, this.phase, this.wakeMs);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = size.center(Offset.zero);
+    final r = size.width * 0.30;
+    final maxSpike = size.width * 0.17;
+    final glow = _wakeGlow(wakeMs);
+    final sweep = SweepGradient(
+      colors: const [
+        Color(0xFF5068D8),
+        Color(0xFF8855CC),
+        Color(0xFFC060D8),
+        Color(0xFF54E0B0),
+        Color(0xFF5068D8),
+      ],
+      transform: GradientRotation(phase * 2 * math.pi),
+    ).createShader(Rect.fromCircle(center: c, radius: r + maxSpike));
+    canvas.drawCircle(
+        c,
+        r,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2 + glow * 2
+          ..shader = sweep);
+    if (glow > 0) {
+      canvas.drawCircle(
+          c,
+          r + glow * 10,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 10 * glow
+            ..shader = sweep
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12));
+    }
+    const spikes = 90;
+    for (var i = 0; i < spikes; i++) {
+      final ang = (i / spikes + phase) * 2 * math.pi;
+      final hIdx =
+          ((i * hist.length) ~/ spikes + (phase * hist.length).floor()) %
+              hist.length;
+      final v = (hist[hIdx] * (1 + glow * 0.8)).clamp(0.0, 1.0);
+      final len = 2 + v * maxSpike;
+      final dir = Offset(math.cos(ang), math.sin(ang));
+      canvas.drawLine(
+          c + dir * (r + 2),
+          c + dir * (r + 2 + len),
+          Paint()
+            ..strokeWidth = 2.2
+            ..strokeCap = StrokeCap.round
+            ..shader = sweep
+            ..color = Colors.white.withValues(alpha: 0.5 + v * 0.5));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) => true;
+}
+
 // Live microphone amplitude meter: streams raw PCM via `record` and turns it
 // into a smoothed 0..1 level (RMS). If streaming is unavailable on this
 // platform/device, `active` stays false and the widget falls back to a
@@ -7546,7 +7980,9 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
       if (!mounted) return;
       setState(() {
         _hist.removeAt(0);
-        _hist.add(MicMeter.instance.level.value);
+        // Combined = mic + assistant speech, so the sidebar breathes during
+        // TTS replies too.
+        _hist.add(VoiceLevels.instance.combined.value);
       });
     });
   }
@@ -10663,10 +11099,23 @@ class _ChatScreenState extends State<ChatScreen> {
               _ => (app.t('vaListening'), const Color(0xFF8A7BE0)),
             };
             if (s == VaState.listening || s == VaState.idle) {
-              return ValueListenableBuilder<String>(
-                valueListenable: VoiceAssistant.instance.lastHeard,
-                builder: (_, heard, __) => _vaPill(Icons.graphic_eq,
-                    heard.isEmpty ? label : '🎤 $heard', color),
+              // Flash a bright "wake word heard!" state for ~2.5 s so the
+              // trigger is unmistakable, then fall back to the live transcript.
+              return ValueListenableBuilder<bool>(
+                valueListenable: VoiceAssistant.instance.wakeActive,
+                builder: (_, woke, __) {
+                  if (woke) {
+                    return _vaPill(
+                        Icons.check_circle,
+                        '«${app.wakeWord}» — ${app.t('vaWakeHeard')}',
+                        const Color(0xFF54E08A));
+                  }
+                  return ValueListenableBuilder<String>(
+                    valueListenable: VoiceAssistant.instance.lastHeard,
+                    builder: (_, heard, __) => _vaPill(Icons.graphic_eq,
+                        heard.isEmpty ? label : '🎤 $heard', color),
+                  );
+                },
               );
             }
             return _vaPill(Icons.graphic_eq, label, color);
@@ -11176,13 +11625,21 @@ class _ChatScreenState extends State<ChatScreen> {
             // render as the sphere).
             if (app.showVizBg && app.vizType != 'none') ...[
               const SizedBox(height: 20),
-              ParticleSphere(
-                size: 200,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : const Color(0xFF2F6BFF),
-                scattered: keyboardOpen,
-              ),
+              // vizType picks the hero visualization; all react to the real
+              // combined voice level (mic + assistant speech).
+              if (app.vizType == 'bars')
+                const EvsBarsViz(width: 360, height: 150)
+              else if (app.vizType == 'waves')
+                const EvsRingViz(size: 220)
+              else
+                ParticleSphere(
+                  size: 200,
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white
+                      : const Color(0xFF2F6BFF),
+                  scattered: keyboardOpen,
+                  soundLevel: VoiceLevels.instance.combined,
+                ),
             ],
             const SizedBox(height: 20),
             Text(
