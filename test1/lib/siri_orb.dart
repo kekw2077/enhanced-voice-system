@@ -181,9 +181,13 @@ class _SiriOrbPainter extends CustomPainter {
       canvas.drawCircle(center, gr, glowPaint);
     }
 
-    // Всё дальнейшее — внутри круга.
-    canvas.save();
-    canvas.clipPath(Path()..addOval(Rect.fromCircle(center: center, radius: r)));
+    // Всё дальнейшее рисуем в отдельный слой, а в конце «выедаем» альфу к
+    // кромке (BlendMode.dstIn с радиальным градиентом) — так край получается
+    // дымчатым/растушёванным, а не резкой линией, как при жёстком clipPath.
+    final layerRect = Rect.fromCircle(center: center, radius: r * 1.15);
+    canvas.saveLayer(layerRect, Paint());
+    // Ограничим размах блюра блобов, чтобы не расползались далеко за кромку.
+    canvas.clipRect(layerRect);
 
     // Фон.
     canvas.drawCircle(center, r, Paint()..color = colors.bg);
@@ -236,17 +240,18 @@ class _SiriOrbPainter extends CustomPainter {
       ).createShader(Rect.fromCircle(center: center, radius: r));
     canvas.drawCircle(center, r, shade);
 
-    canvas.restore();
+    // Растушёванная кромка: центр полностью непрозрачный, ближе к краю альфа
+    // плавно уходит в ноль — мягкий «дымчатый» край без резкой обводки.
+    final edgeMask = Paint()
+      ..blendMode = BlendMode.dstIn
+      ..shader = RadialGradient(
+        colors: [Colors.white, Colors.white, Colors.white.withAlpha(0)],
+        stops: const [0.0, 0.82, 1.0],
+      ).createShader(Rect.fromCircle(center: center, radius: r));
+    canvas.drawCircle(center, r, edgeMask);
 
-    // Тонкая обводка.
-    canvas.drawCircle(
-      center,
-      r - 0.5,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = Colors.white.withAlpha(20),
-    );
+    canvas.restore();
+    // Обводка убрана намеренно — именно она давала «строгую линию» по кругу.
   }
 
   @override

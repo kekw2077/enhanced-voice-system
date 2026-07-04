@@ -39,6 +39,13 @@ import 'siri_orb.dart';
 // animation stacked back to back.
 const _minSplashDuration = Duration(milliseconds: 300);
 
+// Single-instance guard: the main app claims this fixed loopback port. A second
+// launch fails to bind, signals the running instance to surface its window, and
+// exits — so the desktop shortcut focuses the running app instead of spawning a
+// duplicate. Kept alive for the process lifetime so it isn't garbage-collected.
+const int _kSingleInstancePort = 47653;
+io.ServerSocket? _singleInstanceLock;
+
 void main(List<String> args) async {
   final startedAt = DateTime.now();
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +59,33 @@ void main(List<String> args) async {
   if (isWindows && args.contains('--viz-overlay')) {
     await _vizOverlayMain(args);
     return;
+  }
+
+  // Enforce a single running instance of the main app (widget process above is
+  // exempt — it returned already).
+  if (isWindows) {
+    try {
+      _singleInstanceLock = await io.ServerSocket.bind(
+          io.InternetAddress.loopbackIPv4, _kSingleInstancePort);
+      // We're the first instance: any later launch connects here → show window.
+      _singleInstanceLock!.listen((conn) {
+        conn.listen((_) {}, onError: (_) {}, cancelOnError: true);
+        unawaited(DesktopIntegration.instance.showMainWindow());
+        conn.destroy();
+      });
+    } catch (_) {
+      // Port already held → another instance is running. Tell it to surface,
+      // then exit without starting a duplicate.
+      try {
+        final s = await io.Socket.connect(
+            io.InternetAddress.loopbackIPv4, _kSingleInstancePort,
+            timeout: const Duration(seconds: 2));
+        s.add(const [1]);
+        await s.flush();
+        await s.close();
+      } catch (_) {}
+      io.exit(0);
+    }
   }
 
   final prefs = await SharedPreferences.getInstance();
@@ -2628,6 +2662,12 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('1.0.10', [
+    'Один экземпляр приложения: повторный запуск ярлыка больше не открывает вторую копию, а разворачивает уже запущенное окно.',
+    'Удаление чата правой кнопкой мыши: клик ПКМ по чату в списке открывает меню (переименовать / закрепить / удалить).',
+    'Сфера Siri теперь с мягким, растушёванным краем вместо жёсткой линии по окружности.',
+    'Быстрее озвучка ответов: ассистент начинает говорить первое предложение почти сразу, не дожидаясь генерации всего ответа (фразы идут подряд без обрыва).',
+  ]),
   ChangelogEntry('1.0.9', [
     'Исправлен запуск голосового движка (иногда показывал «Не запущен»): фоновый процесс распознавания больше не зависает на старте.',
     'Все вспомогательные процессы (движок распознавания, виджет, синтез голоса) теперь гарантированно закрываются вместе с приложением — даже при аварийном завершении или снятии через диспетчер задач, ничего не остаётся висеть в фоне.',
@@ -4740,6 +4780,93 @@ class AppState extends ChangeNotifier {
     conv.updatedAt = DateTime.now();
     notifyListeners();
     return _generateAssistantReply(conv, userTextForMemory: text);
+  }
+
+  // Voice path: stream the reply and hand each completed SENTENCE to
+  // [onSentence] as soon as it arrives, so TTS can start speaking the first
+  // sentence while the rest is still generating (much lower perceived latency
+  // than awaiting the whole reply). The full turn is still shown in the chat.
+  Future<String> streamReplyForVoice(
+      String userText, void Function(String sentence) onSentence) async {
+    unawaited(appendLog(
+        'chat', userText.length > 120 ? '${userText.substring(0, 120)}…' : userText));
+    current ??= () {
+      final c = Conversation(id: _uuid.v4(), title: t('newChat'));
+      conversations.insert(0, c);
+      return c;
+    }();
+    final conv = current!;
+    conv.messages.add(ChatMessage(role: 'user', content: userText));
+    if (conv.title == t('newChat') || conv.title == 'New Chat') {
+      conv.title = userText.isNotEmpty
+          ? (userText.length > 32 ? '${userText.substring(0, 32)}…' : userText)
+          : conv.title;
+    }
+    conv.updatedAt = DateTime.now();
+    notifyListeners();
+
+    _genCancelled = false;
+    final history = List<ChatMessage>.from(conv.messages);
+    final assistantMessage = ChatMessage(role: 'assistant', content: '');
+    conv.messages.add(assistantMessage);
+    isGenerating = true;
+    notifyListeners();
+    final service = _llmFactory.current;
+    _cancelGeneration = () => unawaited(service.stopGeneration());
+
+    var spokenUpTo = 0;
+    var full = '';
+    try {
+      if (selectedModel.isEmpty) {
+        full = t('noModelsAvailable');
+        assistantMessage.content = full;
+        notifyListeners();
+      } else {
+        await for (final chunk in service.generateStream(conv, history)) {
+          full = chunk; // cumulative
+          assistantMessage.content = full;
+          notifyListeners();
+          if (!_genCancelled) {
+            spokenUpTo = _emitSentences(full, spokenUpTo, onSentence);
+          }
+        }
+      }
+    } finally {
+      isGenerating = false;
+      _cancelGeneration = null;
+      conv.updatedAt = DateTime.now();
+      _save();
+      notifyListeners();
+    }
+    if (_genCancelled) return '';
+    final reply = (conv.persona ?? persona).enforceEmojiPolicy(full);
+    assistantMessage.content = reply.trim();
+    notifyListeners();
+    // Speak any trailing text that didn't end on a sentence boundary.
+    final tail = full.length > spokenUpTo ? full.substring(spokenUpTo).trim() : '';
+    if (tail.isNotEmpty) onSentence(tail);
+    unawaited(_autoSaveMemoryFromExchange(conv, userText, reply.trim()));
+    return reply;
+  }
+
+  // Emit each newly-completed sentence in [text] after index [from]; returns
+  // the index up to which sentences have been dispatched. Splits on . ! ? … and
+  // newlines. Called repeatedly as the cumulative stream grows.
+  static final RegExp _sentenceBoundary = RegExp(r'[.!?…\n]');
+  int _emitSentences(
+      String text, int from, void Function(String) onSentence) {
+    var start = from;
+    var searchPos = from;
+    while (searchPos < text.length) {
+      final m = _sentenceBoundary.firstMatch(text.substring(searchPos));
+      if (m == null) break;
+      final end = searchPos + m.end;
+      final sentence = text.substring(start, end).trim();
+      if (sentence.length >= 2) onSentence(sentence);
+      start = end;
+      searchPos = end;
+    }
+    return start;
   }
 
   // Regenerate the last assistant reply: drop the trailing assistant
@@ -8296,12 +8423,23 @@ class VoiceAssistant {
       unawaited(appendLog('commands', 'UNKNOWN: $command'));
       return;
     }
-    // 3) Plain speech → a regular (visible) chat turn, reply spoken (unless a
-    //    voice "stop" interrupted the generation meanwhile).
+    // 3) Plain speech → a regular (visible) chat turn.
     _toast('${app.t('vaThinking')} $command');
-    final reply = await app.sendMessage(command);
-    if (!_stopFlag && app.voiceResponses && reply.trim().isNotEmpty) {
-      _speak(app, reply);
+    final cloned = app.ttsVoice == 'cloned' && app.cloneSamplePath.isNotEmpty;
+    if (app.voiceResponses && !cloned) {
+      // Default TTS (queued sidecar): stream the reply and speak each sentence
+      // as soon as it arrives — first audio starts almost immediately instead
+      // of after the whole reply. A voice "stop" interrupts stream + TTS queue.
+      await app.streamReplyForVoice(command, (sentence) {
+        if (!_stopFlag) _speak(app, sentence);
+      });
+    } else {
+      // Cloned voice (XTTS) speaks the whole reply once (per-sentence calls
+      // would cut each other off on that engine).
+      final reply = await app.sendMessage(command);
+      if (!_stopFlag && app.voiceResponses && reply.trim().isNotEmpty) {
+        _speak(app, reply);
+      }
     }
   }
 
@@ -15771,7 +15909,10 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
   }
 
   Widget _continueCard(Conversation c, AppState app) {
-    return Container(
+    return GestureDetector(
+      onSecondaryTapDown: (d) =>
+          _openChatMenu(context, d.globalPosition, c, app),
+      child: Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -15869,7 +16010,7 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _chatTile(Conversation c, AppState app) {
@@ -15894,84 +16035,96 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
       ),
       trailing: _chatTileMenuButton(c, app),
     );
-    return Container(
-      margin: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-      child: _isGlass(context)
-          ? GlassSurface(
-              borderRadius: BorderRadius.circular(16),
-              child: Material(type: MaterialType.transparency, child: tile),
-            )
-          : Container(
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
+    return GestureDetector(
+      // Right-click anywhere on the row → context menu (rename / pin / delete).
+      onSecondaryTapDown: (d) =>
+          _openChatMenu(context, d.globalPosition, c, app),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+        child: _isGlass(context)
+            ? GlassSurface(
                 borderRadius: BorderRadius.circular(16),
+                child: Material(type: MaterialType.transparency, child: tile),
+              )
+            : Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Material(
+                  color: _card(context).withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(16),
+                  child: tile,
+                ),
               ),
-              child: Material(
-                color: _card(context).withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(16),
-                child: tile,
-              ),
-            ),
+      ),
     );
   }
 
-  // Overflow (⋮) menu for a chat row. Glass mode uses the blurred glass menu
-  // anchored to the button; standard mode keeps the plain PopupMenuButton.
-  Widget _chatTileMenuButton(Conversation c, AppState app) {
+  // Shared chat context menu (rename / pin / delete), anchored at [pos] (global
+  // coords). Used by both the ⋮ button and a right-click (secondary tap) on the
+  // row. Glass mode uses the blurred glass menu; standard mode uses showMenu.
+  Future<void> _openChatMenu(
+      BuildContext ctx, Offset pos, Conversation c, AppState app) async {
     void handle(String? v) {
       if (v == 'rename') _promptRename(c, app);
       if (v == 'pin') app.togglePin(c);
       if (v == 'delete') app.deleteChat(c);
     }
 
-    if (_isGlass(context)) {
-      return Builder(
-        builder: (btnCtx) => IconButton(
-          icon: Icon(Icons.more_vert, color: _sub(context)),
-          onPressed: () async {
-            final box = btnCtx.findRenderObject() as RenderBox?;
-            final pos = box != null
-                ? box.localToGlobal(Offset.zero)
-                : Offset.zero;
-            final v = await showGlassMenu(
-              context,
-              position: pos,
-              items: [
-                GlassMenuItem('rename', app.t('rename')),
-                GlassMenuItem('pin', c.pinned ? app.t('unpin') : app.t('pin')),
-                GlassMenuItem(
-                  'delete',
-                  app.t('delete'),
-                  color: Colors.redAccent,
-                ),
-              ],
-            );
-            handle(v);
-          },
-        ),
+    if (_isGlass(ctx)) {
+      final v = await showGlassMenu(
+        ctx,
+        position: pos,
+        items: [
+          GlassMenuItem('rename', app.t('rename')),
+          GlassMenuItem('pin', c.pinned ? app.t('unpin') : app.t('pin')),
+          GlassMenuItem('delete', app.t('delete'), color: Colors.redAccent),
+        ],
       );
+      handle(v);
+      return;
     }
-    return PopupMenuButton<String>(
-      color: _card(context),
-      icon: Icon(Icons.more_vert, color: _sub(context)),
-      onSelected: handle,
-      itemBuilder: (_) => [
+    final overlay = Overlay.of(ctx).context.findRenderObject() as RenderBox?;
+    final v = await showMenu<String>(
+      context: ctx,
+      color: _card(ctx),
+      position: RelativeRect.fromRect(
+        Rect.fromPoints(pos, pos),
+        Offset.zero & (overlay?.size ?? const Size(0, 0)),
+      ),
+      items: [
         PopupMenuItem(
           value: 'rename',
-          child: Text(app.t('rename'), style: TextStyle(color: _txt(context))),
+          child: Text(app.t('rename'), style: TextStyle(color: _txt(ctx))),
         ),
         PopupMenuItem(
           value: 'pin',
-          child: Text(
-            c.pinned ? app.t('unpin') : app.t('pin'),
-            style: TextStyle(color: _txt(context)),
-          ),
+          child: Text(c.pinned ? app.t('unpin') : app.t('pin'),
+              style: TextStyle(color: _txt(ctx))),
         ),
         PopupMenuItem(
           value: 'delete',
-          child: Text(app.t('delete'), style: TextStyle(color: _txt(context))),
+          child: Text(app.t('delete'),
+              style: const TextStyle(color: Colors.redAccent)),
         ),
       ],
+    );
+    handle(v);
+  }
+
+  // Overflow (⋮) button for a chat row — opens the shared menu at the button.
+  Widget _chatTileMenuButton(Conversation c, AppState app) {
+    return Builder(
+      builder: (btnCtx) => IconButton(
+        icon: Icon(Icons.more_vert, color: _sub(context)),
+        onPressed: () {
+          final box = btnCtx.findRenderObject() as RenderBox?;
+          final pos =
+              box != null ? box.localToGlobal(Offset.zero) : Offset.zero;
+          _openChatMenu(context, pos, c, app);
+        },
+      ),
     );
   }
 

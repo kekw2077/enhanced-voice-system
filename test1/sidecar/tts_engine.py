@@ -1,11 +1,16 @@
 """Offline text-to-speech via pyttsx3 (Windows SAPI5).
 
-Runs synthesis on a worker thread so the asyncio server stays responsive.
+A single worker thread plays a QUEUE of utterances back-to-back. The Dart side
+speaks a reply sentence-by-sentence as the model streams it (lower perceived
+latency), so utterances must NOT cut each other off — each `speak()` enqueues;
+`stop()` clears the queue and interrupts the current one.
+
 A fresh engine is created per utterance — pyttsx3's run loop is not reentrant,
 and re-init avoids the "second say() never speaks" issue on Windows.
 """
 from __future__ import annotations
 
+import queue
 import threading
 
 
@@ -18,8 +23,10 @@ class TtsEngine:
             self._available = True
         except Exception:
             self._available = False
-        self._thread: threading.Thread | None = None
-        self._stop = threading.Event()
+        self._queue: "queue.Queue" = queue.Queue()
+        self._worker: threading.Thread | None = None
+        self._stop = threading.Event()  # interrupt current + drain queue
+        self._lock = threading.Lock()
 
     @property
     def available(self) -> bool:
@@ -31,9 +38,45 @@ class TtsEngine:
             if on_done:
                 on_done()
             return
-        self.stop()
+        # A new utterance cancels any pending stop and joins the queue.
         self._stop.clear()
+        self._queue.put((text, rate, volume, on_done, on_level))
+        self._ensure_worker()
 
+    def _ensure_worker(self) -> None:
+        with self._lock:
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(target=self._run, daemon=True)
+                self._worker.start()
+
+    def _run(self) -> None:
+        while True:
+            try:
+                item = self._queue.get(timeout=30)  # idle-exit after 30s
+            except queue.Empty:
+                return
+            text, rate, volume, on_done, on_level = item
+            try:
+                if not self._stop.is_set():
+                    self._play_one(text, rate, volume, on_level)
+            finally:
+                self._queue.task_done()
+            # Only signal "level 0 / done" once the whole queue is drained, so
+            # visualizations don't flicker to zero between sentences.
+            drained = self._queue.empty()
+            if drained or self._stop.is_set():
+                if on_level is not None:
+                    try:
+                        on_level(0.0)
+                    except Exception:
+                        pass
+            if drained and not self._stop.is_set() and on_done is not None:
+                try:
+                    on_done()
+                except Exception:
+                    pass
+
+    def _play_one(self, text: str, rate: float, volume: float, on_level) -> None:
         def _apply_props(engine):
             try:
                 base = engine.getProperty("rate") or 200
@@ -42,80 +85,73 @@ class TtsEngine:
             except Exception:
                 pass
 
-        def _run():
-            played = False
+        played = False
+        try:
+            import pyttsx3
+
+            # Preferred path: synthesize to a wav, then play it in chunks
+            # through sounddevice while emitting live RMS levels — the app
+            # visualizations react to the assistant's real voice.
             try:
-                import pyttsx3
+                import os
+                import tempfile
 
-                # Preferred path: synthesize to a wav, then play it in chunks
-                # through sounddevice while emitting live RMS levels — the app
-                # visualizations react to the assistant's real voice.
+                import numpy as np
+                import sounddevice as sd
+                import soundfile as sf
+
+                engine = pyttsx3.init()
+                _apply_props(engine)
+                tmp = os.path.join(tempfile.gettempdir(), "evs_tts_out.wav")
                 try:
-                    import os
-                    import tempfile
-
-                    import numpy as np
-                    import sounddevice as sd
-                    import soundfile as sf
-
-                    engine = pyttsx3.init()
-                    _apply_props(engine)
-                    tmp = os.path.join(tempfile.gettempdir(), "evs_tts_out.wav")
-                    try:
-                        if os.path.exists(tmp):
-                            os.remove(tmp)
-                    except Exception:
-                        pass
-                    engine.save_to_file(text, tmp)
-                    engine.runAndWait()
-                    engine.stop()
-                    if os.path.exists(tmp) and os.path.getsize(tmp) > 44:
-                        data, sr = sf.read(tmp, dtype="float32")
-                        if getattr(data, "ndim", 1) > 1:
-                            data = data.mean(axis=1)
-                        chunk = max(1, sr // 30)  # ~30 level updates/sec
-                        stream = sd.OutputStream(
-                            samplerate=sr, channels=1, dtype="float32")
-                        stream.start()
-                        try:
-                            for i in range(0, len(data), chunk):
-                                if self._stop.is_set():
-                                    break
-                                buf = data[i:i + chunk]
-                                stream.write(buf.reshape(-1, 1))
-                                if on_level is not None and len(buf):
-                                    rms = float(np.sqrt(np.mean(buf * buf)))
-                                    on_level(min(1.0, rms * 8.0))
-                        finally:
-                            stream.stop()
-                            stream.close()
-                        played = True
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
                 except Exception:
-                    played = False
-
-                if not played:
-                    # Fallback: direct SAPI playback (no levels, but speech
-                    # still works if save_to_file/sounddevice misbehave).
-                    engine = pyttsx3.init()
-                    _apply_props(engine)
-                    engine.say(text)
-                    engine.runAndWait()
-                    engine.stop()
-            except Exception:
-                pass
-            finally:
-                if on_level is not None:
+                    pass
+                engine.save_to_file(text, tmp)
+                engine.runAndWait()
+                engine.stop()
+                if os.path.exists(tmp) and os.path.getsize(tmp) > 44:
+                    data, sr = sf.read(tmp, dtype="float32")
+                    if getattr(data, "ndim", 1) > 1:
+                        data = data.mean(axis=1)
+                    chunk = max(1, sr // 30)  # ~30 level updates/sec
+                    stream = sd.OutputStream(
+                        samplerate=sr, channels=1, dtype="float32")
+                    stream.start()
                     try:
-                        on_level(0.0)
-                    except Exception:
-                        pass
-                if on_done and not self._stop.is_set():
-                    on_done()
+                        for i in range(0, len(data), chunk):
+                            if self._stop.is_set():
+                                break
+                            buf = data[i:i + chunk]
+                            stream.write(buf.reshape(-1, 1))
+                            if on_level is not None and len(buf):
+                                rms = float(np.sqrt(np.mean(buf * buf)))
+                                on_level(min(1.0, rms * 8.0))
+                    finally:
+                        stream.stop()
+                        stream.close()
+                    played = True
+            except Exception:
+                played = False
 
-        self._thread = threading.Thread(target=_run, daemon=True)
-        self._thread.start()
+            if not played and not self._stop.is_set():
+                # Fallback: direct SAPI playback (no levels, but speech
+                # still works if save_to_file/sounddevice misbehave).
+                engine = pyttsx3.init()
+                _apply_props(engine)
+                engine.say(text)
+                engine.runAndWait()
+                engine.stop()
+        except Exception:
+            pass
 
     def stop(self) -> None:
         self._stop.set()
-        # pyttsx3 has no clean cross-thread stop; the daemon thread ends with
-        # the current utterance. We just stop signalling on_done.
+        # Drain any queued utterances so the worker doesn't keep speaking.
+        try:
+            while True:
+                self._queue.get_nowait()
+                self._queue.task_done()
+        except queue.Empty:
+            pass

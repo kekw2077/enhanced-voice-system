@@ -28,6 +28,35 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 1.0.10</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Один экземпляр: повторный запуск ярлыка разворачивает уже открытое окно, а не плодит копии.</li>
+          <li>Удаление чата правой кнопкой мыши — меню (переименовать / закрепить / удалить) по клику ПКМ.</li>
+          <li>Сфера Siri — мягкий растушёванный край вместо жёсткой линии.</li>
+          <li>Быстрее озвучка: ассистент начинает говорить первое предложение почти сразу, не дожидаясь всего ответа.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sat, 04 Jul 2026 18:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.10/EVS-Setup-1.0.10.exe"
+        sparkle:version="1.0.10"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHDGJM2UZJxiL7AGlPLM/rVFGfPXSeaRQNs2vIFwCHBV0Ye/vMxPV4zS+MHSHjS307ueffx3RBUw1d6U="
+        evs:sha256="65869b8b73608047abc748f3566ee03e829510d7441c035c645bafc980755743"
+        length="15839019"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.0.9</title>
       <description><![CDATA[
         <style>
