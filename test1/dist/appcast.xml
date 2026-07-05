@@ -28,6 +28,35 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 1.1.2</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Исправлены «кракозябры» в названиях приложений из Microsoft Store (UTF-8).</li>
+          <li>Тумблер «Чат» больше не растягивается на всю ширину.</li>
+          <li>При неудачной команде показывается распознанный текст («Команда не найдена: …»).</li>
+          <li>Ещё надёжнее установка обновлений: перед заменой файлов принудительно завершаются все процессы приложения.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 05 Jul 2026 21:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.1.2/EVS-Setup-1.1.2.exe"
+        sparkle:version="1.1.2"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHE/t6nHV04I649UbLIgGC3IkoBDsfWPspEcksKQCHAnPq9n2DynRRcBnVQSsH0/onOqNAC0Ku0Oiu3o="
+        evs:sha256="0b3b6726e0ad1befbc932e9bd632e37e9c163162dc8b305c312ae68864a50129"
+        length="15861773"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.1.1</title>
       <description><![CDATA[
         <style>
