@@ -2917,6 +2917,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('1.1.1', [
+    'Надёжнее установка обновлений: перед заменой файлов приложение дожидается полного закрытия всех своих процессов (включая виджет), а затем само перезапускается. Если что-то пошло не так — пишется подробный лог установки (update-install.log) для диагностики.',
+  ]),
   ChangelogEntry('1.1.0', [
     'Режим «только команды»: тумблер «Чат» в настройках — выключите, чтобы ассистент выполнял только команды. Нераспознанная фраза не уходит в чат, а отвечает «Команда не найдена»; текстовый ввод при этом отключается.',
     'Редактирование команд: у каждой команды появилась кнопка-карандаш — открывает мастер с уже заполненными полями.',
@@ -7710,6 +7713,19 @@ class AppUpdater {
       if (_isNewer(expected, info.version)) {
         unawaited(appendLog('errors',
             'update did not apply: still ${info.version}, expected $expected'));
+        // Attach the tail of the installer's own log (if any) so the failure
+        // reason (locked file / permission / …) is captured for diagnosis.
+        try {
+          final logf = io.File(await updateDownloadPath('update-install.log'));
+          if (await logf.exists()) {
+            final lines = await logf.readAsLines();
+            final tail = lines.length > 25
+                ? lines.sublist(lines.length - 25)
+                : lines;
+            unawaited(appendLog(
+                'errors', 'install.log tail:\n${tail.join('\n')}'));
+          }
+        } catch (_) {}
         // Let them know once, after the window is actually visible.
         Future.delayed(const Duration(seconds: 3), () {
           final ctx = rootNavKey.currentContext;
@@ -7939,7 +7955,7 @@ class AppUpdater {
       await io.File(await updateDownloadPath('pending_update.txt'))
           .writeAsString(availableVersion);
     } catch (_) {}
-    const args = [
+    const fallbackArgs = [
       '/VERYSILENT',
       '/SUPPRESSMSGBOXES',
       '/NORESTART',
@@ -7947,18 +7963,29 @@ class AppUpdater {
       '/RELAUNCH=1'
     ];
     try {
-      // Run the installer through a detached PowerShell that first WAITS for
-      // this process to fully exit before starting the copy. Previously we
-      // launched the installer and quit in parallel, so it often began copying
-      // while evs.exe (and the widget — a second evs.exe holding the same
-      // files) were still alive → locked files → silent install left the old
-      // version in place. Waiting removes that race; ProcessJob has already
-      // killed the child widget/sidecar by the time our PID is gone.
+      // Run the installer through a detached PowerShell that:
+      //  1) waits until EVERY evs.exe is gone (main AND the widget — a second
+      //     evs.exe that holds the same files; waiting only on our own PID left
+      //     the widget locking evs.exe, so the silent install couldn't replace
+      //     it and the version never advanced),
+      //  2) runs the installer silently WITH a log (so a failed apply is
+      //     diagnosable — update-install.log next to the app),
+      //  3) waits for the installer to finish, then relaunches EVS itself
+      //     (more reliable than the installer's own /RELAUNCH).
       final esc = path.replaceAll("'", "''");
-      final argList = args.map((a) => "'$a'").join(',');
-      final ps = "Wait-Process -Id ${io.pid} -ErrorAction SilentlyContinue; "
-          "Start-Sleep -Milliseconds 800; "
-          "Start-Process -FilePath '$esc' -ArgumentList $argList";
+      final exe = io.Platform.resolvedExecutable.replaceAll("'", "''");
+      final log =
+          (await updateDownloadPath('update-install.log')).replaceAll("'", "''");
+      final ps = "\$ErrorActionPreference='SilentlyContinue'; "
+          "\$n=0; while ((Get-Process evs) -and \$n -lt 80) "
+          "{ Start-Sleep -Milliseconds 250; \$n++ }; "
+          "Start-Sleep -Milliseconds 500; "
+          "\$p = Start-Process -FilePath '$esc' -ArgumentList "
+          "'/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',"
+          "'/LOG=$log' -PassThru; "
+          "\$p.WaitForExit(); "
+          "Start-Sleep -Milliseconds 500; "
+          "Start-Process -FilePath '$exe'";
       await io.Process.start(
         'powershell',
         ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps],
@@ -7968,7 +7995,7 @@ class AppUpdater {
       // PowerShell unavailable — fall back to launching the installer directly
       // (Restart Manager / CloseApplications=force still closes us).
       try {
-        await io.Process.start(path, args,
+        await io.Process.start(path, fallbackArgs,
             mode: io.ProcessStartMode.detached);
       } catch (e) {
         lastError = e.toString();

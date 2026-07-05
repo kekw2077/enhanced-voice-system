@@ -28,6 +28,32 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 1.1.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Надёжнее установка обновлений: перед заменой файлов приложение дожидается полного закрытия всех своих процессов (включая виджет), затем ставит обновление и само перезапускается. При сбое пишется подробный лог установки для диагностики.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 05 Jul 2026 20:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.1.1/EVS-Setup-1.1.1.exe"
+        sparkle:version="1.1.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD4CHQCq6EB2gOd61OKd5UyeWVPgwTijDCCbE55ewisKAh0Aq/AkLXnW6y/i4HZiEqsj2ruv27S+h/eadw7Q8w=="
+        evs:sha256="cd71c014585426ac34047cfa8f3720f6cda8b52bdf123a840cc2a48c37f7798b"
+        length="15861161"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.1.0</title>
       <description><![CDATA[
         <style>
