@@ -692,6 +692,10 @@ const Map<String, Map<String, String>> _i18n = {
     'vaDone': 'Готово',
     'vaFailed': 'Не удалось выполнить команду',
     'vaCmdDisabled': 'Команда распознана, но выполнение выключено (включите «Разрешить выполнение команд»)',
+    'vaCmdNotFound': 'Команда не найдена',
+    'chatToggle': 'Чат',
+    'chatToggleDesc': 'Выключите, чтобы работали только команды: нераспознанная фраза не уйдёт в чат, а ответит «Команда не найдена». Текстовый ввод при этом отключается.',
+    'chatDisabledHint': 'Чат отключён — работают только голосовые команды',
     'vaSttOffline': 'Голосовой движок не подключён',
     'updRestart': 'Перезапустить',
     'updUpToDate': 'Актуальная версия',
@@ -754,6 +758,7 @@ const Map<String, Map<String, String>> _i18n = {
     'sttTestStart': 'Начать тест',
     'sttTestStop': 'Остановить',
     'sttTestHint': 'Скажите что-нибудь — здесь появится распознанный текст…',
+    'sttTestClear': 'Очистить',
     'run': 'Запустить',
     'cmdRunTitle': 'Выполнить команду?',
     'cmdRunOk': 'Команда выполнена',
@@ -1394,6 +1399,10 @@ const Map<String, Map<String, String>> _i18n = {
     'vaDone': 'Done',
     'vaFailed': 'Could not run the command',
     'vaCmdDisabled': 'Command recognized, but execution is off (enable "Allow command execution")',
+    'vaCmdNotFound': 'Command not found',
+    'chatToggle': 'Chat',
+    'chatToggleDesc': 'Turn off for commands only: an unrecognized phrase won\'t go to chat, it answers "Command not found". Text input is disabled too.',
+    'chatDisabledHint': 'Chat is off — voice commands only',
     'vaSttOffline': 'Voice engine not connected',
     'updRestart': 'Restart',
     'updUpToDate': 'Up to date',
@@ -1456,6 +1465,7 @@ const Map<String, Map<String, String>> _i18n = {
     'sttTestStart': 'Start test',
     'sttTestStop': 'Stop',
     'sttTestHint': 'Say something — the recognized text appears here…',
+    'sttTestClear': 'Clear',
     'run': 'Run',
     'cmdRunTitle': 'Run this command?',
     'cmdRunOk': 'Command executed',
@@ -2907,6 +2917,13 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('1.1.0', [
+    'Режим «только команды»: тумблер «Чат» в настройках — выключите, чтобы ассистент выполнял только команды. Нераспознанная фраза не уходит в чат, а отвечает «Команда не найдена»; текстовый ввод при этом отключается.',
+    'Редактирование команд: у каждой команды появилась кнопка-карандаш — открывает мастер с уже заполненными полями.',
+    'Приложения из Microsoft Store теперь попадают в список (включая Яндекс Музыку и другие Store-приложения/PWA) и запускаются командой.',
+    'Точнее распознавание команд: убрана лишняя пунктуация и добавлено совпадение по словам (лишние слова/порядок больше не мешают). При уходе фразы в чат в лог пишется балл совпадения — для диагностики.',
+    'Тест распознавания: распознанный текст можно выделить и скопировать, добавлена кнопка «Очистить».',
+  ]),
   ChangelogEntry('1.0.13', [
     'Фраза-озвучка команды: при добавлении команды можно вписать фразу, которую ассистент произнесёт при её выполнении (например «Открываю Яндекс Музыку»). Работает при включённых голосовых ответах.',
     'В список программ для команд добавлены приложения из Microsoft Store — их теперь можно назначать на голосовые команды и запускать.',
@@ -3965,6 +3982,10 @@ class AppState extends ChangeNotifier {
   double cmdThreshold = 0.65; // 0..1 fuzzy phrase-match threshold
   String cmdConfirm = 'risky'; // 'always' | 'risky' | 'never'
   bool cmdEnabled = false; // allow command execution (off by default for safety)
+  // Chat on/off. When false, EVS is a pure command assistant: voice that
+  // doesn't match a command says "command not found" (never falls back to a
+  // chat turn), and the text composer is disabled.
+  bool chatEnabled = true;
   // Voice visualization.
   // 'sphere' | 'waves' | 'bars' | 'orb' (Siri Orb) | 'lkbars' (Полоски) | 'none'
   String vizType = 'sphere';
@@ -4151,6 +4172,7 @@ class AppState extends ChangeNotifier {
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
     cmdEnabled = prefs.getBool('cmdEnabled') ?? false;
+    chatEnabled = prefs.getBool('chatEnabled') ?? true;
     vizType = prefs.getString('vizType') ?? 'sphere';
     showVizBg = prefs.getBool('showVizBg') ?? true;
     showPartial = prefs.getBool('showPartial') ?? true;
@@ -4245,6 +4267,7 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble('cmdThreshold', cmdThreshold);
     await prefs.setString('cmdConfirm', cmdConfirm);
     await prefs.setBool('cmdEnabled', cmdEnabled);
+    await prefs.setBool('chatEnabled', chatEnabled);
     await prefs.setString('vizType', vizType);
     await prefs.setBool('showVizBg', showVizBg);
     await prefs.setBool('showPartial', showPartial);
@@ -4391,6 +4414,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setChatEnabled(bool v) {
+    chatEnabled = v;
+    _save();
+    notifyListeners();
+  }
+
   void setVizType(String v) {
     vizType = v;
     _save();
@@ -4529,6 +4558,19 @@ class AppState extends ChangeNotifier {
 
   void removeVoiceCommand(VoiceCommand c) {
     voiceCommands.remove(c);
+    _save();
+    notifyListeners();
+  }
+
+  // Replace an existing command in place (keeps its list position) — used by
+  // the edit flow.
+  void replaceVoiceCommand(VoiceCommand oldCmd, VoiceCommand newCmd) {
+    final i = voiceCommands.indexOf(oldCmd);
+    if (i < 0) {
+      voiceCommands.add(newCmd);
+    } else {
+      voiceCommands[i] = newCmd;
+    }
     _save();
     notifyListeners();
   }
@@ -8957,11 +8999,30 @@ class VoiceAssistant {
     // 1) The user's command catalog (fuzzy match) — the ONLY thing that runs a
     //    command. No built-in/auto-interpreted launches: if the user didn't add
     //    it, it's not a command.
-    final match = _matchCommand(app, command);
+    final (match, score) = _matchCommand(app, command);
     if (match != null) {
       await _runCommand(app, match);
       return;
     }
+    // No command matched. In commands-only mode (chat disabled) tell the user
+    // instead of falling back to a chat turn.
+    if (!app.chatEnabled) {
+      unawaited(appendLog(
+          'commands',
+          'NO MATCH (chat off): "${_norm(command)}" '
+              'best=${score.toStringAsFixed(2)}/${app.cmdThreshold}'));
+      _toast(app.t('vaCmdNotFound'));
+      VizOverlayServer.instance.note(app.t('vaCmdNotFound'), kind: 'err');
+      if (app.voiceResponses) _speak(app, app.t('vaCmdNotFound'));
+      state.value = _listening ? VaState.listening : VaState.idle;
+      return;
+    }
+    // Diagnostic: record why this went to chat (best score vs threshold) so
+    // "exact command went to chat" reports can be traced from commands.log.
+    unawaited(appendLog(
+        'commands',
+        'NO MATCH → chat: "${_norm(command)}" '
+            'best=${score.toStringAsFixed(2)}/${app.cmdThreshold}'));
     // 2) Everything else is normal speech → a regular (visible) chat turn.
     _toast('${app.t('vaThinking')} $command');
     final cloned = app.ttsVoice == 'cloned' && app.cloneSamplePath.isNotEmpty;
@@ -9016,27 +9077,40 @@ class VoiceAssistant {
         '${cmd.phrase} -> [${cmd.type.name}] ${cmd.value} : ${ok ? 'OK' : 'FAIL'}'));
   }
 
-  VoiceCommand? _matchCommand(AppState app, String text) {
+  // Best catalog match for a spoken phrase. Returns the matched command (null
+  // if below threshold) AND the best score reached — the score is logged when
+  // routing to chat so we can diagnose "exact command went to chat" reports.
+  (VoiceCommand?, double) _matchCommand(AppState app, String text) {
     final t = _norm(text);
+    final tTokens = t.split(' ').where((e) => e.isNotEmpty).toSet();
     VoiceCommand? best;
     double bestScore = 0;
     for (final c in app.voiceCommands) {
       final phrase = _norm(c.phrase);
       if (phrase.isEmpty) continue;
-      final double s;
+      double s;
       if (t == phrase) {
         s = 1.0;
       } else if (t.contains(phrase) || phrase.contains(t)) {
         s = 0.9;
       } else {
         s = _ratio(t, phrase);
+        // Token-subset: every word of the command phrase is present in the
+        // utterance (handles filler words / word order / recognizer noise like
+        // "открой мне телегу", "телегу открой").
+        final pTokens = phrase.split(' ').where((e) => e.isNotEmpty).toSet();
+        if (pTokens.isNotEmpty && pTokens.every(tTokens.contains)) {
+          s = math.max(s, 0.95);
+        }
       }
       if (s > bestScore) {
         bestScore = s;
         best = c;
       }
     }
-    return (best != null && bestScore >= app.cmdThreshold) ? best : null;
+    final matched =
+        (best != null && bestScore >= app.cmdThreshold) ? best : null;
+    return (matched, bestScore);
   }
 
   void _speak(AppState app, String text) {
@@ -9071,7 +9145,11 @@ class VoiceAssistant {
     return res ?? false;
   }
 
-  String _norm(String s) => s.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+  String _norm(String s) => s
+      .toLowerCase()
+      .trim()
+      .replaceAll(RegExp(r'[^0-9a-zа-яё ]'), '') // drop punctuation
+      .replaceAll(RegExp(r'\s+'), ' ');
 
   // Normalized similarity 0..1 from Levenshtein distance.
   double _ratio(String a, String b) {
@@ -10421,13 +10499,19 @@ Future<List<ProgramEntry>> listInstalledPrograms() async {
     } catch (_) {}
   }
 
-  // Microsoft Store / UWP apps via Get-StartApps (AppID with "!" = AUMID).
+  // Microsoft Store / UWP / PWA apps via Get-StartApps. Include AUMIDs (with
+  // "!") AND packaged/PWA entries whose AppID is a bare id (no backslash, not a
+  // {GUID}\path, not an auto-generated system entry). The latter catches Store
+  // PWAs like Yandex Music (AppID "Yandex", no "!"). Classic {GUID}\path apps
+  // are already covered by the .lnk scan, so they're excluded here.
   try {
     final res = await io.Process.run('powershell', [
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      "Get-StartApps | Where-Object { \$_.AppID -like '*!*' } | "
+      r"Get-StartApps | Where-Object { $_.AppID -like '*!*' -or "
+          r"($_.AppID -notlike '*\*' -and $_.AppID -notlike '{*' -and "
+          r"$_.AppID -notlike 'Microsoft.AutoGenerated*') } | "
           'Select-Object Name,AppID | ConvertTo-Json -Compress'
     ]).timeout(const Duration(seconds: 12));
     if (res.exitCode == 0) {
@@ -10457,7 +10541,10 @@ Future<List<ProgramEntry>> listInstalledPrograms() async {
 // VoiceCommand, or null on cancel.
 class _AddCommandWizard extends StatefulWidget {
   final AppState app;
-  const _AddCommandWizard({required this.app});
+  // When set, the wizard opens in EDIT mode: pre-filled and jumps straight to
+  // the phrase step; "Save" returns the updated command.
+  final VoiceCommand? initial;
+  const _AddCommandWizard({required this.app, this.initial});
   @override
   State<_AddCommandWizard> createState() => _AddCommandWizardState();
 }
@@ -10474,7 +10561,22 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
   String _progFilter = '';
   final Map<String, String> _iconPaths = {}; // iconSource -> cached PNG path
 
+  bool get _isEdit => widget.initial != null;
   AppState get app => widget.app;
+
+  @override
+  void initState() {
+    super.initState();
+    final it = widget.initial;
+    if (it != null) {
+      _type = it.type;
+      _value = it.value;
+      _valueLabel = it.value;
+      _phraseCtrl.text = it.phrase;
+      _speakCtrl.text = it.speakPhrase;
+      _step = 2; // straight to the phrase step; user can go Back to re-pick
+    }
+  }
 
   @override
   void dispose() {
@@ -10580,7 +10682,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         if (_step == 2)
           TextButton(
             onPressed: _finish,
-            child: Text(app.t('add')),
+            child: Text(_isEdit ? app.t('save') : app.t('add')),
           ),
       ],
     );
@@ -10905,6 +11007,11 @@ class _SttTestCardState extends State<_SttTestCard> {
     if (mounted) setState(() => _testing = false);
   }
 
+  void _clear() => setState(() {
+        _final = '';
+        _partial = '';
+      });
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -10946,15 +11053,17 @@ class _SttTestCardState extends State<_SttTestCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // SelectableText so the recognized phrases can be
+                      // selected/copied (Ctrl+C or right-click → Copy).
                       if (_final.isNotEmpty)
-                        Text(_final,
+                        SelectableText(_final,
                             style: const TextStyle(
                                 color: Color(0xFFEAECF5),
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600)),
                       if (_partial.isNotEmpty) ...[
                         if (_final.isNotEmpty) const SizedBox(height: 6),
-                        Text(_partial,
+                        SelectableText(_partial,
                             style: const TextStyle(
                                 color: Color(0xFF7A8090),
                                 fontSize: 13.5,
@@ -10968,11 +11077,21 @@ class _SttTestCardState extends State<_SttTestCard> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                evsGhostButton(
-                  _testing ? app.t('sttTestStop') : app.t('sttTestStart'),
-                  _testing ? Icons.stop : Icons.mic,
-                  onTap: () => _testing ? _stop() : _start(),
-                ),
+                Row(children: [
+                  evsGhostButton(
+                    _testing ? app.t('sttTestStop') : app.t('sttTestStart'),
+                    _testing ? Icons.stop : Icons.mic,
+                    onTap: () => _testing ? _stop() : _start(),
+                  ),
+                  if (_final.isNotEmpty || _partial.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    evsGhostButton(
+                      app.t('sttTestClear'),
+                      Icons.clear,
+                      onTap: _clear,
+                    ),
+                  ],
+                ]),
               ],
             ],
           ),
@@ -12254,6 +12373,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             desc: app.t('cmdAllowDesc'),
             control: evsToggle(app.cmdEnabled, app.setCmdEnabled),
           ),
+          evsRow(
+            stacked: true,
+            label: app.t('chatToggle'),
+            desc: app.t('chatToggleDesc'),
+            control: evsToggle(app.chatEnabled, app.setChatEnabled),
+          ),
         ]),
         full: true,
       ),
@@ -12388,6 +12513,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
           InkResponse(
             radius: 18,
+            onTap: () => _openEditCommandWizard(app, c),
+            child: Container(
+              width: 28,
+              height: 28,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.white.withValues(alpha: 0.06)),
+              child: const Icon(Icons.edit_outlined,
+                  size: 13, color: Color(0xFF9AA0B4)),
+            ),
+          ),
+          InkResponse(
+            radius: 18,
             onTap: () => app.removeVoiceCommand(c),
             child: Container(
               width: 28,
@@ -12457,6 +12596,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       builder: (_) => _AddCommandWizard(app: app),
     );
     if (cmd != null) app.addVoiceCommand(cmd);
+  }
+
+  Future<void> _openEditCommandWizard(AppState app, VoiceCommand existing) async {
+    final cmd = await showDialog<VoiceCommand>(
+      context: context,
+      builder: (_) => _AddCommandWizard(app: app, initial: existing),
+    );
+    if (cmd != null) app.replaceVoiceCommand(existing, cmd);
   }
 
   // =================== SECTION 2: WIDGETS ===================
@@ -15577,6 +15724,33 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _inputBar(AppState app) {
+    // Commands-only mode: text chat is disabled — show a locked bar (voice
+    // push-to-talk stays so commands still work).
+    if (!app.chatEnabled) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 10, 8, 16),
+        child: _inputSurface(
+          child: Row(
+            children: [
+              const SizedBox(width: 14),
+              Icon(Icons.lock_outline, size: 18, color: _sub(context)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(app.t('chatDisabledHint'),
+                    style: TextStyle(color: _sub(context), fontSize: 14)),
+              ),
+              _buildAnimatedBtn(
+                onTap: widget.desktop ? _desktopVoice : _openVoice,
+                icon: (widget.desktop && _scListening)
+                    ? Icons.stop_rounded
+                    : Icons.graphic_eq,
+              ),
+              const SizedBox(width: 6),
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 10, 8, 16),
       child: AnimatedBorder(
