@@ -51,6 +51,29 @@ io.ServerSocket? _singleInstanceLock;
 // keeps its size — see OverlayWidgetView).
 const double kWidgetWindowScale = 1.35;
 
+// Named Win32 mutex held for the whole process lifetime. The Inno Setup
+// installer declares the same name via AppMutex, so during a silent in-app
+// update it can detect the running instance and (with CloseApplications=force)
+// close it via Restart Manager before copying files — without this the old
+// files stay locked and the update silently doesn't apply. The handle is left
+// open for the whole process (released automatically when the process dies), so
+// there's nothing to store.
+void _claimAppMutex() {
+  if (defaultTargetPlatform != TargetPlatform.windows) return;
+  try {
+    final k32 = DynamicLibrary.open('kernel32.dll');
+    final createMutex = k32
+        .lookupFunction<_CreateMutexNative, _CreateMutexDart>('CreateMutexW');
+    final name = 'EVS-SingleInstance-Mutex'.toNativeUtf16();
+    createMutex(nullptr, 0, name);
+    malloc.free(name); // the kernel copies the name
+  } catch (_) {}
+}
+
+typedef _CreateMutexNative = IntPtr Function(
+    Pointer<Void>, Int32, Pointer<Utf16>);
+typedef _CreateMutexDart = int Function(Pointer<Void>, int, Pointer<Utf16>);
+
 void main(List<String> args) async {
   final startedAt = DateTime.now();
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,6 +95,9 @@ void main(List<String> args) async {
     try {
       _singleInstanceLock = await io.ServerSocket.bind(
           io.InternetAddress.loopbackIPv4, _kSingleInstancePort);
+      // First instance: hold the named mutex the installer looks for (AppMutex),
+      // so a silent in-app update can close us via Restart Manager.
+      _claimAppMutex();
       // We're the first instance: any later launch connects here → show window.
       _singleInstanceLock!.listen((conn) {
         conn.listen((_) {}, onError: (_) {}, cancelOnError: true);
@@ -197,6 +223,12 @@ class _VizOverlayAppState extends State<VizOverlayApp> with WindowListener {
   AppState? _cfg;
   io.WebSocket? _ws;
   bool _positioned = false;
+  // Position persistence: onWindowMoved is unreliable after a native
+  // startDragging() on Windows, so the widget's spot was often never saved.
+  // Poll the position on a timer and push any change to the main app — that
+  // guarantees the location is remembered regardless of window events.
+  Timer? _posTimer;
+  Offset? _lastPollPos;
 
   @override
   void initState() {
@@ -209,6 +241,25 @@ class _VizOverlayAppState extends State<VizOverlayApp> with WindowListener {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _cfg = AppState(prefs));
     await _connect();
+    _startPositionWatch();
+  }
+
+  void _startPositionWatch() {
+    _posTimer?.cancel();
+    _posTimer = Timer.periodic(const Duration(seconds: 1), (_) async {
+      try {
+        final p = await windowManager.getPosition();
+        final last = _lastPollPos;
+        final moved = last == null ||
+            (p.dx - last.dx).abs() > 1 ||
+            (p.dy - last.dy).abs() > 1;
+        if (!moved) return;
+        _lastPollPos = p;
+        // Skip the first reading (just the current/default spot); only persist
+        // once the user has actually dragged it somewhere new.
+        if (last != null) _send({'t': 'moved', 'x': p.dx, 'y': p.dy});
+      } catch (_) {}
+    });
   }
 
   Future<void> _connect() async {
@@ -246,8 +297,16 @@ class _VizOverlayAppState extends State<VizOverlayApp> with WindowListener {
           _positioned = true;
           final x = (m['x'] as num?)?.toDouble();
           final y = (m['y'] as num?)?.toDouble();
-          if (x != null && y != null) {
+          // Guard against a saved spot on a monitor that's since been removed
+          // (absurd coords would park the widget off every screen).
+          if (x != null &&
+              y != null &&
+              x > -10000 &&
+              x < 30000 &&
+              y > -10000 &&
+              y < 30000) {
             unawaited(windowManager.setPosition(Offset(x, y)));
+            _lastPollPos = Offset(x, y); // don't re-persist the restored spot
           }
         }
         break;
@@ -304,6 +363,7 @@ class _VizOverlayAppState extends State<VizOverlayApp> with WindowListener {
 
   @override
   void dispose() {
+    _posTimer?.cancel();
     windowManager.removeListener(this);
     super.dispose();
   }
@@ -528,6 +588,14 @@ const Map<String, Map<String, String>> _i18n = {
     'updAvailableTitle': 'Доступно обновление',
     'updDialogHint': 'Обновление уже скачано. Перезапустите EVS, чтобы применить.',
     'updLater': 'Позже',
+    'updFailedApply': 'Обновление не установилось. Закройте EVS полностью и попробуйте снова.',
+    'webSearch': 'Веб-поиск',
+    'webSearchEnable': 'Искать в интернете',
+    'webSearchDesc': 'Ассистент найдёт свежие данные (курс, погода, новости), когда вопрос этого требует.',
+    'webSearchKeysHint': 'Работает без ключа (DuckDuckGo). Ключ Tavily или Brave — стабильнее и качественнее.',
+    'webSearchTavily': 'Tavily API-ключ (необязательно)',
+    'webSearchBrave': 'Brave API-ключ (необязательно)',
+    'webSearching': '🔎 Ищу в интернете…',
     'vaWakeHeard': 'услышал, говорите!',
     'vaArmed': 'Говорите команду…',
     'vaCmdUnknown': 'Команду не понял',
@@ -718,6 +786,8 @@ const Map<String, Map<String, String>> _i18n = {
     'pin': 'Закрепить',
     'unpin': 'Открепить',
     'delete': 'Удалить',
+    'chatDeleted': 'Чат удалён',
+    'undo': 'Отменить',
     'rename': 'Переименовать',
     'renameChat': 'Переименовать чат',
     'renameChatHint': 'Название чата',
@@ -1218,6 +1288,14 @@ const Map<String, Map<String, String>> _i18n = {
     'updAvailableTitle': 'Update available',
     'updDialogHint': 'The update is already downloaded. Restart EVS to apply.',
     'updLater': 'Later',
+    'updFailedApply': 'The update did not install. Fully close EVS and try again.',
+    'webSearch': 'Web search',
+    'webSearchEnable': 'Search the web',
+    'webSearchDesc': 'The assistant fetches fresh info (rates, weather, news) when a question needs it.',
+    'webSearchKeysHint': 'Works without a key (DuckDuckGo). A Tavily or Brave key is more reliable and higher quality.',
+    'webSearchTavily': 'Tavily API key (optional)',
+    'webSearchBrave': 'Brave API key (optional)',
+    'webSearching': '🔎 Searching the web…',
     'vaWakeHeard': 'heard you, go ahead!',
     'vaArmed': 'Say the command…',
     'vaCmdUnknown': 'Could not understand the command',
@@ -1406,6 +1484,8 @@ const Map<String, Map<String, String>> _i18n = {
     'pin': 'Pin',
     'unpin': 'Unpin',
     'delete': 'Delete',
+    'chatDeleted': 'Chat deleted',
+    'undo': 'Undo',
     'rename': 'Rename',
     'renameChat': 'Rename chat',
     'renameChatHint': 'Chat name',
@@ -2711,6 +2791,13 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('1.0.12', [
+    'Веб-поиск: ассистент сам ищет свежие данные в интернете (курс валют, погода, новости), когда вопрос этого требует, и отвечает по ним. Включается в «Модель», работает без ключа (DuckDuckGo) или с ключом Tavily/Brave.',
+    'Исправлен микрофон, который «переставал слышать» после перезапуска: распознавание теперь надёжно перезапускается при каждом переподключении голосового движка. Тест распознавания снова показывает текст.',
+    'Обновление больше не предлагается при каждом запуске и надёжнее устанавливается (закрытие старой версии перед заменой файлов); если установка не удалась — приложение сообщит об этом.',
+    'Виджет запоминает своё положение: где оставили — там и появится после перезапуска.',
+    'Удаление чата теперь можно отменить (кнопка «Отменить»). Раздел настроек распознавания больше не «съезжает».',
+  ]),
   ChangelogEntry('1.0.11', [
     'Тест распознавания в настройках: произнесите фразу и сразу увидите, как её записал распознаватель — удобно подбирать фразу-триггер.',
     'Добавление команды переделано в пошаговый мастер: выбор типа (программа / файл / сайт / система / медиа) → для программы список установленных приложений → фраза-триггер.',
@@ -3083,12 +3170,13 @@ class LocalLLMService implements ILLMService {
     // tier check: its own prompt (RPMemoryManager.buildSystemPrompt) is
     // short and user-authored by nature, so the problem buildLocalSystemPrompt
     // exists to solve doesn't really apply the same way.
-    final systemPrompt = rpActive
-        ? RPMemoryManager.buildSystemPrompt(conv)
-        : (spec.tier == LocalModelTier.light
-                  ? effectivePersona.buildLocalSystemPrompt()
-                  : effectivePersona.buildSystemPrompt()) +
-              conv.pinnedContextBlock();
+    final systemPrompt = (rpActive
+            ? RPMemoryManager.buildSystemPrompt(conv)
+            : (spec.tier == LocalModelTier.light
+                      ? effectivePersona.buildLocalSystemPrompt()
+                      : effectivePersona.buildSystemPrompt()) +
+                  conv.pinnedContextBlock()) +
+        app.pendingWebContext; // live web results for this turn (may be empty)
     final effectiveHistory = rpActive
         ? RPMemoryManager.trimForContext(
             history,
@@ -3312,10 +3400,11 @@ class RemoteLLMService implements ILLMService {
     List<ChatMessage> history,
   ) {
     final rpActive = conv.rpModeEnabled && conv.rpConfig != null;
-    final systemPrompt = rpActive
-        ? RPMemoryManager.buildSystemPrompt(conv)
-        : (conv.persona ?? app.persona).buildSystemPrompt() +
-              conv.pinnedContextBlock();
+    final systemPrompt = (rpActive
+            ? RPMemoryManager.buildSystemPrompt(conv)
+            : (conv.persona ?? app.persona).buildSystemPrompt() +
+                  conv.pinnedContextBlock()) +
+        app.pendingWebContext; // live web results for this turn (may be empty)
     final effectiveHistory = rpActive
         ? RPMemoryManager.trimForContext(
             history,
@@ -3772,6 +3861,16 @@ class AppState extends ChangeNotifier {
   double overlaySize = 260; // widget window size, px (200 | 260 | 330)
   // Periodic background update checks (the in-app Discord-style updater).
   bool autoUpdateCheck = true;
+  // Web search: when on, the assistant fetches live results for queries that
+  // look like they need fresh info (WebSearchService.needed) and feeds them to
+  // the model. Keyless DuckDuckGo by default; an optional Tavily/Brave API key
+  // gives more reliable results.
+  bool webSearchEnabled = false;
+  String tavilyKey = '';
+  String braveKey = '';
+  // Retrieved web context for the CURRENT turn only — appended to the system
+  // prompt, then cleared. Never persisted, never leaks into later turns.
+  String pendingWebContext = '';
   // Voice responses (TTS).
   bool voiceResponses = false;
   String ttsVoice = 'system'; // 'system' | 'cloned'
@@ -3939,6 +4038,9 @@ class AppState extends ChangeNotifier {
     orbSpeed = prefs.getDouble('orbSpeed') ?? 20;
     barCount = prefs.getInt('barCount') ?? 7;
     autoUpdateCheck = prefs.getBool('autoUpdateCheck') ?? true;
+    webSearchEnabled = prefs.getBool('webSearchEnabled') ?? false;
+    tavilyKey = prefs.getString('tavilyKey') ?? '';
+    braveKey = prefs.getString('braveKey') ?? '';
     voiceResponses = prefs.getBool('voiceResponses') ?? false;
     ttsVoice = prefs.getString('ttsVoice') ?? 'system';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
@@ -4030,6 +4132,9 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble('orbSpeed', orbSpeed);
     await prefs.setInt('barCount', barCount);
     await prefs.setBool('autoUpdateCheck', autoUpdateCheck);
+    await prefs.setBool('webSearchEnabled', webSearchEnabled);
+    await prefs.setString('tavilyKey', tavilyKey);
+    await prefs.setString('braveKey', braveKey);
     await prefs.setBool('voiceResponses', voiceResponses);
     await prefs.setString('ttsVoice', ttsVoice);
     await prefs.setDouble('ttsRate', ttsRate);
@@ -4241,6 +4346,24 @@ class AppState extends ChangeNotifier {
 
   void setAutoUpdateCheck(bool v) {
     autoUpdateCheck = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setWebSearchEnabled(bool v) {
+    webSearchEnabled = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setTavilyKey(String v) {
+    tavilyKey = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setBraveKey(String v) {
+    braveKey = v.trim();
     _save();
     notifyListeners();
   }
@@ -4726,9 +4849,26 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // The last deleted chat + its list index, kept so the UI can offer Undo.
+  (Conversation, int)? _lastDeletedChat;
+
   void deleteChat(Conversation c) {
-    conversations.remove(c);
+    final idx = conversations.indexOf(c);
+    if (idx < 0) return;
+    conversations.removeAt(idx);
+    _lastDeletedChat = (c, idx);
     if (current == c) current = null;
+    _save();
+    notifyListeners();
+  }
+
+  // Restore the most recently deleted chat to its original position.
+  void undoDeleteChat() {
+    final d = _lastDeletedChat;
+    if (d == null) return;
+    final (c, idx) = d;
+    conversations.insert(idx.clamp(0, conversations.length), c);
+    _lastDeletedChat = null;
     _save();
     notifyListeners();
   }
@@ -4807,6 +4947,8 @@ class AppState extends ChangeNotifier {
     conv.updatedAt = DateTime.now();
     notifyListeners();
 
+    await _prepareWebContext(userText, voice: true, conv: conv);
+
     _genCancelled = false;
     final history = List<ChatMessage>.from(conv.messages);
     final assistantMessage = ChatMessage(role: 'assistant', content: '');
@@ -4836,6 +4978,7 @@ class AppState extends ChangeNotifier {
     } finally {
       isGenerating = false;
       _cancelGeneration = null;
+      pendingWebContext = ''; // don't leak this turn's results into later ones
       conv.updatedAt = DateTime.now();
       _save();
       notifyListeners();
@@ -4904,12 +5047,35 @@ class AppState extends ChangeNotifier {
   // assistant reply should be generated from (sendMessage appended the user
   // turn; regenerate trimmed the old reply; continue leaves it as-is). RP
   // chats stream the reply in place; everything else awaits the full reply.
+  // Best-effort: if web search is enabled and the query looks like it needs
+  // fresh info, fetch results and stash them in pendingWebContext for this
+  // turn (the prompt builders append it to the system prompt). Cleared by the
+  // caller after generation so it never leaks into later turns.
+  Future<void> _prepareWebContext(String? query,
+      {bool voice = false, Conversation? conv}) async {
+    pendingWebContext = '';
+    final q = query?.trim() ?? '';
+    if (q.isEmpty || !webSearchEnabled) return;
+    if (conv?.rpModeEnabled ?? false) return; // don't web-search roleplay
+    if (!WebSearchService.instance.needed(q)) return;
+    if (voice) {
+      VizOverlayServer.instance.note(t('webSearching'), kind: 'info');
+    } else {
+      final ctx = rootNavKey.currentContext;
+      if (ctx != null) showAppSnackBar(ctx, t('webSearching'));
+    }
+    final hits = await WebSearchService.instance.search(q, app: this);
+    pendingWebContext = WebSearchService.instance.contextBlock(hits);
+  }
+
   Future<String> _generateAssistantReply(
     Conversation conv, {
     String? userTextForMemory,
   }) async {
-    String replyText;
+    String replyText = '';
     _genCancelled = false;
+    await _prepareWebContext(userTextForMemory, conv: conv);
+    try {
     if (conv.rpModeEnabled) {
       final history = List<ChatMessage>.from(conv.messages);
       final assistantMessage = ChatMessage(role: 'assistant', content: '');
@@ -4968,6 +5134,9 @@ class AppState extends ChangeNotifier {
       _save();
       notifyListeners();
       replyText = reply;
+    }
+    } finally {
+      pendingWebContext = ''; // don't leak this turn's results into later ones
     }
 
     if (userTextForMemory != null) {
@@ -7118,6 +7287,166 @@ class DesktopIntegration with WindowListener, TrayListener {
   }
 }
 
+// ============================ WEB SEARCH ============================
+// RAG web search: fetch a few results for a query and format them as a compact
+// context block fed to the model, so the assistant can answer with fresh info
+// (exchange rates, weather, news…). Provider order: Tavily (key) → Brave (key)
+// → keyless DuckDuckGo HTML scrape. Every network call is wrapped so a failure
+// just yields an empty result and the model answers as it normally would.
+class SearchHit {
+  final String title;
+  final String url;
+  final String snippet;
+  const SearchHit(this.title, this.url, this.snippet);
+}
+
+class WebSearchService {
+  WebSearchService._();
+  static final WebSearchService instance = WebSearchService._();
+
+  // Heuristic: does this query likely need fresh/live info? Curated RU+EN
+  // signals (currency, weather, prices, "now/today", news, scores, release
+  // dates, an explicit year). Cheap and works for voice — no extra model call.
+  static final RegExp _freshRe = RegExp(
+    r'(курс|доллар|евро|валют|биткоин|крипт|погод|weather|температур|'
+    r'сегодня|сейчас|текущ|актуальн|последн|latest|current|today|now|'
+    r'новост|news|цена|сколько стоит|стоимост|price|сч[её]т|score|'
+    r'кто выиграл|результат|расписан|когда выйдет|release date|'
+    r'\b20\d{2}\b)',
+    caseSensitive: false,
+  );
+  bool needed(String q) => _freshRe.hasMatch(q);
+
+  Future<List<SearchHit>> search(String query, {AppState? app}) async {
+    final tav = app?.tavilyKey ?? '';
+    final brave = app?.braveKey ?? '';
+    try {
+      if (tav.isNotEmpty) return await _tavily(query, tav);
+      if (brave.isNotEmpty) return await _brave(query, brave);
+      return await _ddg(query);
+    } catch (e) {
+      unawaited(appendLog('errors', 'WebSearch: $e'));
+      return const [];
+    }
+  }
+
+  Future<List<SearchHit>> _tavily(String q, String key) async {
+    final res = await http
+        .post(
+          Uri.parse('https://api.tavily.com/search'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'api_key': key,
+            'query': q,
+            'max_results': 5,
+            'include_answer': true,
+          }),
+        )
+        .timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return const [];
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final hits = <SearchHit>[];
+    final answer = (data['answer'] as String?)?.trim() ?? '';
+    if (answer.isNotEmpty) hits.add(SearchHit('Сводка', '', answer));
+    for (final r in (data['results'] as List? ?? const [])) {
+      if (r is Map) {
+        hits.add(SearchHit((r['title'] ?? '').toString(),
+            (r['url'] ?? '').toString(), (r['content'] ?? '').toString()));
+      }
+    }
+    return hits;
+  }
+
+  Future<List<SearchHit>> _brave(String q, String key) async {
+    final res = await http.get(
+      Uri.parse('https://api.search.brave.com/res/v1/web/search'
+          '?q=${Uri.encodeQueryComponent(q)}&count=5'),
+      headers: {'Accept': 'application/json', 'X-Subscription-Token': key},
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return const [];
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final web = data['web'];
+    final results = (web is Map ? web['results'] : null) as List? ?? const [];
+    return [
+      for (final r in results)
+        if (r is Map)
+          SearchHit((r['title'] ?? '').toString(),
+              (r['url'] ?? '').toString(), (r['description'] ?? '').toString()),
+    ];
+  }
+
+  // Keyless fallback: scrape DuckDuckGo's HTML endpoint. Fragile by nature
+  // (layout can change / it may rate-limit) — hence the optional API keys.
+  Future<List<SearchHit>> _ddg(String q) async {
+    final res = await http.post(
+      Uri.parse('https://html.duckduckgo.com/html/'),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: 'q=${Uri.encodeQueryComponent(q)}',
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return const [];
+    final html = utf8.decode(res.bodyBytes, allowMalformed: true);
+    final linkRe =
+        RegExp(r'result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', dotAll: true);
+    final snipRe = RegExp(r'result__snippet"[^>]*>(.*?)</a>', dotAll: true);
+    final links = linkRe.allMatches(html).toList();
+    final snips = snipRe.allMatches(html).toList();
+    final hits = <SearchHit>[];
+    for (var i = 0; i < links.length && i < 5; i++) {
+      final url = _decodeDdgUrl(links[i].group(1) ?? '');
+      final title = _stripHtml(links[i].group(2) ?? '');
+      final snippet =
+          i < snips.length ? _stripHtml(snips[i].group(1) ?? '') : '';
+      if (title.isNotEmpty) hits.add(SearchHit(title, url, snippet));
+    }
+    return hits;
+  }
+
+  String _stripHtml(String s) => s
+      .replaceAll(RegExp(r'<[^>]+>'), '')
+      .replaceAll('&amp;', '&')
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#x27;', "'")
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  // DDG wraps result URLs as /l/?uddg=<encoded> — unwrap when present.
+  String _decodeDdgUrl(String href) {
+    try {
+      final m = RegExp(r'[?&]uddg=([^&]+)').firstMatch(href);
+      if (m != null) return Uri.decodeComponent(m.group(1)!);
+    } catch (_) {}
+    return href.startsWith('//') ? 'https:$href' : href;
+  }
+
+  // Compact block appended to the system prompt. Includes today's date so the
+  // model knows what "now" refers to.
+  String contextBlock(List<SearchHit> hits) {
+    if (hits.isEmpty) return '';
+    final now = DateTime.now();
+    final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    final b = StringBuffer();
+    b.writeln('\n\n[Актуальные результаты веб-поиска на $date — используй их, '
+        'чтобы ответить по свежим данным; при необходимости укажи источник]');
+    var i = 1;
+    for (final h in hits.take(5)) {
+      final s = h.snippet.length > 320
+          ? '${h.snippet.substring(0, 320)}…'
+          : h.snippet;
+      b.writeln('[$i] ${h.title}${h.url.isNotEmpty ? ' (${h.url})' : ''}');
+      if (s.isNotEmpty) b.writeln('    $s');
+      i++;
+    }
+    return b.toString();
+  }
+}
+
 // ============================ IN-APP UPDATER ============================
 // Discord-style updates: silently download the new installer in the
 // background, verify it (sha256 from the appcast, falling back to size), then
@@ -7148,6 +7477,11 @@ class AppUpdater {
   String? lastError;
   String? _installerPath;
   String _promptedVersion = '';
+  // Version the user explicitly dismissed with "Later" — persisted so the
+  // update dialog isn't shown again for it on every launch (the passive
+  // top-bar pill still offers the update). Cleared implicitly when a newer
+  // version appears (availableVersion changes).
+  String _declinedVersion = '';
   Timer? _timer;
   bool _busy = false;
   AppState? _app;
@@ -7155,6 +7489,8 @@ class AppUpdater {
   void start(AppState app) {
     _app = app;
     if (defaultTargetPlatform != TargetPlatform.windows) return;
+    _declinedVersion = app.prefs.getString('updDeclinedVersion') ?? '';
+    unawaited(_checkPreviousUpdateOutcome(app));
     unawaited(_cleanupOldInstallers());
     // Don't auto-poll during development unless a staging feed is forced.
     final hasOverride =
@@ -7179,6 +7515,33 @@ class AppUpdater {
             await f.delete();
           } catch (_) {} // pending installer may be locked — fine, keep it
         }
+      }
+    } catch (_) {}
+  }
+
+  // A previous run launched the silent installer (marker written by
+  // applyAndRestart). If we're back up but the version DIDN'T advance, the
+  // update silently failed to apply (locked files / cancelled) — surface it
+  // instead of looping invisibly. One-shot: the marker is always cleared.
+  Future<void> _checkPreviousUpdateOutcome(AppState app) async {
+    try {
+      final marker = io.File(await updateDownloadPath('pending_update.txt'));
+      if (!await marker.exists()) return;
+      final expected = (await marker.readAsString()).trim();
+      try {
+        await marker.delete();
+      } catch (_) {}
+      if (expected.isEmpty) return;
+      final info = await PackageInfo.fromPlatform();
+      if (_isNewer(expected, info.version)) {
+        unawaited(appendLog('errors',
+            'update did not apply: still ${info.version}, expected $expected'));
+        // Let them know once, after the window is actually visible.
+        Future.delayed(const Duration(seconds: 3), () {
+          final ctx = rootNavKey.currentContext;
+          // ignore: use_build_context_synchronously
+          if (ctx != null) showAppSnackBar(ctx, app.t('updFailedApply'));
+        });
       }
     } catch (_) {}
   }
@@ -7246,6 +7609,9 @@ class AppUpdater {
 
   void _maybePrompt() {
     if (_promptedVersion == availableVersion) return;
+    // Already dismissed with "Later" on a previous run — don't nag again; the
+    // passive top-bar pill still lets them update when they want.
+    if (_declinedVersion == availableVersion) return;
     () async {
       // The chat window often starts hidden (the floating widget is the only
       // visible surface) — a dialog shown now would go unseen. Defer until
@@ -7337,7 +7703,14 @@ class AppUpdater {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
-                    onPressed: () => Navigator.pop(dctx),
+                    onPressed: () {
+                      // Remember the dismissal so we don't re-prompt for this
+                      // version on every launch.
+                      _declinedVersion = availableVersion;
+                      unawaited(app.prefs
+                          .setString('updDeclinedVersion', availableVersion));
+                      Navigator.pop(dctx);
+                    },
                     child: Text(app.t('updLater'),
                         style: const TextStyle(color: Color(0xFF9AA0B4))),
                   ),
@@ -7385,17 +7758,49 @@ class AppUpdater {
   Future<void> applyAndRestart() async {
     final path = _installerPath;
     if (path == null || status.value != UpdateStatus.ready) return;
+    // Marker read by _checkPreviousUpdateOutcome on the next launch: if the
+    // version didn't advance, the silent install failed and we say so instead
+    // of looping invisibly.
     try {
+      await io.File(await updateDownloadPath('pending_update.txt'))
+          .writeAsString(availableVersion);
+    } catch (_) {}
+    const args = [
+      '/VERYSILENT',
+      '/SUPPRESSMSGBOXES',
+      '/NORESTART',
+      '/CURRENTUSER',
+      '/RELAUNCH=1'
+    ];
+    try {
+      // Run the installer through a detached PowerShell that first WAITS for
+      // this process to fully exit before starting the copy. Previously we
+      // launched the installer and quit in parallel, so it often began copying
+      // while evs.exe (and the widget — a second evs.exe holding the same
+      // files) were still alive → locked files → silent install left the old
+      // version in place. Waiting removes that race; ProcessJob has already
+      // killed the child widget/sidecar by the time our PID is gone.
+      final esc = path.replaceAll("'", "''");
+      final argList = args.map((a) => "'$a'").join(',');
+      final ps = "Wait-Process -Id ${io.pid} -ErrorAction SilentlyContinue; "
+          "Start-Sleep -Milliseconds 800; "
+          "Start-Process -FilePath '$esc' -ArgumentList $argList";
       await io.Process.start(
-        path,
-        ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER',
-            '/RELAUNCH=1'],
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', ps],
         mode: io.ProcessStartMode.detached,
       );
-    } catch (e) {
-      lastError = e.toString();
-      status.value = UpdateStatus.error;
-      return;
+    } catch (_) {
+      // PowerShell unavailable — fall back to launching the installer directly
+      // (Restart Manager / CloseApplications=force still closes us).
+      try {
+        await io.Process.start(path, args,
+            mode: io.ProcessStartMode.detached);
+      } catch (e) {
+        lastError = e.toString();
+        status.value = UpdateStatus.error;
+        return;
+      }
     }
     await DesktopIntegration.instance.quitForUpdate();
   }
@@ -7788,7 +8193,16 @@ class SidecarClient {
       _proc = await io.Process.start(launch.$1, launch.$2,
           runInShell: false, environment: env);
       ProcessJob.instance.add(_proc!.pid); // die with the app
-      _proc!.stderr.listen((_) {}); // drain
+      // The sidecar's stderr used to be silently dropped, so STT/mic failures
+      // (bad device, model load errors, crashes) left no trace. Log it to
+      // logs/sidecar.log so problems are diagnosable.
+      _proc!.stderr
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())
+          .listen((line) {
+        final t = line.trim();
+        if (t.isNotEmpty) unawaited(appendLog('sidecar', 'ERR $t'));
+      });
       final ready = Completer<int>();
       _proc!.stdout
           .transform(const Utf8Decoder(allowMalformed: true))
@@ -7797,6 +8211,8 @@ class SidecarClient {
         if (line.startsWith('EVS_SIDECAR_READY')) {
           final p = int.tryParse(line.split(' ').last.trim());
           if (p != null && !ready.isCompleted) ready.complete(p);
+        } else if (line.trim().isNotEmpty) {
+          unawaited(appendLog('sidecar', line.trim()));
         }
       });
       _proc!.exitCode.then((_) {
@@ -7904,17 +8320,23 @@ class SidecarClient {
     } catch (_) {}
   }
 
-  void sttStart(String language, {String? prompt}) => _send({
-        'type': 'stt.start',
-        'language': language,
-        // Selected mic by name — otherwise the sidecar records from the
-        // system default device, which may differ from the one picked in
-        // Settings (the level meter there uses the picked one).
-        'device': MicMeter.instance.currentLabel,
-        // Whisper decoding primer (wake word + command vocabulary) to bias
-        // recognition toward the phrases the assistant expects.
-        if (prompt != null && prompt.isNotEmpty) 'prompt': prompt,
-      });
+  void sttStart(String language, {String? prompt}) {
+    // Selected mic by name — otherwise the sidecar records from the system
+    // default device, which may differ from the one picked in Settings (the
+    // level meter there uses the picked one). Only send a device when we
+    // actually have one: a stale/empty label could point at a mic that's gone
+    // and break capture — an empty field lets the sidecar fall back to the
+    // system default.
+    final device = MicMeter.instance.currentLabel;
+    _send({
+      'type': 'stt.start',
+      'language': language,
+      if (device.isNotEmpty) 'device': device,
+      // Whisper decoding primer (wake word + command vocabulary) to bias
+      // recognition toward the phrases the assistant expects.
+      if (prompt != null && prompt.isNotEmpty) 'prompt': prompt,
+    });
+  }
   void sttStop() => _send({'type': 'stt.stop'});
   // Switch the Whisper model size live (sidecar reloads on next transcription).
   void setSttModel(String model) {
@@ -8222,23 +8644,41 @@ class VoiceAssistant {
     return b.toString();
   }
 
+  // Whether we've already sent `stt.start` to the CURRENT sidecar connection.
+  // Reset whenever the sidecar drops or we stop listening, so a freshly
+  // (re)connected sidecar always gets a new stt.start — otherwise the
+  // assistant goes deaf after the sidecar restarts (e.g. an update-relaunch),
+  // because `_listening` stays true and the old code only started STT on the
+  // false→true edge.
+  bool _sttStartedForSession = false;
+
   // Start/stop continuous listening based on settings + sidecar availability.
   void _sync() {
     final app = _app;
     if (app == null) return;
     final connected =
         SidecarClient.instance.status.value == SidecarStatus.connected;
+    if (!connected) _sttStartedForSession = false; // next connect must restart
     // Only the wake-word mode listens continuously; 'separate'/'first' are
     // button-triggered, so the app doesn't capture audio non-stop by surprise.
     final want =
         connected && app.sttEngine == 'whisper' && app.cmdMode == 'wakeword';
-    if (want && !_listening) {
-      _listening = true;
-      SidecarClient.instance
-          .sttStart(app.effectiveSttLanguage, prompt: app.sttBiasPrompt);
-      if (state.value == VaState.idle) state.value = VaState.listening;
-    } else if (!want && _listening) {
+    if (want) {
+      if (!_listening) {
+        _listening = true;
+        if (state.value == VaState.idle) state.value = VaState.listening;
+      }
+      // (Re)issue stt.start once per sidecar connection. A newly (re)connected
+      // sidecar has no memory of a previous STT session, so this is what keeps
+      // the mic alive across sidecar restarts.
+      if (!_sttStartedForSession) {
+        _sttStartedForSession = true;
+        SidecarClient.instance
+            .sttStart(app.effectiveSttLanguage, prompt: app.sttBiasPrompt);
+      }
+    } else if (_listening) {
       _listening = false;
+      _sttStartedForSession = false;
       _disarm();
       SidecarClient.instance.sttStop();
       state.value = VaState.idle;
@@ -10101,6 +10541,16 @@ class _SttTestCardState extends State<_SttTestCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(children: [
+                const Icon(Icons.spellcheck, size: 15, color: Color(0xFF8A90A0)),
+                const SizedBox(width: 7),
+                Text(app.t('sttTest'),
+                    style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFCFD3E0))),
+              ]),
+              const SizedBox(height: 8),
               Text(app.t('sttTestDesc'),
                   style: const TextStyle(fontSize: 12.5, color: Color(0xFF7A8090))),
               const SizedBox(height: 12),
@@ -10152,6 +10602,115 @@ class _SttTestCardState extends State<_SttTestCard> {
           ),
         );
       },
+    );
+  }
+}
+
+// Web-search settings block: on/off toggle + optional Tavily/Brave API keys.
+// Works keyless (DuckDuckGo) by default; a key gives more reliable results.
+class _WebSearchCard extends StatefulWidget {
+  const _WebSearchCard();
+  @override
+  State<_WebSearchCard> createState() => _WebSearchCardState();
+}
+
+class _WebSearchCardState extends State<_WebSearchCard> {
+  late final TextEditingController _tavily;
+  late final TextEditingController _brave;
+
+  @override
+  void initState() {
+    super.initState();
+    final app = context.read<AppState>();
+    _tavily = TextEditingController(text: app.tavilyKey);
+    _brave = TextEditingController(text: app.braveKey);
+  }
+
+  @override
+  void dispose() {
+    _tavily.dispose();
+    _brave.dispose();
+    super.dispose();
+  }
+
+  Widget _keyField(
+      TextEditingController c, String hint, ValueChanged<String> onChanged) {
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 13),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border.all(color: _evsStroke),
+      ),
+      child: TextField(
+        controller: c,
+        onChanged: onChanged,
+        obscureText: true,
+        style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+        decoration: InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+          hintText: hint,
+          hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+        ),
+      ),
+    );
+  }
+
+  Widget _label(String s) => Padding(
+        padding: const EdgeInsets.only(bottom: 5),
+        child: Text(s,
+            style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF8890A8))),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(app.t('webSearchEnable'),
+                      style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFCFD3E0))),
+                  const SizedBox(height: 3),
+                  Text(app.t('webSearchDesc'),
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF7A8090))),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            evsToggle(app.webSearchEnabled, app.setWebSearchEnabled),
+          ]),
+          if (app.webSearchEnabled) ...[
+            const SizedBox(height: 14),
+            Text(app.t('webSearchKeysHint'),
+                style:
+                    const TextStyle(fontSize: 11.5, color: Color(0xFF6E7280))),
+            const SizedBox(height: 10),
+            _label(app.t('webSearchTavily')),
+            _keyField(_tavily, 'tvly-…', app.setTavilyKey),
+            const SizedBox(height: 10),
+            _label(app.t('webSearchBrave')),
+            _keyField(_brave, 'BSA…', app.setBraveKey),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -11730,6 +12289,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         ]),
         full: true,
       ),
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.travel_explore,
+            title: app.t('webSearch'),
+            rows: [const _WebSearchCard()]),
+        full: true,
+      ),
       _CardSpec(evsCard(context,
           icon: Icons.memory, title: app.t('cardModelPick'), rows: [
         if (app.models.isEmpty)
@@ -12276,15 +12842,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               (v) => app.setSttLanguage(v),
             ),
           ),
+          // Recognition test lives inside the STT card (was a separate
+          // full-width card, which broke the 2-column grid packing and made
+          // the section jump).
+          const _SttTestCard(),
         ],
       )),
-      _CardSpec(
-        evsCard(context,
-            icon: Icons.spellcheck,
-            title: app.t('sttTest'),
-            rows: [const _SttTestCard()]),
-        full: true,
-      ),
       _CardSpec(evsCard(
         context,
         icon: Icons.settings_voice_outlined,
@@ -16384,7 +16947,7 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
     void handle(String? v) {
       if (v == 'rename') _promptRename(c, app);
       if (v == 'pin') app.togglePin(c);
-      if (v == 'delete') app.deleteChat(c);
+      if (v == 'delete') _deleteChatWithUndo(ctx, c, app);
     }
 
     if (_isGlass(ctx)) {
@@ -16426,6 +16989,25 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
       ],
     );
     handle(v);
+  }
+
+  // Delete a chat but offer a few seconds to undo (deletes are otherwise
+  // irreversible — easy to hit by accident from the context menu).
+  void _deleteChatWithUndo(BuildContext ctx, Conversation c, AppState app) {
+    app.deleteChat(c);
+    final messenger = ScaffoldMessenger.of(ctx);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: _card(ctx),
+      duration: const Duration(seconds: 4),
+      content: Text(app.t('chatDeleted'), style: TextStyle(color: _txt(ctx))),
+      action: SnackBarAction(
+        label: app.t('undo'),
+        textColor: const Color(0xFF8A7BE0),
+        onPressed: () => app.undoDeleteChat(),
+      ),
+    ));
   }
 
   // Overflow (⋮) button for a chat row — opens the shared menu at the button.

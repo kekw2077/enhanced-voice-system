@@ -48,6 +48,9 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 ; Restart Manager instead of failing (the app normally exits itself first).
 CloseApplications=force
 RestartApplications=no
+; Named mutex the running app holds (CreateMutexW in main.dart) so Setup can
+; reliably detect a live instance during a silent in-app update.
+AppMutex=EVS-SingleInstance-Mutex
 
 [Code]
 // The in-app updater (AppUpdater.applyAndRestart) launches this installer with

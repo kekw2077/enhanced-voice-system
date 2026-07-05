@@ -28,6 +28,35 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 1.0.12</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>Веб-поиск: ассистент сам находит свежие данные (курс, погода, новости), когда вопрос этого требует. Без ключа (DuckDuckGo) или с ключом Tavily/Brave — в настройках «Модель».</li>
+          <li>Исправлен микрофон, «переставший слышать» после перезапуска: распознавание надёжно перезапускается при переподключении движка. Тест распознавания снова показывает текст.</li>
+          <li>Обновление больше не предлагается при каждом запуске и надёжнее устанавливается; при неудаче приложение сообщит об этом.</li>
+          <li>Виджет запоминает своё положение. Удаление чата можно отменить. Раздел распознавания больше не «съезжает».</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 05 Jul 2026 12:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.12/EVS-Setup-1.0.12.exe"
+        sparkle:version="1.0.12"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHHKn9k5xN0C4naX2HgD5OpR/j8GFvqIWf6Jfm74CHFNa7rBA/smw2T+UfYWWYUYgKs/tzQWkclFYaQg="
+        evs:sha256="ec07af56230a015e4ae749e9958723c2124872687efc3fd495df22649dcf524a"
+        length="15845968"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.0.11</title>
       <description><![CDATA[
         <style>
