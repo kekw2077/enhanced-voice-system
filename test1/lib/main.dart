@@ -77,6 +77,23 @@ typedef _CreateMutexNative = IntPtr Function(
     Pointer<Void>, Int32, Pointer<Utf16>);
 typedef _CreateMutexDart = int Function(Pointer<Void>, int, Pointer<Utf16>);
 
+// Best-effort cleanup of a backend orphaned by a previous crashed session.
+// main()'s first-instance path is only reached when no other EVS main is
+// running (single-instance guard) and before we spawn our own backend — so any
+// surviving evs_sidecar.exe/evs_tts.exe is a stray from a crash, holding the
+// mic/IPC port and blocking a clean cold start. The Job Object (ProcessJob) and
+// the sidecar's parent-watchdog normally prevent orphans; this is the
+// belt-and-suspenders for when both failed (TZ: единое дерево процессов —
+// чистый повторный запуск после падения).
+Future<void> _sweepOrphanBackends() async {
+  if (defaultTargetPlatform != TargetPlatform.windows) return;
+  try {
+    await io.Process.run(
+        'taskkill', ['/F', '/IM', 'evs_sidecar.exe', '/IM', 'evs_tts.exe'],
+        runInShell: false);
+  } catch (_) {}
+}
+
 // Back SharedPreferences with a JSON file in the app data root (which is
 // <exeDir>\userdata in portable mode) instead of the fixed AppData location, so
 // chats/settings live next to the program too. Migrates the existing AppData
@@ -202,6 +219,9 @@ void main(List<String> args) async {
       // First instance: hold the named mutex the installer looks for (AppMutex),
       // so a silent in-app update can close us via Restart Manager.
       _claimAppMutex();
+      // Sole instance confirmed and no backend spawned yet: reap any backend
+      // orphaned by a previous crash before it blocks the mic/port.
+      await _sweepOrphanBackends();
       // We're the first instance: any later launch connects here → show window.
       _singleInstanceLock!.listen((conn) {
         conn.listen((_) {}, onError: (_) {}, cancelOnError: true);
