@@ -830,6 +830,14 @@ const Map<String, Map<String, String>> _i18n = {
     'vizLkBars': 'Полоски',
     'vizWave3d': 'Волны 3D',
     'vizWaveFlat': 'Поле частиц',
+    'settingsUnsaved': 'Есть несохранённые изменения',
+    'settingsSaved': 'Настройки применены и сохранены',
+    'settingsSaveFailed':
+        'Не удалось применить настройки. Возвращены прежние значения',
+    'settingsExitTitle': 'Сохранить изменения?',
+    'settingsExitSave': 'Сохранить',
+    'settingsExitDiscard': 'Не сохранять',
+    'settingsExitStay': 'Остаться',
     'wsAccent': 'Акцентный цвет',
     'wsAccentDesc': 'Цвет Siri Orb и Полосок',
     'wsOrbSize': 'Размер орба',
@@ -1539,6 +1547,13 @@ const Map<String, Map<String, String>> _i18n = {
     'vizLkBars': 'Stripes',
     'vizWave3d': 'Waves 3D',
     'vizWaveFlat': 'Particle field',
+    'settingsUnsaved': 'You have unsaved changes',
+    'settingsSaved': 'Settings applied and saved',
+    'settingsSaveFailed': 'Could not apply settings. Previous values restored',
+    'settingsExitTitle': 'Save changes?',
+    'settingsExitSave': 'Save',
+    'settingsExitDiscard': "Don't save",
+    'settingsExitStay': 'Stay',
     'wsAccent': 'Accent color',
     'wsAccentDesc': 'Color of the Siri Orb and Stripes',
     'wsOrbSize': 'Orb size',
@@ -4011,6 +4026,15 @@ class AppState extends ChangeNotifier {
 
   AppThemeMode themeMode = AppThemeMode.dark;
   AppStyle appStyle = AppStyle.standard;
+
+  // TZ2.2 settings draft: while the settings screen is open, _save() is deferred
+  // and applied only on Save; Cancel re-reads the fields from prefs (which still
+  // hold the last-saved values, since persistence was deferred). Backend
+  // side-effects (STT model, mic device, autostart) are synced on Save/Cancel.
+  bool _settingsEditing = false;
+  bool settingsDirty = false;
+  bool settingsApplying = false;
+  bool get settingsEditing => _settingsEditing;
   bool haptics = true;
   bool showKeyboardOnLaunch = false;
   bool showPromptChips = true;
@@ -4444,6 +4468,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _save() async {
+    if (_settingsEditing) {
+      // Draft mode: defer persistence to Save; just flag the screen dirty. The
+      // caller's notifyListeners() (setters call it right after _save) rebuilds
+      // the settings UI so the sticky save bar appears.
+      settingsDirty = true;
+      return;
+    }
     await prefs.setString('lang', lang);
     await prefs.setString('themeMode', themeMode.name);
     await prefs.setString('appStyle', appStyle.name);
@@ -4507,6 +4538,151 @@ class AppState extends ChangeNotifier {
       'conversations',
       jsonEncode(conversations.map((c) => c.toJson()).toList()),
     );
+  }
+
+  // ---- TZ2.2 settings draft controls ----
+
+  // Arm draft mode when the settings screen opens: further setter calls preview
+  // live but defer persistence until Save.
+  void beginSettingsEdit() {
+    _settingsEditing = true;
+    settingsDirty = false;
+    settingsApplying = false;
+  }
+
+  // Save: persist the current fields and sync the backend. On failure, revert to
+  // the last-saved values and report it (prefs are left as they were).
+  Future<bool> commitSettingsEdit() async {
+    if (!_settingsEditing) return true;
+    settingsApplying = true;
+    notifyListeners();
+    var ok = true;
+    try {
+      _settingsEditing = false;
+      await _save();
+      await _applySettingsSideEffects();
+      settingsDirty = false;
+    } catch (_) {
+      ok = false;
+      _restoreSettingsFields();
+      try {
+        await _applySettingsSideEffects();
+      } catch (_) {}
+      settingsDirty = false;
+    } finally {
+      settingsApplying = false;
+      notifyListeners();
+    }
+    return ok;
+  }
+
+  // Cancel: drop the live-previewed changes by re-reading the fields from prefs
+  // (unchanged since persistence was deferred), then resync the backend.
+  Future<void> cancelSettingsEdit() async {
+    if (!_settingsEditing) return;
+    _settingsEditing = false;
+    _restoreSettingsFields();
+    settingsDirty = false;
+    await _applySettingsSideEffects();
+    notifyListeners();
+  }
+
+  // Safety net if the settings screen is torn down without Save/Cancel — treat
+  // as discard so half-edited values never persist.
+  void abortSettingsEdit() {
+    if (!_settingsEditing) return;
+    _settingsEditing = false;
+    // Only revert if there were live-previewed changes; a clean exit just clears
+    // the flag (otherwise _save() would stay deferred after leaving settings).
+    if (settingsDirty) {
+      _restoreSettingsFields();
+      unawaited(_applySettingsSideEffects());
+      settingsDirty = false;
+    }
+    notifyListeners();
+  }
+
+  // Sync the backend to the current field values (after Save or a revert) so a
+  // live-previewed change is either finalised or undone.
+  Future<void> _applySettingsSideEffects() async {
+    try {
+      SidecarClient.instance.setSttModel(whisperModel);
+    } catch (_) {}
+    try {
+      unawaited(MicMeter.instance.start(deviceId: inputDeviceId));
+    } catch (_) {}
+    try {
+      await DesktopIntegration.instance.applyAutostart(autostart);
+    } catch (_) {}
+  }
+
+  // Re-read the settings fields from prefs (which hold the last-saved values,
+  // since _save() was deferred during editing) — the revert for Cancel / a
+  // failed Save. Mirrors the settings reads in load(); keep the two in sync.
+  // Model catalogue / persona / conversations are managed elsewhere and left
+  // untouched.
+  void _restoreSettingsFields() {
+    lang = prefs.getString('lang') ?? 'ru';
+    themeMode = AppThemeMode.dark;
+    appStyle = AppStyle.standard;
+    haptics = prefs.getBool('haptics') ?? true;
+    showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
+    showPromptChips = prefs.getBool('showPromptChips') ?? true;
+    fontSize = prefs.getDouble('fontSize') ?? 1.0;
+    micAutoSend = prefs.getBool('micAutoSend') ?? true;
+    micPauseSeconds = prefs.getInt('micPauseSeconds') ?? 3;
+    serverUrl = prefs.getString('serverUrl') ?? '';
+    savedServers = prefs.getStringList('savedServers') ?? [];
+    apiKey = prefs.getString('apiKey') ?? '';
+    inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
+    if (inferenceMode == 'local') inferenceMode = 'localServer';
+    autostart = prefs.getBool('autostart') ?? false;
+    minimizeToTray = prefs.getBool('minimizeToTray') ?? true;
+    closeToTray = prefs.getBool('closeToTray') ?? true;
+    inputDeviceId = prefs.getString('inputDeviceId') ?? '';
+    listenMode = prefs.getString('listenMode') ?? 'continuous';
+    sttLanguage = prefs.getString('sttLanguage') ?? 'auto';
+    whisperModel = prefs.getString('whisperModel') ?? 'small';
+    sttEngine = prefs.getString('sttEngine') ?? 'whisper';
+    cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
+    wakeWord = prefs.getString('wakeWord') ?? 'EVS';
+    final sw = prefs.getStringList('stopWords');
+    stopWords = (sw == null || sw.isEmpty)
+        ? List<String>.from(kDefaultStopWords)
+        : sw;
+    cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
+    cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
+    cmdEnabled = prefs.getBool('cmdEnabled') ?? false;
+    chatEnabled = prefs.getBool('chatEnabled') ?? true;
+    vizType = prefs.getString('vizType') ?? 'sphere';
+    showVizBg = prefs.getBool('showVizBg') ?? true;
+    showPartial = prefs.getBool('showPartial') ?? true;
+    overlayMode = prefs.getBool('overlayMode') ?? true;
+    overlaySize = prefs.getDouble('overlaySize') ?? 260;
+    vizAccent = prefs.getInt('vizAccent') ?? 0xFF7C4DFF;
+    orbSize = prefs.getDouble('orbSize') ?? 200;
+    orbSpeed = prefs.getDouble('orbSpeed') ?? 20;
+    barCount = prefs.getInt('barCount') ?? 7;
+    autoUpdateCheck = prefs.getBool('autoUpdateCheck') ?? true;
+    webSearchEnabled = prefs.getBool('webSearchEnabled') ?? false;
+    tavilyKey = prefs.getString('tavilyKey') ?? '';
+    braveKey = prefs.getString('braveKey') ?? '';
+    voiceResponses = prefs.getBool('voiceResponses') ?? false;
+    ttsVoice = prefs.getString('ttsVoice') ?? 'system';
+    ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
+    ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
+    cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
+    final vcRaw = prefs.getString('voiceCommands');
+    if (vcRaw != null) {
+      try {
+        final decoded = jsonDecode(vcRaw);
+        if (decoded is List) {
+          voiceCommands = decoded
+              .map((e) => VoiceCommand.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } catch (_) {}
+    }
   }
 
   void setInferenceMode(String v) {
@@ -11754,6 +11930,8 @@ class DesktopSettings extends StatefulWidget {
 
 class _DesktopSettingsState extends State<DesktopSettings> {
   int _section = 0;
+  // Held so dispose() can end draft mode without a BuildContext (TZ2.2).
+  AppState? _appRef;
   // Phase-1 placeholders for not-yet-wired desktop toggles (autostart, tray…).
   final Map<String, bool> _stub = {
     'autostart': true,
@@ -11804,6 +11982,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     if (_ctrlInit) return;
     _ctrlInit = true;
     final app = context.read<AppState>();
+    // Enter settings draft mode: changes preview live but persist only on Save.
+    _appRef = app;
+    app.beginSettingsEdit();
     final p = app.persona;
     _nameCtrl = TextEditingController(text: p.assistantName);
     _promptCtrl = TextEditingController(text: p.customPrompt);
@@ -11877,6 +12058,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   @override
   void dispose() {
+    // Safety net: if the screen is torn down while still editing (not via Save/
+    // Cancel or the exit guard), discard the draft so nothing half-edited sticks.
+    _appRef?.abortSettingsEdit();
     if (_ctrlInit) {
       _nameCtrl.dispose();
       _promptCtrl.dispose();
@@ -11908,25 +12092,152 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    return Scaffold(
-      backgroundColor: _evsBgSolid,
-      body: Container(
-        decoration: _evsBgDecoration,
-        child: Column(
-          children: [
-            const _WindowTitleBar(),
-            Expanded(
-              child: Row(
-                children: [
-                  _nav(app),
-                  Expanded(child: _sectionScaffold(app)),
-                ],
+    return PopScope(
+      canPop: !app.settingsDirty && !app.settingsApplying,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleExit(app);
+      },
+      child: Scaffold(
+        backgroundColor: _evsBgSolid,
+        body: Container(
+          decoration: _evsBgDecoration,
+          child: Column(
+            children: [
+              const _WindowTitleBar(),
+              Expanded(
+                child: Row(
+                  children: [
+                    _nav(app),
+                    Expanded(child: _sectionScaffold(app)),
+                  ],
+                ),
               ),
-            ),
-          ],
+              _saveBar(app),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  // Sticky "unsaved changes" bar (TZ2.2): shown whenever the draft is dirty or a
+  // save is in flight; collapses with an animation otherwise.
+  Widget _saveBar(AppState app) {
+    final show = app.settingsDirty || app.settingsApplying;
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      alignment: Alignment.topCenter,
+      child: !show
+          ? const SizedBox(width: double.infinity)
+          : Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+              decoration: const BoxDecoration(
+                color: Color(0xFF15151E),
+                border: Border(top: BorderSide(color: _evsStroke)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.edit_note_outlined,
+                      size: 19, color: Color(0xFFB9A6FF)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(app.t('settingsUnsaved'),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 13)),
+                  ),
+                  if (app.settingsApplying)
+                    const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                  else ...[
+                    TextButton(
+                      onPressed: () => _revertSettings(app),
+                      child: Text(app.t('cancel'),
+                          style: const TextStyle(color: Color(0xFF9AA0B0))),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: () => _saveSettings(app),
+                      child: Text(app.t('save')),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Future<void> _saveSettings(AppState app) async {
+    final ok = await app.commitSettingsEdit();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content:
+          Text(ok ? app.t('settingsSaved') : app.t('settingsSaveFailed')),
+    ));
+    // Stay on the screen — re-arm draft mode for further edits.
+    app.beginSettingsEdit();
+  }
+
+  Future<void> _revertSettings(AppState app) async {
+    await app.cancelSettingsEdit();
+    if (!mounted) return;
+    // Text fields keep their own controller state — resync them to the reverted
+    // values so a Cancel visibly rolls back typed text too.
+    _resetTextControllers(app);
+    app.beginSettingsEdit();
+  }
+
+  void _resetTextControllers(AppState app) {
+    if (!_ctrlInit) return;
+    _serverCtrl.text = app.serverUrl;
+    _apiKeyCtrl.text = app.apiKey;
+    _activatorCtrl.text = app.wakeWord;
+    _stopWordsCtrl.text = app.stopWords.join(', ');
+  }
+
+  // Exit guard (TZ2.2): leaving with unsaved changes asks Save / Don't save /
+  // Stay. Reached from the back button and the system pop (via PopScope).
+  Future<void> _handleExit(AppState app) async {
+    if (!app.settingsDirty) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (_) => _AppDialog(
+        backgroundColor: _card(context),
+        title: Text(app.t('settingsExitTitle'),
+            style: TextStyle(color: _txt(context))),
+        content: Text(app.t('settingsUnsaved'),
+            style: TextStyle(color: _sub(context))),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'stay'),
+            child: Text(app.t('settingsExitStay')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'discard'),
+            child: Text(app.t('settingsExitDiscard')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'save'),
+            child: Text(app.t('settingsExitSave')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'save') {
+      await app.commitSettingsEdit();
+      if (mounted) Navigator.of(context).pop();
+    } else if (choice == 'discard') {
+      await app.cancelSettingsEdit();
+      if (mounted) Navigator.of(context).pop();
+    }
+    // 'stay' / dismissed → remain on the screen (draft intact).
   }
 
   // -------- left nav rail --------
