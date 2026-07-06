@@ -34,6 +34,8 @@ import 'local_model_stub.dart' if (dart.library.io) 'local_model_io.dart';
 // adapted from user-provided LiveKit-style bars and SmoothUI Siri Orb).
 import 'lk_bar_visualizer.dart';
 import 'siri_orb.dart';
+import 'wave_field_3d.dart';
+import 'wave_field_flat.dart';
 
 // Kept short now that the animated ImmersiveSplash provides the real
 // startup dwell — otherwise boot would be this delay plus the ~1.5s
@@ -620,6 +622,8 @@ const Map<String, Map<String, String>> _i18n = {
     'cardWsParams': 'Параметры',
     'vizOrb': 'Siri Orb',
     'vizLkBars': 'Полоски',
+    'vizWave3d': 'Волны 3D',
+    'vizWaveFlat': 'Поле частиц',
     'wsAccent': 'Акцентный цвет',
     'wsAccentDesc': 'Цвет Siri Orb и Полосок',
     'wsOrbSize': 'Размер орба',
@@ -1327,6 +1331,8 @@ const Map<String, Map<String, String>> _i18n = {
     'cardWsParams': 'Parameters',
     'vizOrb': 'Siri Orb',
     'vizLkBars': 'Stripes',
+    'vizWave3d': 'Waves 3D',
+    'vizWaveFlat': 'Particle field',
     'wsAccent': 'Accent color',
     'wsAccentDesc': 'Color of the Siri Orb and Stripes',
     'wsOrbSize': 'Orb size',
@@ -3996,7 +4002,8 @@ class AppState extends ChangeNotifier {
   // chat turn), and the text composer is disabled.
   bool chatEnabled = true;
   // Voice visualization.
-  // 'sphere' | 'waves' | 'bars' | 'orb' (Siri Orb) | 'lkbars' (Полоски) | 'none'
+  // 'sphere' | 'waves' | 'bars' | 'orb' (Siri Orb) | 'lkbars' (Полоски) |
+  // 'wave3d' (Волны 3D) | 'waveflat' (Поле частиц) | 'none'
   String vizType = 'sphere';
   bool showVizBg = true;
   bool showPartial = true;
@@ -9692,6 +9699,57 @@ class VoiceLevels {
   final ValueNotifier<double> tts = ValueNotifier(0.0);
 }
 
+// Adapter that drives the user-provided WaveField visualizers (wave_field_3d /
+// wave_field_flat) with the live combined voice level, so they slot into the
+// same vizType switch as the other hero/overlay styles. Background is kept
+// transparent by default so the particles float over the app/widget backdrop;
+// callers pass reduced particle counts for small thumbnails to stay cheap.
+class EvsWaveViz extends StatelessWidget {
+  final String kind; // 'wave3d' | 'waveflat'
+  final double size;
+  final Color background;
+  final int? particleCount; // wave_field_flat only
+  final int? numCols; // wave_field_3d only
+  final int? numRows; // wave_field_3d only
+  const EvsWaveViz({
+    super.key,
+    required this.kind,
+    this.size = 320,
+    this.background = Colors.transparent,
+    this.particleCount,
+    this.numCols,
+    this.numRows,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ClipRect(
+        child: ValueListenableBuilder<double>(
+          valueListenable: VoiceLevels.instance.tts,
+          builder: (_, lv, __) {
+            if (kind == 'wave3d') {
+              return WaveField3D(
+                level: lv,
+                background: background,
+                numCols: numCols ?? 110,
+                numRows: numRows ?? 75,
+              );
+            }
+            return WaveFieldFlat(
+              level: lv,
+              background: background,
+              particleCount: particleCount ?? 5000,
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 // ---- Voice-reactive visualizations (home hero variants) ----
 // All amplitudes come from VoiceLevels.history (real mic/TTS levels) — only
 // the ring's slow rotation is decorative. A wake-word trigger adds a short
@@ -10153,6 +10211,10 @@ class _OverlayWidgetViewState extends State<OverlayWidgetView> {
                         EvsLiveViz(kind: 'orb', maxSize: content * 0.72)
                       else if (viz == 'lkbars')
                         EvsLiveViz(kind: 'lkbars', maxSize: content * 0.8)
+                      else if (viz == 'wave3d')
+                        EvsWaveViz(kind: 'wave3d', size: content * 0.92)
+                      else if (viz == 'waveflat')
+                        EvsWaveViz(kind: 'waveflat', size: content * 0.92)
                       else
                         ParticleSphere(
                           size: content * 0.62,
@@ -11379,6 +11441,10 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
                       minHeight: 12,
                       maxHeight: 150,
                     );
+                  case 'wave3d':
+                    return const EvsWaveViz(kind: 'wave3d', size: 220);
+                  case 'waveflat':
+                    return const EvsWaveViz(kind: 'waveflat', size: 220);
                   case 'none':
                     return Text(app.t('vizNone'),
                         style: const TextStyle(
@@ -12687,6 +12753,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       ('bars', app.t('vizBars')),
                       ('orb', app.t('vizOrb')),
                       ('lkbars', app.t('vizLkBars')),
+                      ('wave3d', app.t('vizWave3d')),
+                      ('waveflat', app.t('vizWaveFlat')),
                       ('none', app.t('vizNone')),
                     ])
                       _VizStyleTile(
@@ -12828,6 +12896,19 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             spacing: 3.5,
             minHeight: 5,
             maxHeight: 34);
+      case 'wave3d':
+        return const EvsWaveViz(
+            kind: 'wave3d',
+            size: 52,
+            numCols: 46,
+            numRows: 30,
+            background: Color(0xFF060612));
+      case 'waveflat':
+        return const EvsWaveViz(
+            kind: 'waveflat',
+            size: 52,
+            particleCount: 520,
+            background: Color(0xFF04040A));
       case 'none':
         return const Icon(Icons.hide_source,
             size: 26, color: Color(0xFF6E7280));
@@ -15164,6 +15245,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 const EvsLiveViz(kind: 'orb', maxSize: 320)
               else if (app.vizType == 'lkbars')
                 const EvsLiveViz(kind: 'lkbars', maxSize: 340)
+              else if (app.vizType == 'wave3d')
+                const EvsWaveViz(kind: 'wave3d', size: 320)
+              else if (app.vizType == 'waveflat')
+                const EvsWaveViz(kind: 'waveflat', size: 320)
               else
                 ParticleSphere(
                   size: 200,
