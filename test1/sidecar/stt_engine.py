@@ -1,13 +1,20 @@
-"""Streaming speech-to-text: mic capture + webrtcvad segmentation + faster-whisper.
+"""Streaming speech-to-text: mic capture + webrtcvad segmentation + a pluggable
+recognition engine.
 
-The engine captures 16 kHz mono audio, uses webrtcvad to find speech segments,
-emits {"type": "vad", ...} on speech start/stop, transcribes the growing buffer
-periodically for {"type": "stt.partial"} and the whole segment on silence for
-{"type": "stt.final"}. All heavy deps are imported lazily so the server can run
+Capture (16 kHz mono) and webrtcvad segmentation are shared; the actual
+recognition of a speech segment is delegated to the ACTIVE engine:
+
+  * WhisperEngine — faster-whisper (multilingual, partial + final results).
+  * GigaAmEngine  — sherpa-onnx NeMo transducer (Russian, offline: FINAL only).
+
+`SttEngine` is the manager: it owns capture + VAD + the active engine, hot-swaps
+engines (unload old -> load new, rollback on error), and reports state via
+`stt.engine_status`. All heavy deps are imported lazily so the server can run
 (and report capabilities) even before they are installed.
 """
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import time
@@ -16,6 +23,11 @@ SAMPLE_RATE = 16000
 FRAME_MS = 30
 FRAME_SAMPLES = SAMPLE_RATE * FRAME_MS // 1000  # 480
 FRAME_BYTES = FRAME_SAMPLES * 2  # int16
+
+# HuggingFace repo the GigaAM-v3 sherpa-onnx model is published under — surfaced
+# in the "model not found" error so the app/user knows where to fetch it.
+GIGAAM_HF_REPO = "csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16"
+GIGAAM_FILES = ("encoder.int8.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt")
 
 # Default Whisper decoding primer (Russian command vocabulary). Biases the
 # decoder toward the words the assistant actually expects. The Dart side may
@@ -27,72 +39,361 @@ _DEFAULT_PROMPT = (
 )
 
 
-class SttEngine:
+class BaseSttEngine:
+    """Recognition of one VAD-delimited segment. Subclasses implement load/
+    unload/transcribe; capture and VAD live in the SttEngine manager."""
+
+    name = "base"
+    supports_partial = True
+
+    def __init__(self) -> None:
+        self._loaded = False
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._loaded
+
+    @property
+    def available(self) -> bool:
+        """True if this engine can run right now (deps + any model files)."""
+        return False
+
+    def unavailable_reason(self) -> str:
+        return ""
+
+    def load(self) -> None:
+        self._loaded = True
+
+    def unload(self) -> None:
+        self._loaded = False
+
+    def set_prompt(self, prompt: str | None) -> None:
+        pass
+
+    def set_model(self, model_size: str) -> None:
+        pass
+
+    def transcribe(self, np, audio_bytes: bytes, final: bool) -> str:
+        return ""
+
+
+class WhisperEngine(BaseSttEngine):
+    """faster-whisper — behaviour preserved verbatim from the original SttEngine
+    (partials on the tail, wide-beam finals, silero VAD pass, hallucination
+    filter)."""
+
+    name = "whisper"
+    supports_partial = True
+
     def __init__(self, model_size: str = "small", device: str = "cpu",
                  compute_type: str = "int8") -> None:
+        super().__init__()
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
         self._model = None
-        self._available = False
+        self._prompt: str | None = _DEFAULT_PROMPT
+        self._language = None
         try:
             import faster_whisper  # noqa: F401
-            import sounddevice  # noqa: F401
-            import webrtcvad  # noqa: F401
             import numpy  # noqa: F401
-
-            self._available = True
+            self._deps = True
         except Exception:
-            self._available = False
+            self._deps = False
+
+    @property
+    def available(self) -> bool:
+        return self._deps
+
+    def unavailable_reason(self) -> str:
+        return "" if self._deps else "faster-whisper is not installed"
+
+    def set_language(self, language: str | None) -> None:
+        self._language = (language or "ru") if language != "auto" else None
+
+    def set_model(self, model_size: str) -> None:
+        """Switch the Whisper model size; reloads lazily on next transcription."""
+        if model_size and model_size != self.model_size:
+            self.model_size = model_size
+            self._model = None
+            self._loaded = False
+
+    def set_prompt(self, prompt: str | None) -> None:
+        p = (prompt or "").strip()
+        self._prompt = p if p else _DEFAULT_PROMPT
+
+    def load(self) -> None:
+        self._ensure_model()
+
+    def unload(self) -> None:
+        self._model = None
+        self._loaded = False
+
+    def _ensure_model(self):
+        if self._model is None:
+            from faster_whisper import WhisperModel
+            self._model = WhisperModel(
+                self.model_size, device=self.device,
+                compute_type=self.compute_type,
+            )
+            self._loaded = True
+        return self._model
+
+    # Whisper's signature hallucinations on noise/near-silence (it was
+    # trained on subtitles): anything matching these is dropped outright.
+    _HALLUCINATION_MARKERS = (
+        "субтитр", "подписывайтесь", "продолжение следует", "редактор",
+        "корректор", "amara.org", "амара.орг", "dimatorzok",
+        "thanks for watching", "субтитры делал", "♪",
+    )
+
+    @classmethod
+    def _hallucinated(cls, text: str) -> bool:
+        low = text.lower()
+        return any(m in low for m in cls._HALLUCINATION_MARKERS)
+
+    def transcribe(self, np, audio_bytes: bytes, final: bool) -> str:
+        model = self._ensure_model()
+        samples = (
+            np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        )
+        # Finals get a silero VAD pass inside faster-whisper: it strips
+        # non-speech, so noise segments mostly return empty instead of
+        # hallucinated subtitle credits. Finals also use a wider beam +
+        # temperature fallback for accuracy (they're infrequent, so the
+        # extra CPU is fine); partials stay cheap/raw for low latency.
+        segments, _ = model.transcribe(
+            samples,
+            language=self._language,
+            beam_size=5 if final else 1,
+            temperature=[0.0, 0.2, 0.4] if final else 0.0,
+            initial_prompt=self._prompt,
+            vad_filter=final,
+            condition_on_previous_text=False,
+        )
+        text = " ".join(s.text.strip() for s in segments).strip()
+        if text and self._hallucinated(text):
+            return ""
+        return text
+
+
+class GigaAmEngine(BaseSttEngine):
+    """sherpa-onnx NeMo transducer (GigaAM-v3, Russian). Offline recognition —
+    no partials; emits FINAL results only. Model files live in `model_dir`."""
+
+    name = "gigaam"
+    supports_partial = False
+
+    def __init__(self, model_dir: str | None = None) -> None:
+        super().__init__()
+        self._dir = model_dir or ""
+        self._rec = None
+        try:
+            import sherpa_onnx  # noqa: F401
+            import numpy  # noqa: F401
+            self._deps = True
+        except Exception:
+            self._deps = False
+
+    def set_dir(self, model_dir: str | None) -> None:
+        d = model_dir or ""
+        if d != self._dir:
+            self._dir = d
+            self._rec = None
+            self._loaded = False
+
+    def _files_present(self) -> bool:
+        if not self._dir:
+            return False
+        return all(os.path.exists(os.path.join(self._dir, f)) for f in GIGAAM_FILES)
+
+    @property
+    def available(self) -> bool:
+        return self._deps and self._files_present()
+
+    def unavailable_reason(self) -> str:
+        if not self._deps:
+            return "sherpa-onnx is not installed"
+        if not self._dir:
+            return "GigaAM model path is not set"
+        missing = [f for f in GIGAAM_FILES
+                   if not os.path.exists(os.path.join(self._dir, f))]
+        if missing:
+            return (f"GigaAM model not found in {self._dir} "
+                    f"(missing: {', '.join(missing)}). "
+                    f"Download from HuggingFace: {GIGAAM_HF_REPO}")
+        return ""
+
+    def load(self) -> None:
+        import sherpa_onnx
+        if not self._files_present():
+            raise FileNotFoundError(self.unavailable_reason())
+        self._rec = sherpa_onnx.OfflineRecognizer.from_transducer(
+            encoder=os.path.join(self._dir, "encoder.int8.onnx"),
+            decoder=os.path.join(self._dir, "decoder.onnx"),
+            joiner=os.path.join(self._dir, "joiner.onnx"),
+            tokens=os.path.join(self._dir, "tokens.txt"),
+            num_threads=2,
+            sample_rate=SAMPLE_RATE,
+            feature_dim=80,
+            decoding_method="greedy_search",
+            model_type="nemo_transducer",
+        )
+        self._loaded = True
+
+    def unload(self) -> None:
+        self._rec = None
+        self._loaded = False
+
+    def transcribe(self, np, audio_bytes: bytes, final: bool) -> str:
+        # Offline recognition has no meaningful partial — only decode finals.
+        if not final:
+            return ""
+        if self._rec is None:
+            self.load()
+        samples = (
+            np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        )
+        stream = self._rec.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, samples)
+        self._rec.decode_stream(stream)
+        return (stream.result.text or "").strip()
+
+
+class SttEngine:
+    """Manager: mic capture + webrtcvad segmentation, delegating recognition to
+    the active engine. Keeps the original constructor signature; adds
+    engine selection (whisper|gigaam) and hot-swapping."""
+
+    def __init__(self, model_size: str = "small", device: str = "cpu",
+                 compute_type: str = "int8", engine: str = "whisper",
+                 gigaam_dir: str | None = None) -> None:
+        self._whisper = WhisperEngine(model_size, device, compute_type)
+        self._gigaam = GigaAmEngine(gigaam_dir)
+        self._desired = engine if engine in ("whisper", "gigaam") else "whisper"
+        self._engine_name = "whisper"
+        self._active: BaseSttEngine = self._whisper
+        self._switching = False
 
         self._running = False
         self._frames: "queue.Queue[bytes]" = queue.Queue()
         self._capture = None
         self._worker: threading.Thread | None = None
         self._on_event = None
-        self._language = None
-        # Whisper decoding bias: the wake word + a command vocabulary primer so
-        # short domain phrases ("открой блокнот") are transcribed more reliably.
-        self._prompt: str | None = _DEFAULT_PROMPT
+
+    # ---- capabilities / availability -----------------------------------
 
     @property
     def available(self) -> bool:
-        return self._available
+        # Baseline STT availability = the always-present Whisper path plus the
+        # capture stack (sounddevice/webrtcvad).
+        try:
+            import sounddevice  # noqa: F401
+            import webrtcvad  # noqa: F401
+        except Exception:
+            return False
+        return self._whisper.available
+
+    def capabilities(self) -> dict:
+        return {
+            "whisper": self._whisper.available,
+            "gigaam": self._gigaam.available,
+        }
+
+    @property
+    def engine_name(self) -> str:
+        return self._engine_name
+
+    # ---- emitter binding (for engine_status outside of start/stop) ------
+
+    def bind(self, on_event) -> None:
+        """Attach the current connection's emit callback and apply the desired
+        engine (from CLI/config) so its status is reported to this client."""
+        self._on_event = on_event
+        want = self._desired
+        if want == "gigaam":
+            self.set_engine("gigaam", self._gigaam._dir)
+        else:
+            self._emit_status("whisper", "ready" if self._whisper.available
+                              else "error", self._whisper.unavailable_reason())
+
+    def _emit(self, msg: dict) -> None:
+        if self._on_event is not None:
+            try:
+                self._on_event(msg)
+            except Exception:
+                pass
+
+    def _emit_status(self, engine: str, state: str, message: str = "") -> None:
+        msg = {"type": "stt.engine_status", "engine": engine, "state": state}
+        if message:
+            msg["message"] = message
+        self._emit(msg)
+
+    # ---- engine selection ----------------------------------------------
+
+    def set_engine(self, name: str, gigaam_dir: str | None = None) -> None:
+        name = name if name in ("whisper", "gigaam") else "whisper"
+        self._desired = name
+        if gigaam_dir:
+            self._gigaam.set_dir(gigaam_dir)
+        # Load on a background thread — the model load must not block the WS loop
+        # or the audio stream (pausing recognition during the swap is fine).
+        threading.Thread(target=self._switch_blocking, args=(name,),
+                         daemon=True).start()
+
+    def _switch_blocking(self, name: str) -> None:
+        target = self._gigaam if name == "gigaam" else self._whisper
+        if name == self._engine_name and target.is_loaded:
+            self._emit_status(name, "ready")
+            return
+        if not target.available:
+            # Missing deps/model files: stay on the current engine.
+            self._emit_status(name, "error", target.unavailable_reason())
+            return
+        prev = self._active
+        prev_name = self._engine_name
+        self._emit_status(name, "loading")
+        self._switching = True
+        try:
+            target.load()
+            self._active = target
+            self._engine_name = name
+            self._switching = False
+            if prev is not target:
+                try:
+                    prev.unload()
+                except Exception:
+                    pass
+            self._emit_status(name, "ready")
+        except Exception as e:  # rollback to the previous engine
+            self._switching = False
+            self._active = prev
+            self._engine_name = prev_name
+            self._emit_status(name, "error", str(e))
 
     def set_model(self, model_size: str) -> None:
-        """Switch the Whisper model size; reloads lazily on next transcription."""
-        if model_size and model_size != self.model_size:
-            self.model_size = model_size
-            self._model = None  # force _ensure_model() to reload the new size
+        """Switch the Whisper model size (Whisper engine only)."""
+        self._whisper.set_model(str(model_size))
+        if self._engine_name == "whisper":
+            # Reload eagerly if Whisper is active so the next phrase uses it.
+            threading.Thread(target=self._switch_blocking, args=("whisper",),
+                             daemon=True).start()
+
+    def update_gigaam_dir(self, gigaam_dir: str | None) -> None:
+        """Point the GigaAM engine at a (possibly newly downloaded) model dir
+        without switching to it."""
+        self._gigaam.set_dir(gigaam_dir)
 
     def set_prompt(self, prompt: str | None) -> None:
-        """Update the Whisper decoding primer (wake word + command vocabulary)."""
-        p = (prompt or "").strip()
-        self._prompt = p if p else _DEFAULT_PROMPT
+        self._whisper.set_prompt(prompt)
+        self._gigaam.set_prompt(prompt)
 
-    def _ensure_model(self):
-        if self._model is None:
-            from faster_whisper import WhisperModel
-
-            self._model = WhisperModel(
-                self.model_size, device=self.device, compute_type=self.compute_type
-            )
-        return self._model
-
-    # Backlog guard: if transcription can't keep up with real time (e.g. a
-    # heavy model on CPU), the frame queue would grow without bound and every
-    # reply would arrive minutes late. Cap it at ~30 s and drop the OLDEST
-    # audio — better to lose stale speech than to lag forever.
-    _MAX_QUEUED_FRAMES = 30_000 // FRAME_MS
+    # ---- input device --------------------------------------------------
 
     @staticmethod
     def _resolve_input_device(name: str | None):
-        """PortAudio input index for a Windows device label ('' = default).
-
-        The app sends the friendly endpoint name (WASAPI); PortAudio names may
-        be truncated (MME cuts at ~31 chars), so match on a lowercase prefix
-        in both directions.
-        """
+        """PortAudio input index for a Windows device label ('' = default)."""
         if not name:
             return None
         try:
@@ -112,12 +413,16 @@ class SttEngine:
             pass
         return None
 
+    # ---- capture lifecycle ---------------------------------------------
+
+    _MAX_QUEUED_FRAMES = 30_000 // FRAME_MS
+
     def start(self, language: str | None, on_event,
               device: str | None = None, prompt: str | None = None) -> bool:
-        if not self._available or self._running:
+        if not self.available or self._running:
             return self._running
         self._on_event = on_event
-        self._language = (language or "ru") if language != "auto" else None
+        self._whisper.set_language(language)
         if prompt is not None:
             self.set_prompt(prompt)
         try:
@@ -147,6 +452,12 @@ class SttEngine:
             self._capture.start()
             self._worker = threading.Thread(target=self._process, daemon=True)
             self._worker.start()
+            # Report the active engine's readiness to the client.
+            self._emit_status(
+                self._engine_name,
+                "ready" if self._active.available else "error",
+                "" if self._active.available else self._active.unavailable_reason(),
+            )
             return True
         except Exception as e:  # pragma: no cover
             self._running = False
@@ -163,12 +474,7 @@ class SttEngine:
             pass
         self._capture = None
 
-    def _emit(self, msg: dict) -> None:
-        if self._on_event is not None:
-            try:
-                self._on_event(msg)
-            except Exception:
-                pass
+    # ---- VAD segmentation loop (unchanged behaviour) -------------------
 
     def _process(self) -> None:
         import numpy as np
@@ -236,46 +542,27 @@ class SttEngine:
                 if silence_frames >= SILENCE_LIMIT:
                     finalize()
 
-    # Whisper's signature hallucinations on noise/near-silence (it was
-    # trained on subtitles): anything matching these is dropped outright.
-    _HALLUCINATION_MARKERS = (
-        "субтитр", "подписывайтесь", "продолжение следует", "редактор",
-        "корректор", "amara.org", "амара.орг", "dimatorzok",
-        "thanks for watching", "субтитры делал", "♪",
-    )
-
-    @classmethod
-    def _hallucinated(cls, text: str) -> bool:
-        low = text.lower()
-        return any(m in low for m in cls._HALLUCINATION_MARKERS)
-
     def _transcribe(self, np, audio_bytes: bytes, final: bool) -> None:
         if not audio_bytes:
             return
+        # Pause recognition while an engine swap is in flight.
+        if self._switching:
+            return
+        engine = self._active
+        # Offline engines (GigaAM) have no partials — skip them entirely.
+        if not final and not engine.supports_partial:
+            return
         try:
-            model = self._ensure_model()
-            samples = (
-                np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-            )
-            # Finals get a silero VAD pass inside faster-whisper: it strips
-            # non-speech, so noise segments mostly return empty instead of
-            # hallucinated subtitle credits. Finals also use a wider beam +
-            # temperature fallback for accuracy (they're infrequent, so the
-            # extra CPU is fine); partials stay cheap/raw for low latency.
-            segments, _ = model.transcribe(
-                samples,
-                language=self._language,
-                beam_size=5 if final else 1,
-                temperature=[0.0, 0.2, 0.4] if final else 0.0,
-                initial_prompt=self._prompt,
-                vad_filter=final,
-                condition_on_previous_text=False,
-            )
-            text = " ".join(s.text.strip() for s in segments).strip()
-            if text and not self._hallucinated(text):
-                self._emit({
+            t0 = time.monotonic()
+            text = engine.transcribe(np, audio_bytes, final)
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            if text:
+                msg = {
                     "type": "stt.final" if final else "stt.partial",
                     "text": text,
-                })
+                }
+                if final:
+                    msg["latency_ms"] = latency_ms
+                self._emit(msg)
         except Exception as e:  # pragma: no cover
             self._emit({"type": "error", "message": f"transcribe failed: {e}"})

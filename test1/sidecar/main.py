@@ -9,15 +9,19 @@ Protocol (JSON text frames)
   client -> server:
     {"type": "stt.start", "language": "ru"|"en"|"auto"}
     {"type": "stt.stop"}
+    {"type": "stt.config", "model": "small", "prompt": "...",
+                           "engine": "whisper"|"gigaam", "gigaam_dir": "..."}
     {"type": "tts.speak", "text": "..."}
     {"type": "tts.stop"}
     {"type": "intent.parse", "text": "...", "commands": [{"phrase": "..."}], "threshold": 0.5}
     {"type": "ping"}
   server -> client:
-    {"type": "ready", "capabilities": {"stt": bool, "tts": bool}}
+    {"type": "ready", "capabilities": {"stt": bool, "tts": bool,
+                                       "engines": {"whisper": bool, "gigaam": bool}}}
     {"type": "vad", "speaking": bool}
     {"type": "stt.partial", "text": "..."}
-    {"type": "stt.final", "text": "..."}
+    {"type": "stt.final", "text": "...", "latency_ms": int}
+    {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error", "message"?: str}
     {"type": "tts.done"}
     {"type": "intent.result", "match": {...}|null}
     {"type": "pong"}
@@ -53,8 +57,15 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
     send_task = asyncio.create_task(sender())
     await ws.send(json.dumps({
         "type": "ready",
-        "capabilities": {"stt": stt.available, "tts": tts.available},
+        "capabilities": {
+            "stt": stt.available,
+            "tts": tts.available,
+            "engines": stt.capabilities(),
+        },
     }))
+    # Bind this connection's emitter so engine-status can be reported outside of
+    # start/stop, and apply the CLI/desired engine (reports its readiness).
+    stt.bind(emit)
 
     try:
         async for raw in ws:
@@ -75,6 +86,12 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                     stt.set_model(str(model))
                 if "prompt" in data:
                     stt.set_prompt(data.get("prompt"))
+                gdir = data.get("gigaam_dir")
+                if gdir:
+                    stt.update_gigaam_dir(str(gdir))
+                engine = data.get("engine")
+                if engine:
+                    stt.set_engine(str(engine), str(gdir) if gdir else None)
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),
@@ -101,7 +118,8 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
 
 
 async def _main(args) -> None:
-    stt = SttEngine(args.model, args.device, args.compute_type)
+    stt = SttEngine(args.model, args.device, args.compute_type,
+                    engine=args.engine, gigaam_dir=args.gigaam_dir)
     tts = TtsEngine()
 
     async def handler(ws):
@@ -148,6 +166,9 @@ def main() -> None:
     ap.add_argument("--model", default="small", help="faster-whisper model size")
     ap.add_argument("--device", default="cpu", help="cpu | cuda")
     ap.add_argument("--compute-type", dest="compute_type", default="int8")
+    ap.add_argument("--engine", default="whisper", help="whisper | gigaam")
+    ap.add_argument("--gigaam-dir", dest="gigaam_dir", default="",
+                    help="GigaAM sherpa-onnx model directory")
     args = ap.parse_args()
     # NOTE: _watch_parent() is started from inside _main(), AFTER the server is
     # up and READY is printed — starting it here (before the heavy imports)
