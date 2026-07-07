@@ -67,6 +67,7 @@ class BaseSttEngine:
 
     name = "base"
     supports_partial = True
+    supports_gpu = False
 
     def __init__(self) -> None:
         self._loaded = False
@@ -106,13 +107,16 @@ class WhisperEngine(BaseSttEngine):
 
     name = "whisper"
     supports_partial = True
+    supports_gpu = True  # ctranslate2 CUDA path (TZ2 block 6)
 
     def __init__(self, model_size: str = "small", device: str = "cpu",
                  compute_type: str = "int8") -> None:
         super().__init__()
         self.model_size = model_size
-        self.device = device
+        self.device = device  # desired device: cpu | cuda
         self.compute_type = compute_type
+        self._device_active = "cpu"  # what actually loaded (after fallback)
+        self._fell_back = False  # cuda requested but dropped to cpu
         self._model = None
         self._prompt: str | None = _DEFAULT_PROMPT
         self._language = None
@@ -129,6 +133,22 @@ class WhisperEngine(BaseSttEngine):
 
     def unavailable_reason(self) -> str:
         return "" if self._deps else "faster-whisper is not installed"
+
+    @property
+    def device_active(self) -> str:
+        return self._device_active
+
+    @property
+    def fell_back(self) -> bool:
+        return self._fell_back
+
+    def set_device(self, device: str) -> None:
+        """Switch cpu<->cuda; reloads lazily on next transcription."""
+        device = "cuda" if device == "cuda" else "cpu"
+        if device != self.device:
+            self.device = device
+            self._model = None
+            self._loaded = False
 
     def set_language(self, language: str | None) -> None:
         self._language = (language or "ru") if language != "auto" else None
@@ -154,10 +174,22 @@ class WhisperEngine(BaseSttEngine):
     def _ensure_model(self):
         if self._model is None:
             from faster_whisper import WhisperModel
+            self._fell_back = False
+            if self.device == "cuda":
+                # Try CUDA; on any init failure (no driver / VRAM / cuDNN) fall
+                # back to CPU so the pipeline never dies (TZ2 block 6 fallback).
+                try:
+                    self._model = WhisperModel(
+                        self.model_size, device="cuda",
+                        compute_type=self.compute_type)
+                    self._device_active = "cuda"
+                    self._loaded = True
+                    return self._model
+                except Exception:
+                    self._fell_back = True
             self._model = WhisperModel(
-                self.model_size, device=self.device,
-                compute_type=self.compute_type,
-            )
+                self.model_size, device="cpu", compute_type=self.compute_type)
+            self._device_active = "cpu"
             self._loaded = True
         return self._model
 
@@ -205,6 +237,7 @@ class GigaAmEngine(BaseSttEngine):
 
     name = "gigaam"
     supports_partial = False
+    supports_gpu = False  # sherpa-onnx ships CPU-only wheels — selector hidden
 
     def __init__(self, model_dir: str | None = None) -> None:
         super().__init__()
@@ -430,6 +463,11 @@ class SttEngine:
         self._desired_denoise = \
             denoise if denoise in ("off", "light", "strong") else "off"
 
+        # Compute device (TZ2 block 6/7): the user's desired device vs a
+        # temporary game-mode CPU force. Effective = cpu if forced else desired.
+        self._desired_device = "cuda" if device == "cuda" else "cpu"
+        self._forced_cpu = False
+
         # Cold-start readiness state machine (TZ3.4). `_warmed` guards the greedy
         # load + warmup so it runs once per PROCESS, not once per reconnect —
         # the ready greeting must fire exactly once per launch.
@@ -460,6 +498,10 @@ class SttEngine:
         return {
             "whisper": self._whisper.available,
             "gigaam": self._gigaam.available,
+            # Which engines have a usable GPU path (TZ2 block 6). Only Whisper
+            # here; sherpa-onnx (GigaAM) is CPU-only in this build.
+            "whisper_gpu": WhisperEngine.supports_gpu,
+            "gigaam_gpu": GigaAmEngine.supports_gpu,
         }
 
     @property
@@ -559,6 +601,8 @@ class SttEngine:
                 self._warm_inference(target)
                 self._warmed = True
                 self._emit_status(want, "ready")
+                if want == "whisper":
+                    self._emit_device()
                 self._emit_state(STATE_READY)
                 log_stage(f"state=ready (engine '{want}')")
             except Exception as e:
@@ -645,6 +689,52 @@ class SttEngine:
         """Point the GigaAM engine at a (possibly newly downloaded) model dir
         without switching to it."""
         self._gigaam.set_dir(gigaam_dir)
+
+    # ---- compute device (cpu | cuda) — TZ2 block 6/7 -------------------
+
+    def effective_device(self) -> str:
+        return "cpu" if self._forced_cpu else self._desired_device
+
+    def set_device(self, device: str) -> None:
+        """The user's desired STT device. Applied immediately unless game mode
+        is currently forcing CPU (then it's remembered for when it lifts)."""
+        self._desired_device = "cuda" if device == "cuda" else "cpu"
+        self._apply_device()
+
+    def force_cpu(self, on: bool) -> None:
+        """Game mode parks GPU engines on the CPU without touching the user's
+        saved device (TZ2 block 7)."""
+        if on == self._forced_cpu:
+            return
+        self._forced_cpu = on
+        self._apply_device()
+
+    def _apply_device(self) -> None:
+        dev = self.effective_device()
+        if dev == self._whisper.device and self._whisper.is_loaded:
+            return
+        self._whisper.set_device(dev)
+        if self._engine_name == "whisper":
+            threading.Thread(target=self._reload_whisper_device,
+                             daemon=True).start()
+
+    def _reload_whisper_device(self) -> None:
+        try:
+            self._emit_status("whisper", "loading")
+            self._whisper.load()
+            self._emit_status("whisper", "ready")
+            self._emit_device()
+        except Exception as e:
+            self._emit_status("whisper", "error", str(e))
+
+    def _emit_device(self) -> None:
+        self._emit({
+            "type": "stt.device",
+            "engine": "whisper",
+            "requested": self._whisper.device,
+            "active": self._whisper.device_active,
+            "fell_back": self._whisper.fell_back,
+        })
 
     def set_prompt(self, prompt: str | None) -> None:
         self._whisper.set_prompt(prompt)

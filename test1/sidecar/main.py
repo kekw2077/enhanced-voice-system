@@ -11,7 +11,11 @@ Protocol (JSON text frames)
     {"type": "stt.stop"}
     {"type": "stt.config", "model": "small", "prompt": "...",
                            "engine": "whisper"|"gigaam", "gigaam_dir": "...",
-                           "denoise": "off"|"light"|"strong", "denoise_dir": "..."}
+                           "denoise": "off"|"light"|"strong", "denoise_dir": "...",
+                           "device": "cpu"|"cuda"}
+    {"type": "gamemode.config", "fullscreen_enabled": bool, "vram_enabled": bool,
+                           "vram_enter": 85, "vram_exit": 65, "notify_enabled": bool,
+                           "exclusions": ["vlc.exe"], "texts": {"fullscreen": ..., "vram": ..., "exit": ...}}
     {"type": "tts.speak", "text": "..."}
     {"type": "tts.stop"}
     {"type": "tts.config", "engine": "piper"|"pyttsx3",
@@ -27,6 +31,8 @@ Protocol (JSON text frames)
     {"type": "stt.final", "text": "...", "latency_ms": int}
     {"type": "stt.state", "state": "starting"|"loading_models"|"ready"|"error", "message"?: str}
     {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error", "message"?: str}
+    {"type": "stt.device", "engine": str, "requested": "cpu"|"cuda", "active": "cpu"|"cuda", "fell_back": bool}
+    {"type": "gamemode.status", "active": bool, "reason": "fullscreen"|"vram"|""}
     {"type": "stt.denoise_status", "mode": str, "state": "ready"|"error", "message"?: str}
     {"type": "tts.done"}
     {"type": "tts.status", "engine": str, "voice": str, "state": "loading"|"ready"|"error", "message"?: str}
@@ -43,12 +49,15 @@ import sys
 
 import websockets
 
+import gpu
+from gamemode import GameModeMonitor
 from intent import match
 from stt_engine import SttEngine, log_stage
 from tts_engine import TtsEngine
 
 
-async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
+async def _handle(ws, stt: SttEngine, tts: TtsEngine,
+                  game: GameModeMonitor) -> None:
     loop = asyncio.get_running_loop()
     out: "asyncio.Queue[dict]" = asyncio.Queue()
 
@@ -70,12 +79,26 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
             "tts": tts.available,
             "engines": stt.capabilities(),
             "tts_engines": tts.capabilities(),
+            "gpu": gpu.gpu_info(),
         },
     }))
     # Bind this connection's emitter so engine-status can be reported outside of
     # start/stop, and apply the CLI/desired engines (reports their readiness).
     stt.bind(emit)
     tts.bind(emit)
+
+    # Game mode (TZ2 block 7): one offload layer driven by both triggers.
+    def _game_change(active: bool, reason: str) -> None:
+        stt.force_cpu(active)  # only Whisper has a CUDA path here
+        emit({"type": "gamemode.status", "active": active, "reason": reason})
+
+    def _game_notify(kind: str) -> None:
+        txt = game.texts.get(kind)
+        if txt:
+            tts.speak(str(txt))
+
+    game.bind(_game_change, _game_notify)
+    game.start()
 
     try:
         async for raw in ws:
@@ -107,6 +130,11 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                     stt.update_denoise_dir(str(ddir))
                 if "denoise" in data:
                     stt.set_denoise(str(data.get("denoise")))
+                if "device" in data:
+                    # A manual device change lifts any game-mode offload layer
+                    # (it re-engages next poll if conditions still hold).
+                    game.release()
+                    stt.set_device(str(data.get("device")))
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),
@@ -131,6 +159,18 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                             str(data.get("text", "")),
                             rate=float(data.get("rate", 1.0)),
                             volume=float(data.get("volume", 1.0)))
+            elif t == "gamemode.config":
+                if isinstance(data.get("texts"), dict):
+                    game.texts = {str(k): str(v)
+                                  for k, v in data["texts"].items()}
+                game.configure(
+                    fullscreen_enabled=data.get("fullscreen_enabled"),
+                    vram_enabled=data.get("vram_enabled"),
+                    vram_enter=data.get("vram_enter"),
+                    vram_exit=data.get("vram_exit"),
+                    notify_enabled=data.get("notify_enabled"),
+                    exclusions=data.get("exclusions"),
+                )
             elif t == "intent.parse":
                 res = match(
                     str(data.get("text", "")),
@@ -153,9 +193,10 @@ async def _main(args) -> None:
                     denoise=args.denoise, denoise_dir=args.denoise_dir)
     tts = TtsEngine(engine=args.tts_engine, voice=args.tts_voice,
                     voice_dir=args.tts_voice_dir)
+    game = GameModeMonitor()
 
     async def handler(ws):
-        await _handle(ws, stt, tts)
+        await _handle(ws, stt, tts, game)
 
     log_stage("intent matcher ready; ws server starting")
     async with websockets.serve(handler, args.host, args.port) as server:

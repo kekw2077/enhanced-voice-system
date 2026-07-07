@@ -831,6 +831,31 @@ const Map<String, Map<String, String>> _i18n = {
     'mbShort': 'МБ',
     'mdlTotalDisk': 'Занято на диске',
     'cardDenoise': 'Шумоподавление',
+    'mdlAdd': 'Добавить',
+    'deviceLabel': 'Обработка',
+    'deviceCpu': 'CPU',
+    'deviceGpu': 'GPU',
+    'deviceHintWhisper': 'На GPU Whisper работает в разы быстрее на длинных фразах.',
+    'deviceFellBack': 'Не удалось задействовать GPU — работаю на процессоре.',
+    'cardGameMode': 'Игровой режим',
+    'gmFullscreen': 'Игровой режим',
+    'gmFullscreenDesc': 'В полноэкранной игре переношу GPU-движки на процессор',
+    'gmVram': 'Следить за видеопамятью',
+    'gmVramDesc': 'Разгружать GPU, когда видеопамять почти заполнена (нужен NVIDIA)',
+    'gmVramEnter': 'Порог включения',
+    'gmVramExit': 'Порог выключения',
+    'gmNotify': 'Голосовое уведомление',
+    'gmNotifyDesc': 'Проговаривать вход/выход из разгрузки; бейдж остаётся в любом случае',
+    'gmExclusions': 'Исключения',
+    'gmExclusionsDesc': 'Процессы, которые полноэкранны, но не игры (видеоплеер и т.п.)',
+    'gmExclAdd': 'Добавить процесс',
+    'gmOffloadActive': 'Сейчас активна разгрузка GPU — движки на процессоре.',
+    'gmOffloadBadge': 'Разгрузка GPU',
+    'gmReasonFullscreen': 'полноэкранный режим',
+    'gmReasonVram': 'заполнена видеопамять',
+    'gmNotifyFullscreen': 'Обнаружен полноэкранный режим — переключаюсь на процессор',
+    'gmNotifyVram': 'Видеопамять почти заполнена — переключаюсь на процессор',
+    'gmNotifyExit': 'Возвращаю настройки',
     'dnOff': 'Выкл',
     'dnLight': 'Лёгкое',
     'dnStrong': 'Сильное',
@@ -1593,6 +1618,31 @@ const Map<String, Map<String, String>> _i18n = {
     'mbShort': 'MB',
     'mdlTotalDisk': 'Disk used',
     'cardDenoise': 'Noise suppression',
+    'mdlAdd': 'Add',
+    'deviceLabel': 'Processing',
+    'deviceCpu': 'CPU',
+    'deviceGpu': 'GPU',
+    'deviceHintWhisper': 'On the GPU, Whisper is much faster on long phrases.',
+    'deviceFellBack': 'Could not use the GPU — running on the CPU.',
+    'cardGameMode': 'Game mode',
+    'gmFullscreen': 'Game mode',
+    'gmFullscreenDesc': 'Move GPU engines to the CPU while a fullscreen game is up',
+    'gmVram': 'Watch video memory',
+    'gmVramDesc': 'Offload the GPU when VRAM is nearly full (needs NVIDIA)',
+    'gmVramEnter': 'Engage threshold',
+    'gmVramExit': 'Release threshold',
+    'gmNotify': 'Voice notification',
+    'gmNotifyDesc': 'Speak on entering/leaving offload; the badge stays regardless',
+    'gmExclusions': 'Exclusions',
+    'gmExclusionsDesc': 'Processes that are fullscreen but not games (video player, etc.)',
+    'gmExclAdd': 'Add process',
+    'gmOffloadActive': 'GPU offload is active — engines are on the CPU.',
+    'gmOffloadBadge': 'GPU offload',
+    'gmReasonFullscreen': 'fullscreen mode',
+    'gmReasonVram': 'video memory full',
+    'gmNotifyFullscreen': 'Fullscreen mode detected — switching to the processor',
+    'gmNotifyVram': 'Video memory is nearly full — switching to the processor',
+    'gmNotifyExit': 'Restoring settings',
     'dnOff': 'Off',
     'dnLight': 'Light',
     'dnStrong': 'Strong',
@@ -4428,6 +4478,16 @@ class AppState extends ChangeNotifier {
   // Noise suppression before the VAD (TZ2 block 1). 'light' is the default but
   // needs the GTCRN model; the sidecar fail-safes to off until it's present.
   String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
+  // Compute device for GPU-capable engines (TZ2 block 6). Only Whisper has a
+  // CUDA path here; the selector is hidden entirely when no GPU is detected.
+  String sttDevice = 'cpu'; // 'cpu' | 'cuda'
+  // Game mode (TZ2 block 7): auto-offload GPU engines to CPU under load.
+  bool gameModeFullscreen = true; // trigger A: fullscreen foreground
+  bool gameModeVram = true; // trigger B: VRAM saturation (needs NVML)
+  double gameModeVramEnter = 85; // % to engage the VRAM trigger
+  double gameModeVramExit = 65; // % to disengage (must be < enter)
+  bool gameModeNotify = true; // speak on enter/exit; badge stays regardless
+  List<String> gameModeExclusions = []; // exe names that don't count as games
   // Voice assistant / command recognition.
   String cmdMode = 'wakeword'; // 'wakeword' | 'separate' | 'first'
   String wakeWord = 'EVS';
@@ -4631,6 +4691,13 @@ class AppState extends ChangeNotifier {
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
+    sttDevice = prefs.getString('sttDevice') ?? 'cpu';
+    gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
+    gameModeVram = prefs.getBool('gameModeVram') ?? true;
+    gameModeVramEnter = prefs.getDouble('gameModeVramEnter') ?? 85;
+    gameModeVramExit = prefs.getDouble('gameModeVramExit') ?? 65;
+    gameModeNotify = prefs.getBool('gameModeNotify') ?? true;
+    gameModeExclusions = prefs.getStringList('gameModeExclusions') ?? <String>[];
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -4738,6 +4805,13 @@ class AppState extends ChangeNotifier {
     await prefs.setString('sttEngine', sttEngine);
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
     await prefs.setString('denoiseMode', denoiseMode);
+    await prefs.setString('sttDevice', sttDevice);
+    await prefs.setBool('gameModeFullscreen', gameModeFullscreen);
+    await prefs.setBool('gameModeVram', gameModeVram);
+    await prefs.setDouble('gameModeVramEnter', gameModeVramEnter);
+    await prefs.setDouble('gameModeVramExit', gameModeVramExit);
+    await prefs.setBool('gameModeNotify', gameModeNotify);
+    await prefs.setStringList('gameModeExclusions', gameModeExclusions);
     await prefs.setString('cmdMode', cmdMode);
     await prefs.setString('wakeWord', wakeWord);
     await prefs.setStringList('stopWords', stopWords);
@@ -4848,6 +4922,12 @@ class AppState extends ChangeNotifier {
       unawaited(SidecarClient.instance.setDenoise(denoiseMode));
     } catch (_) {}
     try {
+      SidecarClient.instance.setSttDevice(sttDevice);
+    } catch (_) {}
+    try {
+      applyGameModeConfig();
+    } catch (_) {}
+    try {
       unawaited(MicMeter.instance.start(deviceId: inputDeviceId));
     } catch (_) {}
     try {
@@ -4885,6 +4965,13 @@ class AppState extends ChangeNotifier {
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
+    sttDevice = prefs.getString('sttDevice') ?? 'cpu';
+    gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
+    gameModeVram = prefs.getBool('gameModeVram') ?? true;
+    gameModeVramEnter = prefs.getDouble('gameModeVramEnter') ?? 85;
+    gameModeVramExit = prefs.getDouble('gameModeVramExit') ?? 65;
+    gameModeNotify = prefs.getBool('gameModeNotify') ?? true;
+    gameModeExclusions = prefs.getStringList('gameModeExclusions') ?? <String>[];
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -4998,6 +5085,70 @@ class AppState extends ChangeNotifier {
     _save();
     notifyListeners();
     unawaited(SidecarClient.instance.setDenoise(denoiseMode));
+  }
+
+  // STT compute device (TZ2 block 6). Live preview; persisted on Save.
+  void setSttDevice(String v) {
+    sttDevice = v == 'cuda' ? 'cuda' : 'cpu';
+    _save();
+    notifyListeners();
+    SidecarClient.instance.setSttDevice(sttDevice);
+  }
+
+  // Localized game-mode notification phrases + config, pushed to the sidecar
+  // whenever any game-mode setting changes (TZ2 block 7).
+  void applyGameModeConfig() {
+    SidecarClient.instance.configureGameMode(
+      fullscreen: gameModeFullscreen,
+      vram: gameModeVram,
+      vramEnter: gameModeVramEnter,
+      vramExit: gameModeVramExit,
+      notify: gameModeNotify,
+      exclusions: gameModeExclusions,
+      texts: {
+        'fullscreen': t('gmNotifyFullscreen'),
+        'vram': t('gmNotifyVram'),
+        'exit': t('gmNotifyExit'),
+      },
+    );
+  }
+
+  void setGameModeFullscreen(bool v) {
+    gameModeFullscreen = v;
+    _save();
+    notifyListeners();
+    applyGameModeConfig();
+  }
+
+  void setGameModeVram(bool v) {
+    gameModeVram = v;
+    _save();
+    notifyListeners();
+    applyGameModeConfig();
+  }
+
+  void setGameModeNotify(bool v) {
+    gameModeNotify = v;
+    _save();
+    notifyListeners();
+    applyGameModeConfig();
+  }
+
+  // Two-sided: exit must stay below enter or the hysteresis breaks (the sidecar
+  // also guards this).
+  void setGameModeVramThresholds(double enter, double exit) {
+    gameModeVramEnter = enter.clamp(50, 99);
+    gameModeVramExit = exit.clamp(30, gameModeVramEnter - 5);
+    _save();
+    notifyListeners();
+    applyGameModeConfig();
+  }
+
+  void setGameModeExclusions(List<String> v) {
+    gameModeExclusions = v;
+    _save();
+    notifyListeners();
+    applyGameModeConfig();
   }
 
   void setCmdMode(String v) {
@@ -8140,6 +8291,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       SidecarClient.instance.setSttModel(app.whisperModel);
       await SidecarClient.instance.setSttEngine(app.sttSidecarEngine);
       await SidecarClient.instance.setDenoise(app.denoiseMode);
+      SidecarClient.instance.setSttDevice(app.sttDevice); // sets CLI arg too
       await SidecarClient.instance.setTtsVoice(app.ttsPiperVoice,
           modelId: app._voiceModelId(app.ttsPiperVoice));
       // One-shot readiness greeting (TZ3.4): the first time the backend reaches
@@ -8162,6 +8314,9 @@ class DesktopIntegration with WindowListener, TrayListener {
         unawaited(ComponentManager.instance.stageUpdate('sidecar'));
       }
       await SidecarClient.instance.start();
+      // Push game-mode config (thresholds, exclusions, localized phrases) now
+      // that the socket is up; the sidecar started the monitor with defaults.
+      app.applyGameModeConfig();
     } catch (_) {}
   }
 
@@ -9226,6 +9381,20 @@ class SidecarClient {
   String _denoiseDir = ''; // <userdata>/models (holds denoise-gtcrn/, denoise-df/)
   final ValueNotifier<(String mode, String state, String? message)?>
       denoiseStatus = ValueNotifier(null);
+  // Compute device (TZ2 block 6): user's desired STT device. GPU info comes from
+  // `ready`; only Whisper has a CUDA path (gigaam/denoise are CPU-only here).
+  String _sttDevice = 'cpu'; // cpu | cuda
+  // (available, name, vramTotalMb, vramUsedMb, vramPercent, cuda)
+  final ValueNotifier<(bool, String, int, int, double, bool)> gpuInfo =
+      ValueNotifier((false, '', 0, 0, 0.0, false));
+  final ValueNotifier<Map<String, bool>> engineGpu =
+      ValueNotifier(const {'whisper': false, 'gigaam': false});
+  // (requested, active, fellBack) from stt.device.
+  final ValueNotifier<(String, String, bool)?> deviceStatus =
+      ValueNotifier(null);
+  // Game mode (TZ2 block 7): (active, reason) from gamemode.status.
+  final ValueNotifier<(bool active, String reason)> gameModeStatus =
+      ValueNotifier((false, ''));
   // Backend readiness state machine (TZ3.4): starting | loading_models | ready
   // | error. The sidecar loads STT models greedily on connect and warms them
   // up, so the first real command doesn't pay the init cost; the UI reflects
@@ -9275,6 +9444,7 @@ class SidecarClient {
         ...launch.$2,
         '--engine', _sttEngine,
         '--denoise', _denoise,
+        '--device', _sttDevice,
         '--tts-engine', _ttsEngine,
       ];
       if (_gigaamDir.isNotEmpty) args.addAll(['--gigaam-dir', _gigaamDir]);
@@ -9386,6 +9556,21 @@ class SidecarClient {
                 'whisper': e['whisper'] == true,
                 'gigaam': e['gigaam'] == true,
               };
+              engineGpu.value = {
+                'whisper': e['whisper_gpu'] == true,
+                'gigaam': e['gigaam_gpu'] == true,
+              };
+            }
+            final g = c?['gpu'];
+            if (g is Map) {
+              gpuInfo.value = (
+                g['available'] == true,
+                g['name'] as String? ?? '',
+                (g['vram_total_mb'] as num?)?.toInt() ?? 0,
+                (g['vram_used_mb'] as num?)?.toInt() ?? 0,
+                (g['vram_percent'] as num?)?.toDouble() ?? 0.0,
+                g['cuda'] == true,
+              );
             }
             final te = c?['tts_engines'];
             if (te is Map) {
@@ -9451,6 +9636,19 @@ class SidecarClient {
               m['voice'] as String? ?? '',
               m['state'] as String? ?? '',
               m['message'] as String?,
+            );
+            break;
+          case 'stt.device':
+            deviceStatus.value = (
+              m['requested'] as String? ?? 'cpu',
+              m['active'] as String? ?? 'cpu',
+              m['fell_back'] == true,
+            );
+            break;
+          case 'gamemode.status':
+            gameModeStatus.value = (
+              m['active'] == true,
+              m['reason'] as String? ?? '',
             );
             break;
         }
@@ -9532,6 +9730,36 @@ class SidecarClient {
       'type': 'stt.config',
       'denoise': _denoise,
       'denoise_dir': _denoiseDir,
+    });
+  }
+
+  // Switch the STT compute device live (cpu | cuda) — TZ2 block 6. Applied at
+  // spawn via CLI too. A manual change also lifts any game-mode offload layer.
+  void setSttDevice(String device) {
+    _sttDevice = device == 'cuda' ? 'cuda' : 'cpu';
+    _send({'type': 'stt.config', 'device': _sttDevice});
+  }
+
+  // Push the game-mode config (triggers, thresholds, exclusions, localized
+  // notification phrases) to the sidecar — TZ2 block 7.
+  void configureGameMode({
+    required bool fullscreen,
+    required bool vram,
+    required double vramEnter,
+    required double vramExit,
+    required bool notify,
+    required List<String> exclusions,
+    required Map<String, String> texts,
+  }) {
+    _send({
+      'type': 'gamemode.config',
+      'fullscreen_enabled': fullscreen,
+      'vram_enabled': vram,
+      'vram_enter': vramEnter,
+      'vram_exit': vramExit,
+      'notify_enabled': notify,
+      'exclusions': exclusions,
+      'texts': texts,
     });
   }
 
@@ -12437,6 +12665,66 @@ class _SttReadinessBanner extends StatelessWidget {
 // GigaAM-v3) driven by SidecarClient's live status / capabilities / latency.
 // Selecting an engine hot-swaps it; the block locks until ready|error and rolls
 // the choice back with a snackbar on failure.
+// TZ2 block 6: compact CPU/GPU selector shown under a GPU-capable engine. Hidden
+// entirely when no GPU is detected or the engine has no CUDA path. Reused per
+// engine. Also surfaces the game-mode offload and CUDA→CPU fallback states.
+class _DeviceSelector extends StatelessWidget {
+  final AppState app;
+  final String engine; // engine this selector controls (e.g. 'whisper')
+  final String hintKey;
+  const _DeviceSelector(this.app, this.engine, this.hintKey);
+  @override
+  Widget build(BuildContext context) {
+    final sc = SidecarClient.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge(
+          [sc.gpuInfo, sc.engineGpu, sc.deviceStatus, sc.gameModeStatus]),
+      builder: (context, _) {
+        final gpu = sc.gpuInfo.value; // (available, name, ...)
+        final supported = sc.engineGpu.value[engine] == true;
+        if (!gpu.$1 || !supported) return const SizedBox.shrink();
+        final name = gpu.$2;
+        final ds = sc.deviceStatus.value;
+        final offloaded = sc.gameModeStatus.value.$1;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            Text(app.t('deviceLabel'),
+                style: const TextStyle(color: Color(0xFF9AA0B0), fontSize: 11)),
+            const SizedBox(height: 6),
+            evsSegmentedWide<String>(
+              [
+                ('cpu', app.t('deviceCpu')),
+                ('cuda', name.isNotEmpty ? 'GPU · $name' : app.t('deviceGpu')),
+              ],
+              app.sttDevice,
+              (v) => app.setSttDevice(v),
+            ),
+            const SizedBox(height: 4),
+            Text(app.t(hintKey),
+                style: const TextStyle(color: Color(0xFF6E7280), fontSize: 11)),
+            if (offloaded)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(app.t('gmOffloadActive'),
+                    style: const TextStyle(
+                        color: Color(0xFFF0A030), fontSize: 11)),
+              )
+            else if (ds != null && ds.$3)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(app.t('deviceFellBack'),
+                    style: const TextStyle(
+                        color: Color(0xFFF0605E), fontSize: 11)),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 // TZ2 block 4: a "Подробнее" toggle that reveals a longer explanation (2–4
 // sentences) under a short option description. Texts come from i18n, not inline.
 class _DetailDisclosure extends StatelessWidget {
@@ -12675,6 +12963,7 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                       : 'small',
                   (v) => app.setWhisperModel(v),
                 ),
+                _DeviceSelector(app, 'whisper', 'deviceHintWhisper'),
               ],
             ],
           ),
@@ -13156,6 +13445,166 @@ class _DenoiseSelectorState extends State<_DenoiseSelector> {
                 ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
+
+// TZ2 block 7: game / heavy-GPU mode settings + live "GPU offload" badge.
+// Hidden entirely when no GPU is detected (there's nothing to offload).
+class _GameModeCard extends StatelessWidget {
+  final AppState app;
+  const _GameModeCard(this.app);
+
+  Future<void> _addExclusion(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => _AppDialog(
+        backgroundColor: _card(context),
+        title: Text(app.t('gmExclAdd'), style: TextStyle(color: _txt(context))),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: _txt(context)),
+          decoration: const InputDecoration(hintText: 'game.exe'),
+          onSubmitted: (v) => Navigator.pop(context, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, null),
+              child: Text(app.t('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, ctrl.text),
+              child: Text(app.t('mdlAdd'))),
+        ],
+      ),
+    );
+    final n = (name ?? '').trim().toLowerCase();
+    if (n.isNotEmpty && !app.gameModeExclusions.contains(n)) {
+      app.setGameModeExclusions([...app.gameModeExclusions, n]);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sc = SidecarClient.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([sc.gpuInfo, sc.gameModeStatus]),
+      builder: (context, _) {
+        if (!sc.gpuInfo.value.$1) return const SizedBox.shrink();
+        final (active, reason) = sc.gameModeStatus.value;
+        return evsCard(
+          context,
+          icon: Icons.sports_esports_outlined,
+          title: app.t('cardGameMode'),
+          rows: [
+            if (active)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 12, 18, 2),
+                child: Row(children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                        color: const Color(0x22F0A030),
+                        borderRadius: BorderRadius.circular(8)),
+                    child: Text(app.t('gmOffloadBadge'),
+                        style: const TextStyle(
+                            color: Color(0xFFF0A030),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                      reason == 'vram'
+                          ? app.t('gmReasonVram')
+                          : app.t('gmReasonFullscreen'),
+                      style: const TextStyle(
+                          color: Color(0xFF9AA0B0), fontSize: 11)),
+                ]),
+              ),
+            evsRow(
+              label: app.t('gmFullscreen'),
+              desc: app.t('gmFullscreenDesc'),
+              control: evsToggle(
+                  app.gameModeFullscreen, (v) => app.setGameModeFullscreen(v)),
+            ),
+            evsRow(
+              label: app.t('gmVram'),
+              desc: app.t('gmVramDesc'),
+              control: evsToggle(app.gameModeVram, (v) => app.setGameModeVram(v)),
+            ),
+            if (app.gameModeVram) ...[
+              evsRow(
+                label: app.t('gmVramEnter'),
+                control: evsSlider(
+                  value: app.gameModeVramEnter.clamp(50, 99),
+                  min: 50,
+                  max: 99,
+                  divisions: 49,
+                  label: '${app.gameModeVramEnter.round()}%',
+                  onChanged: (v) => app.setGameModeVramThresholds(
+                      v, app.gameModeVramExit),
+                ),
+              ),
+              evsRow(
+                label: app.t('gmVramExit'),
+                control: evsSlider(
+                  value: app.gameModeVramExit
+                      .clamp(30, app.gameModeVramEnter - 5),
+                  min: 30,
+                  max: 94,
+                  divisions: 64,
+                  label: '${app.gameModeVramExit.round()}%',
+                  onChanged: (v) => app.setGameModeVramThresholds(
+                      app.gameModeVramEnter, v),
+                ),
+              ),
+            ],
+            evsRow(
+              label: app.t('gmNotify'),
+              desc: app.t('gmNotifyDesc'),
+              control:
+                  evsToggle(app.gameModeNotify, (v) => app.setGameModeNotify(v)),
+            ),
+            evsRow(
+              stacked: true,
+              label: app.t('gmExclusions'),
+              desc: app.t('gmExclusionsDesc'),
+              control: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (app.gameModeExclusions.isNotEmpty)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final ex in app.gameModeExclusions)
+                          Chip(
+                            label: Text(ex,
+                                style: const TextStyle(fontSize: 12)),
+                            onDeleted: () => app.setGameModeExclusions(app
+                                .gameModeExclusions
+                                .where((e) => e != ex)
+                                .toList()),
+                          ),
+                      ],
+                    ),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.add, size: 16),
+                      label: Text(app.t('gmExclAdd')),
+                      onPressed: () => _addExclusion(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         );
       },
     );
@@ -15186,6 +15635,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
       )),
+      _CardSpec(_GameModeCard(app)),
       _CardSpec(evsCard(
         context,
         icon: Icons.headset_mic_outlined,

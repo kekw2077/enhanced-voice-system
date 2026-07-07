@@ -10,6 +10,10 @@ pyttsx3>=2.90
 rapidfuzz>=3.0.0
 websockets>=12.0
 numpy>=1.24
+# GPU detection + VRAM polling for the CPU/GPU selector and game mode (TZ2
+# blocks 6/7). Pure-Python NVML binding; absent an NVIDIA GPU it just reports
+# "unavailable" and the features stay hidden/off.
+nvidia-ml-py>=12.0.0
 # Reading the synthesized wav for chunked playback with live level emission
 # (tts.level events driving the app's voice visualizations).
 soundfile>=0.12.0
