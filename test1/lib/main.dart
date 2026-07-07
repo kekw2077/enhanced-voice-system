@@ -55,6 +55,11 @@ io.ServerSocket? _singleInstanceLock;
 // keeps its size — see OverlayWidgetView).
 const double kWidgetWindowScale = 1.35;
 
+// HuggingFace repo the GigaAM-v3 sherpa-onnx model is published under — shown in
+// the "model not found" hint (TZ1). Mirrors GIGAAM_HF_REPO in the sidecar.
+const String kGigaamHfRepo =
+    'csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16';
+
 // Named Win32 mutex held for the whole process lifetime. The Inno Setup
 // installer declares the same name via AppMutex, so during a silent in-app
 // update it can detect the running instance and (with CloseApplications=force)
@@ -790,6 +795,18 @@ const Map<String, Map<String, String>> _i18n = {
     'cardStt': 'Движок STT',
     'sttEngine': 'Движок распознавания',
     'sttEngineDesc': 'Whisper работает офлайн на вашем железе',
+    'msShort': 'мс',
+    'cardSttModel': 'Модель распознавания',
+    'engWhisperName': 'Whisper',
+    'engWhisperShort': 'Мультиязычная, средняя точность',
+    'engGigaamName': 'GigaAM-v3',
+    'engGigaamShort': 'Лучшая точность для русского. Рекомендуется',
+    'engActive': 'Активна',
+    'engReady': 'Готова',
+    'engLoading': 'Загружается…',
+    'engNotFound': 'Модель не найдена',
+    'engSwitchFailed': 'Не удалось переключить движок',
+    'engWhisperSize': 'Размер модели',
     'whisperOffline': 'Whisper (офлайн)',
     'whisperModel': 'Модель Whisper',
     'whisperModelDesc':
@@ -1507,6 +1524,18 @@ const Map<String, Map<String, String>> _i18n = {
     'cardStt': 'STT engine',
     'sttEngine': 'Recognition engine',
     'sttEngineDesc': 'Whisper runs offline on your hardware',
+    'msShort': 'ms',
+    'cardSttModel': 'Recognition model',
+    'engWhisperName': 'Whisper',
+    'engWhisperShort': 'Multilingual, average accuracy',
+    'engGigaamName': 'GigaAM-v3',
+    'engGigaamShort': 'Best accuracy for Russian. Recommended',
+    'engActive': 'Active',
+    'engReady': 'Ready',
+    'engLoading': 'Loading…',
+    'engNotFound': 'Model not found',
+    'engSwitchFailed': 'Could not switch engine',
+    'engWhisperSize': 'Model size',
     'whisperOffline': 'Whisper (offline)',
     'whisperModel': 'Whisper model',
     'whisperModelDesc':
@@ -4204,6 +4233,9 @@ class AppState extends ChangeNotifier {
   String sttLanguage = 'auto'; // 'auto' | 'ru' | 'en'
   String whisperModel = 'small'; // tiny | base | small | medium (sidecar)
   String sttEngine = 'whisper'; // 'whisper' (sidecar) | 'windows' (speech_to_text)
+  // Sidecar recognition engine (TZ1): which model the sidecar uses. Distinct
+  // from sttEngine above (sidecar-vs-native backend).
+  String sttSidecarEngine = 'whisper'; // 'whisper' | 'gigaam'
   // Voice assistant / command recognition.
   String cmdMode = 'wakeword'; // 'wakeword' | 'separate' | 'first'
   String wakeWord = 'EVS';
@@ -4400,6 +4432,7 @@ class AppState extends ChangeNotifier {
       }
     }
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
+    sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -4505,6 +4538,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('sttLanguage', sttLanguage);
     await prefs.setString('whisperModel', whisperModel);
     await prefs.setString('sttEngine', sttEngine);
+    await prefs.setString('sttSidecarEngine', sttSidecarEngine);
     await prefs.setString('cmdMode', cmdMode);
     await prefs.setString('wakeWord', wakeWord);
     await prefs.setStringList('stopWords', stopWords);
@@ -4609,6 +4643,9 @@ class AppState extends ChangeNotifier {
       SidecarClient.instance.setSttModel(whisperModel);
     } catch (_) {}
     try {
+      unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
+    } catch (_) {}
+    try {
       unawaited(MicMeter.instance.start(deviceId: inputDeviceId));
     } catch (_) {}
     try {
@@ -4644,6 +4681,7 @@ class AppState extends ChangeNotifier {
     sttLanguage = prefs.getString('sttLanguage') ?? 'auto';
     whisperModel = prefs.getString('whisperModel') ?? 'small';
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
+    sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -4738,6 +4776,16 @@ class AppState extends ChangeNotifier {
     sttEngine = v;
     _save();
     notifyListeners();
+  }
+
+  // Switch the sidecar recognition engine (whisper | gigaam). Applies live for
+  // preview (the card shows loading/ready/error); the choice persists on Save
+  // and is resynced to the backend on Save/Cancel via _applySettingsSideEffects.
+  void setSttSidecarEngine(String v) {
+    sttSidecarEngine = v == 'gigaam' ? 'gigaam' : 'whisper';
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
   }
 
   void setCmdMode(String v) {
@@ -7707,6 +7755,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Apply any update staged on a previous run (before the exe is launched).
       await ComponentManager.instance.applyStagedUpdates();
       SidecarClient.instance.setSttModel(app.whisperModel);
+      await SidecarClient.instance.setSttEngine(app.sttSidecarEngine);
       // Start with whatever sidecar is available now (component / bundled /
       // dev). Only download if nothing is present — never block startup on an
       // update. A newer component version is staged in the background for the
@@ -8763,6 +8812,14 @@ class SidecarClient {
   bool sttAvailable = false;
   bool ttsAvailable = false;
   String _sttModel = 'small'; // Whisper model size sent on connect / on change
+  String _sttEngine = 'whisper'; // active sidecar engine: whisper | gigaam
+  String _gigaamDir = ''; // <userdata>/models/gigaam-v3, resolved lazily
+  // Live STT-engine state for the "Модель распознавания" UI (TZ1).
+  final ValueNotifier<(String engine, String state, String? message)?>
+      engineStatus = ValueNotifier(null);
+  final ValueNotifier<int> sttLatencyMs = ValueNotifier(0);
+  final ValueNotifier<Map<String, bool>> engines =
+      ValueNotifier(const {'whisper': false, 'gigaam': false});
 
   final _partial = StreamController<String>.broadcast();
   final _finalText = StreamController<String>.broadcast();
@@ -8793,7 +8850,12 @@ class SidecarClient {
             '${io.Platform.pathSeparator}hf-cache';
         env['HF_HOME'] = cache;
       } catch (_) {}
-      _proc = await io.Process.start(launch.$1, launch.$2,
+      // Choose the STT engine at spawn (TZ1): the sidecar loads GigaAM eagerly
+      // from startup instead of switching after connect.
+      await _ensureGigaamDir();
+      final args = <String>[...launch.$2, '--engine', _sttEngine];
+      if (_gigaamDir.isNotEmpty) args.addAll(['--gigaam-dir', _gigaamDir]);
+      _proc = await io.Process.start(launch.$1, args,
           runInShell: false, environment: env);
       ProcessJob.instance.add(_proc!.pid); // die with the app
       // The sidecar's stderr used to be silently dropped, so STT/mic failures
@@ -8892,12 +8954,28 @@ class SidecarClient {
             final c = m['capabilities'] as Map?;
             sttAvailable = c?['stt'] == true;
             ttsAvailable = c?['tts'] == true;
+            final e = c?['engines'];
+            if (e is Map) {
+              engines.value = {
+                'whisper': e['whisper'] == true,
+                'gigaam': e['gigaam'] == true,
+              };
+            }
             break;
           case 'stt.partial':
             _partial.add(m['text'] as String? ?? '');
             break;
           case 'stt.final':
+            final lat = (m['latency_ms'] as num?)?.toInt();
+            if (lat != null) sttLatencyMs.value = lat;
             _finalText.add(m['text'] as String? ?? '');
+            break;
+          case 'stt.engine_status':
+            engineStatus.value = (
+              m['engine'] as String? ?? '',
+              m['state'] as String? ?? '',
+              m['message'] as String?,
+            );
             break;
           case 'vad':
             _vad.add(m['speaking'] == true);
@@ -8945,6 +9023,34 @@ class SidecarClient {
   void setSttModel(String model) {
     _sttModel = model;
     _send({'type': 'stt.config', 'model': model});
+  }
+
+  Future<void> _ensureGigaamDir() async {
+    if (_gigaamDir.isNotEmpty) return;
+    try {
+      final root = await appDataRoot();
+      final sep = io.Platform.pathSeparator;
+      _gigaamDir = '$root${sep}models${sep}gigaam-v3';
+    } catch (_) {}
+  }
+
+  /// Path where the GigaAM model is expected — surfaced in the UI "not found"
+  /// hint so the user knows where to place it.
+  Future<String> gigaamModelDir() async {
+    await _ensureGigaamDir();
+    return _gigaamDir;
+  }
+
+  // Switch the sidecar recognition engine live (whisper | gigaam). Applied at
+  // spawn via CLI too; here it hot-swaps a running sidecar (TZ1).
+  Future<void> setSttEngine(String engine) async {
+    _sttEngine = engine == 'gigaam' ? 'gigaam' : 'whisper';
+    await _ensureGigaamDir();
+    _send({
+      'type': 'stt.config',
+      'engine': _sttEngine,
+      'gigaam_dir': _gigaamDir,
+    });
   }
   void speak(String text, {double rate = 1.0, double volume = 1.0}) =>
       _send({'type': 'tts.speak', 'text': text, 'rate': rate, 'volume': volume});
@@ -11922,6 +12028,198 @@ class _VizStyleTile extends StatelessWidget {
   }
 }
 
+// TZ1 "Модель распознавания": two engine cards (Whisper with size selector,
+// GigaAM-v3) driven by SidecarClient's live status / capabilities / latency.
+// Selecting an engine hot-swaps it; the block locks until ready|error and rolls
+// the choice back with a snackbar on failure.
+class _SttEngineCards extends StatefulWidget {
+  final AppState app;
+  const _SttEngineCards(this.app);
+  @override
+  State<_SttEngineCards> createState() => _SttEngineCardsState();
+}
+
+class _SttEngineCardsState extends State<_SttEngineCards> {
+  String? _pending; // engine being switched to (locks the block)
+
+  @override
+  void initState() {
+    super.initState();
+    SidecarClient.instance.engineStatus.addListener(_onStatus);
+  }
+
+  @override
+  void dispose() {
+    SidecarClient.instance.engineStatus.removeListener(_onStatus);
+    super.dispose();
+  }
+
+  void _onStatus() {
+    final st = SidecarClient.instance.engineStatus.value;
+    if (st == null || _pending == null || st.$1 != _pending) return;
+    if (st.$2 == 'ready') {
+      if (mounted) setState(() => _pending = null);
+    } else if (st.$2 == 'error') {
+      final failed = _pending!;
+      final msg = st.$3 ?? widget.app.t('engSwitchFailed');
+      if (mounted) setState(() => _pending = null);
+      // Visual rollback: revert the choice to the other engine.
+      if (widget.app.sttSidecarEngine == failed) {
+        widget.app.setSttSidecarEngine(failed == 'gigaam' ? 'whisper' : 'gigaam');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${widget.app.t('engSwitchFailed')}: $msg')));
+      }
+    }
+  }
+
+  void _select(String engine) {
+    if (_pending != null) return; // block re-press while switching
+    if (widget.app.sttSidecarEngine == engine) return;
+    setState(() => _pending = engine);
+    widget.app.setSttSidecarEngine(engine);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sc = SidecarClient.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([sc.engines, sc.sttLatencyMs, sc.status]),
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(children: [
+          _tile('whisper', widget.app.t('engWhisperName'),
+              widget.app.t('engWhisperShort')),
+          const SizedBox(height: 10),
+          _tile('gigaam', widget.app.t('engGigaamName'),
+              widget.app.t('engGigaamShort')),
+        ]),
+      ),
+    );
+  }
+
+  Widget _badge(String text, Color bg, {Color fg = Colors.white}) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+        child: Text(text,
+            style: TextStyle(
+                color: fg, fontSize: 11, fontWeight: FontWeight.w600)),
+      );
+
+  Widget _tile(String engine, String name, String desc) {
+    final app = widget.app;
+    final sc = SidecarClient.instance;
+    final selected = app.sttSidecarEngine == engine;
+    final avail = sc.engines.value[engine] == true;
+    final loading = _pending == engine;
+
+    String status;
+    Color color;
+    if (loading) {
+      status = app.t('engLoading');
+      color = const Color(0xFFB9A6FF);
+    } else if (selected) {
+      status = app.t('engActive');
+      color = const Color(0xFF34D399);
+    } else if (avail) {
+      status = app.t('engReady');
+      color = const Color(0xFF8A8A95);
+    } else {
+      status = app.t('engNotFound');
+      color = const Color(0xFFF0A030);
+    }
+    final latency = sc.sttLatencyMs.value;
+
+    return Opacity(
+      opacity: (_pending != null && !loading) ? 0.5 : 1.0,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _select(engine),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF15151E),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? const Color(0x668A7BE0)
+                  : const Color(0x14FFFFFF),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(
+                    selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off,
+                    size: 18,
+                    color: selected
+                        ? const Color(0xFFB9A6FF)
+                        : const Color(0xFF6E7280)),
+                const SizedBox(width: 10),
+                Text(name,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                if (loading)
+                  const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                else ...[
+                  if (selected && latency > 0) ...[
+                    _badge('$latency ${app.t('msShort')}',
+                        const Color(0xFF2A2A38)),
+                    const SizedBox(width: 6),
+                  ],
+                  _badge(status, color.withValues(alpha: 0.18), fg: color),
+                ],
+              ]),
+              const SizedBox(height: 6),
+              Text(desc,
+                  style: const TextStyle(
+                      color: Color(0xFF9AA0B0), fontSize: 12)),
+              if (engine == 'gigaam' && !avail && !loading)
+                FutureBuilder<String>(
+                  future: sc.gigaamModelDir(),
+                  builder: (_, snap) => Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${snap.data ?? ''}\nHF: $kGigaamHfRepo',
+                      style: const TextStyle(
+                          color: Color(0xFF6E7280), fontSize: 10.5),
+                    ),
+                  ),
+                ),
+              if (engine == 'whisper' && selected) ...[
+                const SizedBox(height: 12),
+                Text(app.t('engWhisperSize'),
+                    style: const TextStyle(
+                        color: Color(0xFF9AA0B0), fontSize: 11)),
+                const SizedBox(height: 6),
+                evsSegmentedWide<String>(
+                  const [('tiny', 'tiny'), ('base', 'base'), ('small', 'small')],
+                  ['tiny', 'base', 'small'].contains(app.whisperModel)
+                      ? app.whisperModel
+                      : 'small',
+                  (v) => app.setWhisperModel(v),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class DesktopSettings extends StatefulWidget {
   const DesktopSettings({super.key});
   @override
@@ -12021,34 +12319,6 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           PopupMenuItem<String>(
             value: it.$1,
             child: Text(it.$2,
-                style: const TextStyle(color: Color(0xFFD0D4E2), fontSize: 13)),
-          ),
-      ],
-      child: evsSelectButton(current.$2, minWidth: 120),
-    );
-  }
-
-  // Whisper model picker. Sizes are approximate faster-whisper (CT2 int8)
-  // download sizes; the chosen model is fetched on first use into the HF cache.
-  static const List<(String, String)> _whisperSizes = [
-    ('tiny', 'tiny (~75 MB)'),
-    ('base', 'base (~145 MB)'),
-    ('small', 'small (~466 MB)'),
-    ('medium', 'medium (~1.5 GB)'),
-  ];
-
-  Widget _whisperModelControl(AppState app) {
-    final current = _whisperSizes.firstWhere((e) => e.$1 == app.whisperModel,
-        orElse: () => _whisperSizes[2]);
-    return PopupMenuButton<String>(
-      tooltip: '',
-      color: const Color(0xFF1C1C26),
-      onSelected: (v) => app.setWhisperModel(v),
-      itemBuilder: (_) => [
-        for (final s in _whisperSizes)
-          PopupMenuItem<String>(
-            value: s.$1,
-            child: Text(s.$2,
                 style: const TextStyle(color: Color(0xFFD0D4E2), fontSize: 13)),
           ),
       ],
@@ -14000,11 +14270,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               (v) => app.setSttEngine(v),
             ),
           ),
-          evsRow(
-            label: app.t('whisperModel'),
-            desc: app.t('whisperModelDesc'),
-            control: _whisperModelControl(app),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            child: Text(app.t('cardSttModel'),
+                style: const TextStyle(
+                    color: Color(0xFFD0D4E2),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
           ),
+          _SttEngineCards(app),
           evsRow(
             stacked: true,
             label: app.t('recognitionLanguage'),
