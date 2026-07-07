@@ -818,6 +818,16 @@ const Map<String, Map<String, String>> _i18n = {
     'mdlDelete': 'Удалить',
     'mbShort': 'МБ',
     'mdlTotalDisk': 'Занято на диске',
+    'cardDenoise': 'Шумоподавление',
+    'dnOff': 'Выкл',
+    'dnLight': 'Лёгкое',
+    'dnStrong': 'Сильное',
+    'dnOffShort': 'Микрофон как есть — для тихой комнаты и хорошего микрофона.',
+    'dnLightShort':
+        'Убирает фоновый шум, почти не тратит ресурсы. Рекомендуется.',
+    'dnStrongShort':
+        'Максимальное подавление: клавиатура, музыка, разговоры. Дороже по CPU.',
+    'dnNotInstalled': 'Модель не скачана — откройте раздел «Модели».',
     'whisperOffline': 'Whisper (офлайн)',
     'whisperModel': 'Модель Whisper',
     'whisperModelDesc':
@@ -1558,6 +1568,16 @@ const Map<String, Map<String, String>> _i18n = {
     'mdlDelete': 'Delete',
     'mbShort': 'MB',
     'mdlTotalDisk': 'Disk used',
+    'cardDenoise': 'Noise suppression',
+    'dnOff': 'Off',
+    'dnLight': 'Light',
+    'dnStrong': 'Strong',
+    'dnOffShort': 'Mic as-is — for a quiet room and a good microphone.',
+    'dnLightShort':
+        'Removes background noise, barely uses resources. Recommended.',
+    'dnStrongShort':
+        'Maximum suppression: keyboard, music, chatter. Heavier on CPU.',
+    'dnNotInstalled': 'Model not downloaded — open the Models section.',
     'whisperOffline': 'Whisper (offline)',
     'whisperModel': 'Whisper model',
     'whisperModelDesc':
@@ -4096,8 +4116,10 @@ class AssetModelSpec {
 
 const String _hfGigaam =
     'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16/resolve/main';
+const String _sherpaEnh =
+    'https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models';
 
-// Starter registry (block 5 adds Piper voices; block 1 adds DeepFilterNet).
+// Starter registry (block 5 adds Piper voices).
 const List<AssetModelSpec> kAssetModels = [
   AssetModelSpec(
     id: 'gigaam-v3',
@@ -4110,6 +4132,25 @@ const List<AssetModelSpec> kAssetModels = [
       AssetFile('decoder.onnx', '$_hfGigaam/decoder.onnx', 3331651),
       AssetFile('joiner.onnx', '$_hfGigaam/joiner.onnx', 1440448),
       AssetFile('tokens.txt', '$_hfGigaam/tokens.txt', 196),
+    ],
+  ),
+  AssetModelSpec(
+    id: 'denoise-gtcrn',
+    family: 'denoise',
+    name: 'GTCRN (лёгкое)',
+    descKey: 'dnLightShort',
+    ramMb: 60,
+    files: [AssetFile('gtcrn_simple.onnx', '$_sherpaEnh/gtcrn_simple.onnx', 535638)],
+  ),
+  AssetModelSpec(
+    id: 'denoise-df',
+    family: 'denoise',
+    name: 'DeepFilterNet (сильное)',
+    descKey: 'dnStrongShort',
+    ramMb: 200,
+    files: [
+      AssetFile('dpdfnet_baseline.onnx',
+          '$_sherpaEnh/dpdfnet_baseline.onnx', 8791035),
     ],
   ),
 ];
@@ -4306,6 +4347,9 @@ class AppState extends ChangeNotifier {
   // Sidecar recognition engine (TZ1): which model the sidecar uses. Distinct
   // from sttEngine above (sidecar-vs-native backend).
   String sttSidecarEngine = 'whisper'; // 'whisper' | 'gigaam'
+  // Noise suppression before the VAD (TZ2 block 1). 'light' is the default but
+  // needs the GTCRN model; the sidecar fail-safes to off until it's present.
+  String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
   // Voice assistant / command recognition.
   String cmdMode = 'wakeword'; // 'wakeword' | 'separate' | 'first'
   String wakeWord = 'EVS';
@@ -4503,6 +4547,7 @@ class AppState extends ChangeNotifier {
     }
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
+    denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -4609,6 +4654,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('whisperModel', whisperModel);
     await prefs.setString('sttEngine', sttEngine);
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
+    await prefs.setString('denoiseMode', denoiseMode);
     await prefs.setString('cmdMode', cmdMode);
     await prefs.setString('wakeWord', wakeWord);
     await prefs.setStringList('stopWords', stopWords);
@@ -4716,6 +4762,9 @@ class AppState extends ChangeNotifier {
       unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
     } catch (_) {}
     try {
+      unawaited(SidecarClient.instance.setDenoise(denoiseMode));
+    } catch (_) {}
+    try {
       unawaited(MicMeter.instance.start(deviceId: inputDeviceId));
     } catch (_) {}
     try {
@@ -4752,6 +4801,7 @@ class AppState extends ChangeNotifier {
     whisperModel = prefs.getString('whisperModel') ?? 'small';
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
+    denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -4856,6 +4906,15 @@ class AppState extends ChangeNotifier {
     _save();
     notifyListeners();
     unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
+  }
+
+  // Switch noise suppression (off | light | strong). Applies live for preview;
+  // persists on Save, resynced on Save/Cancel via _applySettingsSideEffects.
+  void setDenoiseMode(String v) {
+    denoiseMode = (v == 'light' || v == 'strong') ? v : 'off';
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setDenoise(denoiseMode));
   }
 
   void setCmdMode(String v) {
@@ -7946,6 +8005,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       await ComponentManager.instance.applyStagedUpdates();
       SidecarClient.instance.setSttModel(app.whisperModel);
       await SidecarClient.instance.setSttEngine(app.sttSidecarEngine);
+      await SidecarClient.instance.setDenoise(app.denoiseMode);
       // Start with whatever sidecar is available now (component / bundled /
       // dev). Only download if nothing is present — never block startup on an
       // update. A newer component version is staged in the background for the
@@ -9010,6 +9070,10 @@ class SidecarClient {
   final ValueNotifier<int> sttLatencyMs = ValueNotifier(0);
   final ValueNotifier<Map<String, bool>> engines =
       ValueNotifier(const {'whisper': false, 'gigaam': false});
+  String _denoise = 'off'; // off | light | strong
+  String _denoiseDir = ''; // <userdata>/models (holds denoise-gtcrn/, denoise-df/)
+  final ValueNotifier<(String mode, String state, String? message)?>
+      denoiseStatus = ValueNotifier(null);
 
   final _partial = StreamController<String>.broadcast();
   final _finalText = StreamController<String>.broadcast();
@@ -9040,11 +9104,16 @@ class SidecarClient {
             '${io.Platform.pathSeparator}hf-cache';
         env['HF_HOME'] = cache;
       } catch (_) {}
-      // Choose the STT engine at spawn (TZ1): the sidecar loads GigaAM eagerly
-      // from startup instead of switching after connect.
+      // Choose the STT engine + denoise mode at spawn (TZ1 / TZ2 block 1).
       await _ensureGigaamDir();
-      final args = <String>[...launch.$2, '--engine', _sttEngine];
+      await _ensureDenoiseDir();
+      final args = <String>[
+        ...launch.$2,
+        '--engine', _sttEngine,
+        '--denoise', _denoise,
+      ];
       if (_gigaamDir.isNotEmpty) args.addAll(['--gigaam-dir', _gigaamDir]);
+      if (_denoiseDir.isNotEmpty) args.addAll(['--denoise-dir', _denoiseDir]);
       _proc = await io.Process.start(launch.$1, args,
           runInShell: false, environment: env);
       ProcessJob.instance.add(_proc!.pid); // die with the app
@@ -9167,6 +9236,13 @@ class SidecarClient {
               m['message'] as String?,
             );
             break;
+          case 'stt.denoise_status':
+            denoiseStatus.value = (
+              m['mode'] as String? ?? '',
+              m['state'] as String? ?? '',
+              m['message'] as String?,
+            );
+            break;
           case 'vad':
             _vad.add(m['speaking'] == true);
             break;
@@ -9240,6 +9316,24 @@ class SidecarClient {
       'type': 'stt.config',
       'engine': _sttEngine,
       'gigaam_dir': _gigaamDir,
+    });
+  }
+
+  Future<void> _ensureDenoiseDir() async {
+    if (_denoiseDir.isNotEmpty) return;
+    try {
+      _denoiseDir = await modelsDirPath();
+    } catch (_) {}
+  }
+
+  // Switch the noise-suppression mode live (off | light | strong) — TZ2 block 1.
+  Future<void> setDenoise(String mode) async {
+    _denoise = (mode == 'light' || mode == 'strong') ? mode : 'off';
+    await _ensureDenoiseDir();
+    _send({
+      'type': 'stt.config',
+      'denoise': _denoise,
+      'denoise_dir': _denoiseDir,
     });
   }
   void speak(String text, {double rate = 1.0, double volume = 1.0}) =>
@@ -12591,6 +12685,76 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
   }
 }
 
+// TZ2 block 1: noise-suppression selector (off / light / strong). Applies live;
+// warns if the selected mode's model isn't downloaded (→ Models section).
+class _DenoiseSelector extends StatelessWidget {
+  final AppState app;
+  const _DenoiseSelector(this.app);
+  @override
+  Widget build(BuildContext context) {
+    final sc = SidecarClient.instance;
+    return AnimatedBuilder(
+      animation: sc.denoiseStatus,
+      builder: (context, _) {
+        final mode = app.denoiseMode;
+        final needsModel = mode == 'light'
+            ? 'denoise-gtcrn'
+            : mode == 'strong'
+                ? 'denoise-df'
+                : null;
+        final installed = needsModel == null || app.assetInstalled(needsModel);
+        final st = sc.denoiseStatus.value;
+        final desc = mode == 'off'
+            ? app.t('dnOffShort')
+            : mode == 'light'
+                ? app.t('dnLightShort')
+                : app.t('dnStrongShort');
+        return Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              evsSegmentedWide<String>(
+                [
+                  ('off', app.t('dnOff')),
+                  ('light', app.t('dnLight')),
+                  ('strong', app.t('dnStrong')),
+                ],
+                mode,
+                (v) => app.setDenoiseMode(v),
+              ),
+              const SizedBox(height: 8),
+              Text(desc,
+                  style:
+                      const TextStyle(color: Color(0xFF9AA0B0), fontSize: 12)),
+              if (!installed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(children: [
+                    const Icon(Icons.download_for_offline_outlined,
+                        size: 14, color: Color(0xFFF0A030)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                        child: Text(app.t('dnNotInstalled'),
+                            style: const TextStyle(
+                                color: Color(0xFFF0A030), fontSize: 11))),
+                  ]),
+                ),
+              if (st != null && st.$2 == 'error' && st.$3 != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(st.$3!,
+                      style: const TextStyle(
+                          color: Color(0xFFF0605E), fontSize: 11)),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class DesktopSettings extends StatefulWidget {
   const DesktopSettings({super.key});
   @override
@@ -14657,6 +14821,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     fontWeight: FontWeight.w700)),
           ),
           _SttEngineCards(app),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            child: Text(app.t('cardDenoise'),
+                style: const TextStyle(
+                    color: Color(0xFFD0D4E2),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+          ),
+          _DenoiseSelector(app),
           evsRow(
             stacked: true,
             label: app.t('recognitionLanguage'),

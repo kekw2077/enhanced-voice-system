@@ -10,7 +10,8 @@ Protocol (JSON text frames)
     {"type": "stt.start", "language": "ru"|"en"|"auto"}
     {"type": "stt.stop"}
     {"type": "stt.config", "model": "small", "prompt": "...",
-                           "engine": "whisper"|"gigaam", "gigaam_dir": "..."}
+                           "engine": "whisper"|"gigaam", "gigaam_dir": "...",
+                           "denoise": "off"|"light"|"strong", "denoise_dir": "..."}
     {"type": "tts.speak", "text": "..."}
     {"type": "tts.stop"}
     {"type": "intent.parse", "text": "...", "commands": [{"phrase": "..."}], "threshold": 0.5}
@@ -92,6 +93,11 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                 engine = data.get("engine")
                 if engine:
                     stt.set_engine(str(engine), str(gdir) if gdir else None)
+                ddir = data.get("denoise_dir")
+                if ddir:
+                    stt.update_denoise_dir(str(ddir))
+                if "denoise" in data:
+                    stt.set_denoise(str(data.get("denoise")))
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),
@@ -119,7 +125,8 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
 
 async def _main(args) -> None:
     stt = SttEngine(args.model, args.device, args.compute_type,
-                    engine=args.engine, gigaam_dir=args.gigaam_dir)
+                    engine=args.engine, gigaam_dir=args.gigaam_dir,
+                    denoise=args.denoise, denoise_dir=args.denoise_dir)
     tts = TtsEngine()
 
     async def handler(ws):
@@ -169,6 +176,9 @@ def main() -> None:
     ap.add_argument("--engine", default="whisper", help="whisper | gigaam")
     ap.add_argument("--gigaam-dir", dest="gigaam_dir", default="",
                     help="GigaAM sherpa-onnx model directory")
+    ap.add_argument("--denoise", default="off", help="off | light | strong")
+    ap.add_argument("--denoise-dir", dest="denoise_dir", default="",
+                    help="models root holding denoise-gtcrn/ and denoise-df/")
     args = ap.parse_args()
     # NOTE: _watch_parent() is started from inside _main(), AFTER the server is
     # up and READY is printed — starting it here (before the heavy imports)

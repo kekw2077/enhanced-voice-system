@@ -260,6 +260,134 @@ class GigaAmEngine(BaseSttEngine):
         return (stream.result.text or "").strip()
 
 
+class Denoiser:
+    """Streaming noise suppression applied BEFORE the VAD, via sherpa-onnx
+    OnlineSpeechDenoiser (16 kHz, frame-by-frame, state kept across calls):
+
+      * off    — bypass (raw audio);
+      * light  — GTCRN (~0.5 MB, tiny CPU, low latency);
+      * strong — DeepFilterNet (~8 MB, heavier, stronger).
+
+    Models live under <models_root>/denoise-gtcrn/ and /denoise-df/ (downloaded
+    via the app's model manager). Fail-safe: any load/run error drops to off and
+    reports it — the pipeline keeps running on raw audio.
+    """
+
+    def __init__(self, models_root: str = "") -> None:
+        self._root = models_root or ""
+        self._mode = "off"
+        self._den = None
+        self._buf = None  # numpy float32 re-chunk buffer
+        self._on_status = None
+
+    def bind(self, on_status) -> None:
+        self._on_status = on_status
+
+    def _emit(self, state: str, message: str = "") -> None:
+        if self._on_status is not None:
+            try:
+                self._on_status(self._mode, state, message)
+            except Exception:
+                pass
+
+    def set_root(self, root: str) -> None:
+        self._root = root or ""
+
+    def _gtcrn_path(self) -> str:
+        return os.path.join(self._root, "denoise-gtcrn", "gtcrn_simple.onnx") \
+            if self._root else ""
+
+    def _dfn_path(self) -> str:
+        return os.path.join(self._root, "denoise-df", "dpdfnet_baseline.onnx") \
+            if self._root else ""
+
+    @property
+    def mode(self) -> str:
+        return self._mode if self._den is not None else "off"
+
+    def available(self, mode: str) -> bool:
+        if mode == "off":
+            return True
+        try:
+            import sherpa_onnx  # noqa: F401
+        except Exception:
+            return False
+        if mode == "light":
+            p = self._gtcrn_path()
+        elif mode == "strong":
+            p = self._dfn_path()
+        else:
+            return False
+        return bool(p and os.path.exists(p))
+
+    def set_mode(self, mode: str) -> None:
+        import numpy as np
+        mode = mode if mode in ("off", "light", "strong") else "off"
+        if mode == "off":
+            self._den = None
+            self._mode = "off"
+            self._buf = None
+            self._emit("ready")
+            return
+        if not self.available(mode):
+            self._den = None
+            self._mode = "off"
+            self._emit("error", f"{mode} denoise model not found")
+            return
+        try:
+            import sherpa_onnx
+            cfg = sherpa_onnx.OnlineSpeechDenoiserConfig()
+            if mode == "light":
+                cfg.model.gtcrn = sherpa_onnx.OfflineSpeechDenoiserGtcrnModelConfig(
+                    model=self._gtcrn_path())
+            else:
+                cfg.model.dpdfnet = \
+                    sherpa_onnx.OfflineSpeechDenoiserDpdfNetModelConfig(
+                        model=self._dfn_path())
+            cfg.model.num_threads = 1
+            self._den = sherpa_onnx.OnlineSpeechDenoiser(cfg)
+            self._mode = mode
+            self._buf = np.zeros(0, dtype=np.float32)
+            self._emit("ready")
+        except Exception as e:
+            self._den = None
+            self._mode = "off"
+            self._emit("error", str(e))
+
+    def reset(self) -> None:
+        import numpy as np
+        if self._buf is not None:
+            self._buf = np.zeros(0, dtype=np.float32)
+
+    # Feed one raw 480-sample int16 frame; return 0+ denoised 480-sample int16
+    # frames (the denoiser buffers internally, so the count per call varies).
+    def process(self, np, frame_bytes: bytes) -> list:
+        if self._den is None:
+            return [frame_bytes]
+        try:
+            samples = (
+                np.frombuffer(frame_bytes, dtype=np.int16).astype(np.float32)
+                / 32768.0
+            )
+            r = self._den.run(samples, SAMPLE_RATE)
+            if len(r.samples):
+                self._buf = np.concatenate(
+                    [self._buf, np.array(r.samples, dtype=np.float32)])
+            out = []
+            while len(self._buf) >= FRAME_SAMPLES:
+                chunk = self._buf[:FRAME_SAMPLES]
+                self._buf = self._buf[FRAME_SAMPLES:]
+                out.append(
+                    (np.clip(chunk, -1.0, 1.0) * 32767).astype(np.int16).tobytes())
+            return out
+        except Exception as e:
+            # Fail-safe: drop to off and pass raw audio through.
+            self._den = None
+            self._mode = "off"
+            self._emit("error", f"denoise failed: {e}")
+            return [frame_bytes]
+
+
 class SttEngine:
     """Manager: mic capture + webrtcvad segmentation, delegating recognition to
     the active engine. Keeps the original constructor signature; adds
@@ -267,13 +395,18 @@ class SttEngine:
 
     def __init__(self, model_size: str = "small", device: str = "cpu",
                  compute_type: str = "int8", engine: str = "whisper",
-                 gigaam_dir: str | None = None) -> None:
+                 gigaam_dir: str | None = None, denoise: str = "off",
+                 denoise_dir: str = "") -> None:
         self._whisper = WhisperEngine(model_size, device, compute_type)
         self._gigaam = GigaAmEngine(gigaam_dir)
         self._desired = engine if engine in ("whisper", "gigaam") else "whisper"
         self._engine_name = "whisper"
         self._active: BaseSttEngine = self._whisper
         self._switching = False
+
+        self._denoiser = Denoiser(denoise_dir)
+        self._desired_denoise = \
+            denoise if denoise in ("off", "light", "strong") else "off"
 
         self._running = False
         self._frames: "queue.Queue[bytes]" = queue.Queue()
@@ -308,14 +441,16 @@ class SttEngine:
 
     def bind(self, on_event) -> None:
         """Attach the current connection's emit callback and apply the desired
-        engine (from CLI/config) so its status is reported to this client."""
+        engine + denoise mode (from CLI/config) so status is reported here."""
         self._on_event = on_event
+        self._denoiser.bind(self._emit_denoise_status)
         want = self._desired
         if want == "gigaam":
             self.set_engine("gigaam", self._gigaam._dir)
         else:
             self._emit_status("whisper", "ready" if self._whisper.available
                               else "error", self._whisper.unavailable_reason())
+        self.set_denoise(self._desired_denoise)
 
     def _emit(self, msg: dict) -> None:
         if self._on_event is not None:
@@ -329,6 +464,25 @@ class SttEngine:
         if message:
             msg["message"] = message
         self._emit(msg)
+
+    def _emit_denoise_status(self, mode: str, state: str,
+                             message: str = "") -> None:
+        msg = {"type": "stt.denoise_status", "mode": mode, "state": state}
+        if message:
+            msg["message"] = message
+        self._emit(msg)
+
+    # ---- denoise ------------------------------------------------------
+
+    def set_denoise(self, mode: str) -> None:
+        self._desired_denoise = \
+            mode if mode in ("off", "light", "strong") else "off"
+        # Model load is quick but do it off the audio/WS threads anyway.
+        threading.Thread(target=self._denoiser.set_mode,
+                         args=(self._desired_denoise,), daemon=True).start()
+
+    def update_denoise_dir(self, root: str | None) -> None:
+        self._denoiser.set_root(root or "")
 
     # ---- engine selection ----------------------------------------------
 
@@ -450,6 +604,7 @@ class SttEngine:
                 callback=cb,
             )
             self._capture.start()
+            self._denoiser.reset()
             self._worker = threading.Thread(target=self._process, daemon=True)
             self._worker.start()
             # Report the active engine's readiness to the client.
@@ -507,40 +662,44 @@ class SttEngine:
 
         while self._running:
             try:
-                frame = self._frames.get(timeout=0.5)
+                raw = self._frames.get(timeout=0.5)
             except queue.Empty:
                 continue
-            if len(frame) != FRAME_BYTES:
+            if len(raw) != FRAME_BYTES:
                 continue
-            samples = np.frombuffer(frame, dtype=np.int16)
-            rms = float(np.sqrt(np.mean((samples / 32768.0) ** 2)))
-            try:
-                is_speech = rms >= RMS_GATE and vad.is_speech(frame, SAMPLE_RATE)
-            except Exception:
-                is_speech = False
+            # Denoise BEFORE the VAD — the denoiser buffers internally, so one
+            # raw frame yields 0+ cleaned 480-sample frames (off = passthrough).
+            for frame in self._denoiser.process(np, raw):
+                samples = np.frombuffer(frame, dtype=np.int16)
+                rms = float(np.sqrt(np.mean((samples / 32768.0) ** 2)))
+                try:
+                    is_speech = \
+                        rms >= RMS_GATE and vad.is_speech(frame, SAMPLE_RATE)
+                except Exception:
+                    is_speech = False
 
-            if is_speech:
-                if not speaking:
-                    speaking = True
-                    self._emit({"type": "vad", "speaking": True})
-                speech.append(frame)
-                silence_frames = 0
-                if len(speech) >= MAX_SPEECH_FRAMES:
-                    finalize()
-                    continue
-                now = time.monotonic()
-                if now - last_partial > 0.8 and speech:
-                    last_partial = now
-                    # Re-transcribing the WHOLE buffer every 0.8 s is what
-                    # melts the CPU on long segments — partials only need the
-                    # recent tail (they're just live feedback for the pill).
-                    tail = speech[-PARTIAL_TAIL_FRAMES:]
-                    self._transcribe(np, b"".join(tail), final=False)
-            elif speaking:
-                speech.append(frame)
-                silence_frames += 1
-                if silence_frames >= SILENCE_LIMIT:
-                    finalize()
+                if is_speech:
+                    if not speaking:
+                        speaking = True
+                        self._emit({"type": "vad", "speaking": True})
+                    speech.append(frame)
+                    silence_frames = 0
+                    if len(speech) >= MAX_SPEECH_FRAMES:
+                        finalize()
+                        continue
+                    now = time.monotonic()
+                    if now - last_partial > 0.8 and speech:
+                        last_partial = now
+                        # Re-transcribing the WHOLE buffer every 0.8 s is what
+                        # melts the CPU on long segments — partials only need the
+                        # recent tail (they're just live feedback for the pill).
+                        tail = speech[-PARTIAL_TAIL_FRAMES:]
+                        self._transcribe(np, b"".join(tail), final=False)
+                elif speaking:
+                    speech.append(frame)
+                    silence_frames += 1
+                    if silence_frames >= SILENCE_LIMIT:
+                        finalize()
 
     def _transcribe(self, np, audio_bytes: bytes, final: bool) -> None:
         if not audio_bytes:
