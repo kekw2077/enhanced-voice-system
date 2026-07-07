@@ -28,6 +28,40 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.0.0</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Добавлено:</b> шумоподавление микрофона (лёгкое/сильное), как в Discord — по умолчанию включено.</li>
+          <li><b>Добавлено:</b> новый движок распознавания GigaAM (лучшая точность для русского) + выбор движка и модели Whisper, у каждого варианта — «Подробнее».</li>
+          <li><b>Добавлено:</b> естественные голоса ассистента (Piper) — Ирина, Денис, Дмитрий, Руслан: скачать, прослушать образец, выбрать.</li>
+          <li><b>Добавлено:</b> менеджер моделей — скачивание/удаление движков распознавания, шумоподавления и голосов с прогрессом.</li>
+          <li><b>Добавлено:</b> выбор CPU/GPU для распознавания и игровой режим — авто-разгрузка видеокарты в полноэкранных играх и при нехватке видеопамяти (с голосовым уведомлением).</li>
+          <li><b>Добавлено:</b> несколько микрофонов одновременно (например, в разных комнатах) — своё шумоподавление на каждый, одна фраза выполняется один раз.</li>
+          <li><b>Добавлено:</b> голосовое уведомление «Готова слушать» при запуске и индикатор загрузки — ассистент больше не «глохнет» после старта.</li>
+          <li><b>Добавлено:</b> единая тема; окно и виджет запоминают размер и положение (в т.ч. на втором мониторе) и переживают обновление; кнопка «Сохранить/Отменить» в настройках; новые визуализаторы.</li>
+          <li><b>Убрано:</b> клонирование голоса (XTTS) — заменено естественными голосами Piper.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Wed, 08 Jul 2026 12:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.0.0/EVS-Setup-2.0.0.exe"
+        sparkle:version="2.0.0"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHD7IWqsKtqzGPl1yp/x/TGTaUcpv77h0j+QPjvYCHFjfNOK0gYW+7ymwUBcSZl6cKZQEA81o7+wsc3U="
+        evs:sha256="0ee53c98b5f4d939d46df36fd94eefba7032023e3820f0c3530bf1d0e21a15c6"
+        length="15892971"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 1.1.2</title>
       <description><![CDATA[
         <style>
