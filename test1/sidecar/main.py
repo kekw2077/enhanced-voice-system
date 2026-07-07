@@ -14,6 +14,8 @@ Protocol (JSON text frames)
                            "denoise": "off"|"light"|"strong", "denoise_dir": "..."}
     {"type": "tts.speak", "text": "..."}
     {"type": "tts.stop"}
+    {"type": "tts.config", "engine": "piper"|"pyttsx3",
+                           "voice": "ru_RU-irina-medium", "voice_dir": "..."}
     {"type": "intent.parse", "text": "...", "commands": [{"phrase": "..."}], "threshold": 0.5}
     {"type": "ping"}
   server -> client:
@@ -26,6 +28,7 @@ Protocol (JSON text frames)
     {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error", "message"?: str}
     {"type": "stt.denoise_status", "mode": str, "state": "ready"|"error", "message"?: str}
     {"type": "tts.done"}
+    {"type": "tts.status", "engine": str, "voice": str, "state": "loading"|"ready"|"error", "message"?: str}
     {"type": "intent.result", "match": {...}|null}
     {"type": "pong"}
     {"type": "error", "message": "..."}
@@ -65,11 +68,13 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
             "stt": stt.available,
             "tts": tts.available,
             "engines": stt.capabilities(),
+            "tts_engines": tts.capabilities(),
         },
     }))
     # Bind this connection's emitter so engine-status can be reported outside of
-    # start/stop, and apply the CLI/desired engine (reports its readiness).
+    # start/stop, and apply the CLI/desired engines (reports their readiness).
     stt.bind(emit)
+    tts.bind(emit)
 
     try:
         async for raw in ws:
@@ -110,6 +115,15 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                               {"type": "tts.level", "level": v}))
             elif t == "tts.stop":
                 tts.stop()
+            elif t == "tts.config":
+                vdir = data.get("voice_dir")
+                voice = data.get("voice")
+                if vdir is not None or voice is not None:
+                    tts.set_voice(str(vdir) if vdir else "",
+                                  str(voice) if voice else "")
+                eng = data.get("engine")
+                if eng:
+                    tts.set_engine(str(eng))
             elif t == "intent.parse":
                 res = match(
                     str(data.get("text", "")),
@@ -130,7 +144,8 @@ async def _main(args) -> None:
     stt = SttEngine(args.model, args.device, args.compute_type,
                     engine=args.engine, gigaam_dir=args.gigaam_dir,
                     denoise=args.denoise, denoise_dir=args.denoise_dir)
-    tts = TtsEngine()
+    tts = TtsEngine(engine=args.tts_engine, voice=args.tts_voice,
+                    voice_dir=args.tts_voice_dir)
 
     async def handler(ws):
         await _handle(ws, stt, tts)
@@ -184,6 +199,12 @@ def main() -> None:
     ap.add_argument("--denoise", default="off", help="off | light | strong")
     ap.add_argument("--denoise-dir", dest="denoise_dir", default="",
                     help="models root holding denoise-gtcrn/ and denoise-df/")
+    ap.add_argument("--tts-engine", dest="tts_engine", default="piper",
+                    help="piper (default) | pyttsx3")
+    ap.add_argument("--tts-voice", dest="tts_voice", default="",
+                    help="Piper voice id, e.g. ru_RU-irina-medium")
+    ap.add_argument("--tts-voice-dir", dest="tts_voice_dir", default="",
+                    help="dir holding the Piper voice bundle (<userdata>/models/<id>)")
     args = ap.parse_args()
     # NOTE: _watch_parent() is started from inside _main(), AFTER the server is
     # up and READY is printed — starting it here (before the heavy imports)
