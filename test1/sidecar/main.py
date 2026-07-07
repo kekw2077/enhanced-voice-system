@@ -22,7 +22,9 @@ Protocol (JSON text frames)
     {"type": "vad", "speaking": bool}
     {"type": "stt.partial", "text": "..."}
     {"type": "stt.final", "text": "...", "latency_ms": int}
+    {"type": "stt.state", "state": "starting"|"loading_models"|"ready"|"error", "message"?: str}
     {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error", "message"?: str}
+    {"type": "stt.denoise_status", "mode": str, "state": "ready"|"error", "message"?: str}
     {"type": "tts.done"}
     {"type": "intent.result", "match": {...}|null}
     {"type": "pong"}
@@ -38,7 +40,7 @@ import sys
 import websockets
 
 from intent import match
-from stt_engine import SttEngine
+from stt_engine import SttEngine, log_stage
 from tts_engine import TtsEngine
 
 
@@ -56,6 +58,7 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
             await ws.send(json.dumps(msg, ensure_ascii=False))
 
     send_task = asyncio.create_task(sender())
+    log_stage("flutter connected")
     await ws.send(json.dumps({
         "type": "ready",
         "capabilities": {
@@ -132,10 +135,12 @@ async def _main(args) -> None:
     async def handler(ws):
         await _handle(ws, stt, tts)
 
+    log_stage("intent matcher ready; ws server starting")
     async with websockets.serve(handler, args.host, args.port) as server:
         port = args.port or server.sockets[0].getsockname()[1]
         # Flutter parses this line from stdout to learn the port.
         print(f"EVS_SIDECAR_READY {port}", flush=True)
+        log_stage(f"ws server listening on port {port}")
         # Start the parent-death watcher ONLY now — after the heavy engine
         # imports (sounddevice/faster-whisper) and the READY print. Its blocking
         # `sys.stdin.buffer.read()` holds the stdin BufferedReader lock, and if

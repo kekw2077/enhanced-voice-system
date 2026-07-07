@@ -907,6 +907,13 @@ const Map<String, Map<String, String>> _i18n = {
     'cardVoiceResp': 'Голос ответа',
     'voiceResponses': 'Озвучивать ответы',
     'voiceResponsesDesc': 'Проговаривать ответы ассистента голосом',
+    'announceReady': 'Озвучивать готовность',
+    'announceReadyDesc': 'Произносить голосом, когда ассистент готов слушать',
+    'readyGreeting': 'Готова слушать',
+    'sttStarting': 'Запуск…',
+    'sttLoadingModels': 'Загружаю модели…',
+    'sttReadyMsg': 'Готова слушать',
+    'sttErrorState': 'Ошибка запуска распознавания',
     'ttsVoice': 'Голос',
     'ttsVoiceDesc': 'Системный голос Windows или ваш клонированный',
     'ttsVoiceSystem': 'Системный',
@@ -1656,6 +1663,13 @@ const Map<String, Map<String, String>> _i18n = {
     'cardVoiceResp': 'Voice response',
     'voiceResponses': 'Speak responses',
     'voiceResponsesDesc': 'Read the assistant\'s replies aloud',
+    'announceReady': 'Announce readiness',
+    'announceReadyDesc': 'Say aloud when the assistant is ready to listen',
+    'readyGreeting': 'Ready to listen',
+    'sttStarting': 'Starting…',
+    'sttLoadingModels': 'Loading models…',
+    'sttReadyMsg': 'Ready to listen',
+    'sttErrorState': 'Speech engine failed to start',
     'ttsVoice': 'Voice',
     'ttsVoiceDesc': 'System Windows voice or your cloned voice',
     'ttsVoiceSystem': 'System',
@@ -4410,6 +4424,10 @@ class AppState extends ChangeNotifier {
   String pendingWebContext = '';
   // Voice responses (TTS).
   bool voiceResponses = false;
+  // Speak a one-shot "готова слушать" greeting when the backend finishes
+  // loading its STT models on launch (TZ3.4). On by default; the visual
+  // ready-signal on the orb stays regardless of this toggle.
+  bool announceReady = true;
   String ttsVoice = 'system'; // 'system' | 'cloned'
   double ttsRate = 1.0;
   double ttsVolume = 1.0;
@@ -4572,6 +4590,7 @@ class AppState extends ChangeNotifier {
     tavilyKey = prefs.getString('tavilyKey') ?? '';
     braveKey = prefs.getString('braveKey') ?? '';
     voiceResponses = prefs.getBool('voiceResponses') ?? false;
+    announceReady = prefs.getBool('announceReady') ?? true;
     ttsVoice = prefs.getString('ttsVoice') ?? 'system';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
@@ -4676,6 +4695,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('tavilyKey', tavilyKey);
     await prefs.setString('braveKey', braveKey);
     await prefs.setBool('voiceResponses', voiceResponses);
+    await prefs.setBool('announceReady', announceReady);
     await prefs.setString('ttsVoice', ttsVoice);
     await prefs.setDouble('ttsRate', ttsRate);
     await prefs.setDouble('ttsVolume', ttsVolume);
@@ -4826,6 +4846,7 @@ class AppState extends ChangeNotifier {
     tavilyKey = prefs.getString('tavilyKey') ?? '';
     braveKey = prefs.getString('braveKey') ?? '';
     voiceResponses = prefs.getBool('voiceResponses') ?? false;
+    announceReady = prefs.getBool('announceReady') ?? true;
     ttsVoice = prefs.getString('ttsVoice') ?? 'system';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
@@ -5088,6 +5109,12 @@ class AppState extends ChangeNotifier {
 
   void setVoiceResponses(bool v) {
     voiceResponses = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setAnnounceReady(bool v) {
+    announceReady = v;
     _save();
     notifyListeners();
   }
@@ -8006,6 +8033,16 @@ class DesktopIntegration with WindowListener, TrayListener {
       SidecarClient.instance.setSttModel(app.whisperModel);
       await SidecarClient.instance.setSttEngine(app.sttSidecarEngine);
       await SidecarClient.instance.setDenoise(app.denoiseMode);
+      // One-shot readiness greeting (TZ3.4): the first time the backend reaches
+      // `ready` this launch, speak via the always-available system TTS (pyttsx3),
+      // not the clone voice (which may need a download). Visual orb signal is
+      // independent of this toggle.
+      SidecarClient.instance.onStateReady = () {
+        if (app.announceReady && SidecarClient.instance.ttsAvailable) {
+          SidecarClient.instance.speak(app.t('readyGreeting'),
+              rate: app.ttsRate, volume: app.ttsVolume);
+        }
+      };
       // Start with whatever sidecar is available now (component / bundled /
       // dev). Only download if nothing is present — never block startup on an
       // update. A newer component version is staged in the background for the
@@ -9074,6 +9111,18 @@ class SidecarClient {
   String _denoiseDir = ''; // <userdata>/models (holds denoise-gtcrn/, denoise-df/)
   final ValueNotifier<(String mode, String state, String? message)?>
       denoiseStatus = ValueNotifier(null);
+  // Backend readiness state machine (TZ3.4): starting | loading_models | ready
+  // | error. The sidecar loads STT models greedily on connect and warms them
+  // up, so the first real command doesn't pay the init cost; the UI reflects
+  // this so the user knows when it's safe to speak.
+  final ValueNotifier<String> sttState = ValueNotifier('starting');
+  String? _sttStateMessage; // error detail (shown in UI on `error`)
+  String? get sttStateMessage => _sttStateMessage;
+  // Fired exactly once per app launch the first time the backend reaches
+  // `ready` — used for the one-shot "готова слушать" greeting. Reconnects
+  // re-emit `ready`, but this stays guarded so the greeting never repeats.
+  void Function()? onStateReady;
+  bool _readyAnnounced = false;
 
   final _partial = StreamController<String>.broadcast();
   final _finalText = StreamController<String>.broadcast();
@@ -9242,6 +9291,22 @@ class SidecarClient {
               m['state'] as String? ?? '',
               m['message'] as String?,
             );
+            break;
+          case 'stt.state':
+            final s = m['state'] as String? ?? '';
+            _sttStateMessage = m['message'] as String?;
+            sttState.value = s;
+            unawaited(appendLog('sidecar',
+                'state: $s${_sttStateMessage != null && _sttStateMessage!.isNotEmpty ? ' — $_sttStateMessage' : ''}'));
+            // One-shot readiness greeting: fire the hook the first time the
+            // backend is ready this launch; reconnects re-emit `ready` but the
+            // guard keeps the greeting to exactly one per launch.
+            if (s == 'ready' && !_readyAnnounced) {
+              _readyAnnounced = true;
+              try {
+                onStateReady?.call();
+              } catch (_) {}
+            }
             break;
           case 'vad':
             _vad.add(m['speaking'] == true);
@@ -12312,6 +12377,75 @@ class _VizStyleTile extends StatelessWidget {
   }
 }
 
+// TZ3.4 cold-start: a small pill on the home hero that reflects the backend
+// readiness state machine (starting / loading_models / error). Hidden once the
+// backend is `ready`, so the user can see when it's safe to speak instead of
+// talking into the void during model load.
+class _SttReadinessBanner extends StatelessWidget {
+  const _SttReadinessBanner();
+  @override
+  Widget build(BuildContext context) {
+    if (defaultTargetPlatform != TargetPlatform.windows) {
+      return const SizedBox.shrink();
+    }
+    final sc = SidecarClient.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([sc.sttState, sc.status]),
+      builder: (context, _) {
+        final app = context.read<AppState>();
+        final state = sc.sttState.value;
+        if (state == 'ready') return const SizedBox.shrink();
+        String label;
+        var isError = false;
+        switch (state) {
+          case 'loading_models':
+            label = app.t('sttLoadingModels');
+            break;
+          case 'error':
+            final msg = sc.sttStateMessage;
+            label = (msg != null && msg.isNotEmpty)
+                ? '${app.t('sttErrorState')}: $msg'
+                : app.t('sttErrorState');
+            isError = true;
+            break;
+          default: // starting / not yet connected
+            label = app.t('sttStarting');
+        }
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: _card(context),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isError)
+                  const Icon(Icons.error_outline,
+                      size: 16, color: Colors.redAccent)
+                else
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: _sub(context)),
+                  ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(label,
+                      style: TextStyle(color: _sub(context), fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 // TZ1 "Модель распознавания": two engine cards (Whisper with size selector,
 // GigaAM-v3) driven by SidecarClient's live status / capabilities / latency.
 // Selecting an engine hot-swaps it; the block locks until ready|error and rolls
@@ -14926,6 +15060,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             control: evsToggle(app.voiceResponses, app.setVoiceResponses),
           ),
           evsRow(
+            label: app.t('announceReady'),
+            desc: app.t('announceReadyDesc'),
+            control: evsToggle(app.announceReady, app.setAnnounceReady),
+          ),
+          evsRow(
             stacked: true,
             label: app.t('ttsVoice'),
             desc: app.t('ttsVoiceDesc'),
@@ -16589,6 +16728,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
             ],
             const SizedBox(height: 20),
+            const _SttReadinessBanner(),
             Text(
               app.isModelLoading ? app.t('gettingReady') : app.t('howCanIHelp'),
               textAlign: TextAlign.center,

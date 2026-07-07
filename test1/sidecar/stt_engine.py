@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import queue
+import sys
 import threading
 import time
 
@@ -23,6 +24,27 @@ SAMPLE_RATE = 16000
 FRAME_MS = 30
 FRAME_SAMPLES = SAMPLE_RATE * FRAME_MS // 1000  # 480
 FRAME_BYTES = FRAME_SAMPLES * 2  # int16
+
+# Backend-readiness state machine (TZ3.4). Emitted to the client as
+# {"type": "stt.state", "state": ...} so the UI can show a loading orb /
+# "Загружаюсь…" line and speak the ready greeting exactly once per launch.
+STATE_STARTING = "starting"
+STATE_LOADING = "loading_models"
+STATE_READY = "ready"
+STATE_ERROR = "error"
+
+# Cold-start diagnostics (TZ3.4 §4.1): timestamped stage log on stderr, which
+# Flutter captures into userdata/logs/sidecar.log. Lets us see where the seconds
+# go on a cold boot (backend start → audio stream → VAD → model load → warmup).
+_PROC_T0 = time.monotonic()
+
+
+def log_stage(stage: str) -> None:
+    try:
+        dt = time.monotonic() - _PROC_T0
+        print(f"[evs-stt +{dt:6.2f}s] {stage}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
 
 # HuggingFace repo the GigaAM-v3 sherpa-onnx model is published under — surfaced
 # in the "model not found" error so the app/user knows where to fetch it.
@@ -408,6 +430,13 @@ class SttEngine:
         self._desired_denoise = \
             denoise if denoise in ("off", "light", "strong") else "off"
 
+        # Cold-start readiness state machine (TZ3.4). `_warmed` guards the greedy
+        # load + warmup so it runs once per PROCESS, not once per reconnect —
+        # the ready greeting must fire exactly once per launch.
+        self._state = STATE_STARTING
+        self._warmed = False
+        self._warm_lock = threading.Lock()
+
         self._running = False
         self._frames: "queue.Queue[bytes]" = queue.Queue()
         self._capture = None
@@ -440,17 +469,15 @@ class SttEngine:
     # ---- emitter binding (for engine_status outside of start/stop) ------
 
     def bind(self, on_event) -> None:
-        """Attach the current connection's emit callback and apply the desired
-        engine + denoise mode (from CLI/config) so status is reported here."""
+        """Attach the current connection's emit callback and kick off the greedy
+        model load + warmup (TZ3.4). Runs on a bg thread so the WS handler stays
+        responsive; the load/warmup happens once per process, later reconnects
+        just re-report the current state to the fresh client."""
         self._on_event = on_event
         self._denoiser.bind(self._emit_denoise_status)
-        want = self._desired
-        if want == "gigaam":
-            self.set_engine("gigaam", self._gigaam._dir)
-        else:
-            self._emit_status("whisper", "ready" if self._whisper.available
-                              else "error", self._whisper.unavailable_reason())
+        log_stage("flutter bound; scheduling greedy load + warmup")
         self.set_denoise(self._desired_denoise)
+        threading.Thread(target=self._warm_up_blocking, daemon=True).start()
 
     def _emit(self, msg: dict) -> None:
         if self._on_event is not None:
@@ -471,6 +498,86 @@ class SttEngine:
         if message:
             msg["message"] = message
         self._emit(msg)
+
+    def _emit_state(self, state: str, message: str = "") -> None:
+        self._state = state
+        msg = {"type": "stt.state", "state": state}
+        if message:
+            msg["message"] = message
+        self._emit(msg)
+
+    # ---- cold-start: greedy load + warmup (TZ3.4) ----------------------
+
+    def _warm_up_blocking(self) -> None:
+        """Load the desired engine EAGERLY (not on first phrase) and run one
+        warmup inference on a second of silence, so the first real command
+        doesn't pay the model-init cost. Emits the readiness state machine
+        (starting → loading_models → ready|error). Idempotent per process."""
+        # Reconnect after warmup: just re-report the settled state + engine
+        # status to the new client (no reload, no second ready greeting).
+        if self._warmed:
+            self._emit_status(
+                self._engine_name,
+                "ready" if self._active.available else "error",
+                "" if self._active.available else self._active.unavailable_reason(),
+            )
+            self._emit_state(self._state)
+            return
+        with self._warm_lock:
+            if self._warmed:
+                self._emit_state(self._state)
+                return
+            self._emit_state(STATE_STARTING)
+
+            # Resolve the engine to load. If the desired one (e.g. GigaAM) has no
+            # model/deps, fall back to Whisper so startup still reaches `ready`.
+            want = self._desired
+            target = self._gigaam if want == "gigaam" else self._whisper
+            if not target.available:
+                if want != "whisper":
+                    self._emit_status(want, "error", target.unavailable_reason())
+                    log_stage(f"engine '{want}' unavailable, falling back to "
+                              f"whisper: {target.unavailable_reason()}")
+                want, target = "whisper", self._whisper
+                if not target.available:
+                    self._emit_status("whisper", "error",
+                                      self._whisper.unavailable_reason())
+                    self._emit_state(STATE_ERROR,
+                                     self._whisper.unavailable_reason())
+                    log_stage("no STT engine available; state=error")
+                    return
+
+            self._emit_state(STATE_LOADING)
+            self._emit_status(want, "loading")
+            try:
+                t0 = time.monotonic()
+                target.load()
+                self._active = target
+                self._engine_name = want
+                log_stage(f"engine '{want}' loaded in "
+                          f"{int((time.monotonic() - t0) * 1000)} ms")
+                self._warm_inference(target)
+                self._warmed = True
+                self._emit_status(want, "ready")
+                self._emit_state(STATE_READY)
+                log_stage(f"state=ready (engine '{want}')")
+            except Exception as e:
+                self._active = self._whisper
+                self._engine_name = "whisper"
+                self._emit_status(want, "error", str(e))
+                self._emit_state(STATE_ERROR, str(e))
+                log_stage(f"warmup failed: {e}; state=error")
+
+    def _warm_inference(self, engine: "BaseSttEngine") -> None:
+        """Run one throwaway final decode on ~1 s of silence to page in the
+        graph / allocate buffers. Best-effort — never fatal to readiness."""
+        try:
+            import numpy as np
+            t0 = time.monotonic()
+            engine.transcribe(np, b"\x00" * (SAMPLE_RATE * 2), final=True)
+            log_stage(f"warmup inference {int((time.monotonic() - t0) * 1000)} ms")
+        except Exception as e:
+            log_stage(f"warmup inference skipped: {e}")
 
     # ---- denoise ------------------------------------------------------
 
@@ -604,6 +711,7 @@ class SttEngine:
                 callback=cb,
             )
             self._capture.start()
+            log_stage("audio stream opened")
             self._denoiser.reset()
             self._worker = threading.Thread(target=self._process, daemon=True)
             self._worker.start()
@@ -640,6 +748,8 @@ class SttEngine:
         # NEVER closes, stt.final never fires and the assistant looks dead
         # (observed live: 150 s of nonstop partials, zero finals).
         vad = webrtcvad.Vad(3)
+        log_stage("VAD loaded")
+        first_frame = True
         speech: list[bytes] = []
         speaking = False
         silence_frames = 0
@@ -667,6 +777,9 @@ class SttEngine:
                 continue
             if len(raw) != FRAME_BYTES:
                 continue
+            if first_frame:
+                first_frame = False
+                log_stage("first audio frame processed")
             # Denoise BEFORE the VAD — the denoiser buffers internally, so one
             # raw frame yields 0+ cleaned 480-sample frames (off = passthrough).
             for frame in self._denoiser.process(np, raw):
