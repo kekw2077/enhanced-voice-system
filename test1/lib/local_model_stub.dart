@@ -9,6 +9,10 @@ Future<String> localModelsDirPath() async {
   throw UnsupportedError('Local models are not supported on this platform.');
 }
 
+Future<String> modelsDirPath() async {
+  throw UnsupportedError('Models are not supported on this platform.');
+}
+
 Future<String> updateDownloadPath(String fileName) async {
   throw UnsupportedError('App updates are not supported on this platform.');
 }

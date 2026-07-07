@@ -807,6 +807,17 @@ const Map<String, Map<String, String>> _i18n = {
     'engNotFound': 'Модель не найдена',
     'engSwitchFailed': 'Не удалось переключить движок',
     'engWhisperSize': 'Размер модели',
+    'cardModels': 'Модели',
+    'mdlInstalled': 'Установлена',
+    'mdlNotInstalled': 'Не установлена',
+    'mdlDownload': 'Скачать',
+    'mdlOpenFolder': 'Открыть папку моделей',
+    'mdlRamShort': 'МБ ОЗУ',
+    'mdlActiveCantDelete': 'Нельзя удалить активную модель',
+    'mdlDeleteConfirm': 'Удалить модель с диска?',
+    'mdlDelete': 'Удалить',
+    'mbShort': 'МБ',
+    'mdlTotalDisk': 'Занято на диске',
     'whisperOffline': 'Whisper (офлайн)',
     'whisperModel': 'Модель Whisper',
     'whisperModelDesc':
@@ -1536,6 +1547,17 @@ const Map<String, Map<String, String>> _i18n = {
     'engNotFound': 'Model not found',
     'engSwitchFailed': 'Could not switch engine',
     'engWhisperSize': 'Model size',
+    'cardModels': 'Models',
+    'mdlInstalled': 'Installed',
+    'mdlNotInstalled': 'Not installed',
+    'mdlDownload': 'Download',
+    'mdlOpenFolder': 'Open models folder',
+    'mdlRamShort': 'MB RAM',
+    'mdlActiveCantDelete': "Can't delete the active model",
+    'mdlDeleteConfirm': 'Delete this model from disk?',
+    'mdlDelete': 'Delete',
+    'mbShort': 'MB',
+    'mdlTotalDisk': 'Disk used',
     'whisperOffline': 'Whisper (offline)',
     'whisperModel': 'Whisper model',
     'whisperModelDesc':
@@ -4044,6 +4066,54 @@ enum AppStyle { standard }
 // status badge (and its detail dialog).
 enum ConnectionStatus { connecting, connected, noModel, disconnected, error }
 
+// ---- Asset models (STT / denoise / TTS voices) — TZ2 model manager ----
+// Registry of downloadable non-GGUF models. Each lives in its own dir under
+// <userdata>/models/<id>/; downloads reuse downloadFileWithProgress per file.
+class AssetFile {
+  final String name; // filename under models/<id>/
+  final String url;
+  final int size; // bytes — progress weighting + display
+  const AssetFile(this.name, this.url, this.size);
+}
+
+class AssetModelSpec {
+  final String id; // dir under <userdata>/models/
+  final String family; // 'stt' | 'denoise' | 'tts-voice'
+  final String name;
+  final String descKey; // i18n key, short description
+  final int ramMb; // RAM estimate for display
+  final List<AssetFile> files;
+  const AssetModelSpec({
+    required this.id,
+    required this.family,
+    required this.name,
+    required this.descKey,
+    required this.ramMb,
+    required this.files,
+  });
+  int get totalSize => files.fold(0, (a, f) => a + f.size);
+}
+
+const String _hfGigaam =
+    'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16/resolve/main';
+
+// Starter registry (block 5 adds Piper voices; block 1 adds DeepFilterNet).
+const List<AssetModelSpec> kAssetModels = [
+  AssetModelSpec(
+    id: 'gigaam-v3',
+    family: 'stt',
+    name: 'GigaAM-v3',
+    descKey: 'engGigaamShort',
+    ramMb: 800,
+    files: [
+      AssetFile('encoder.int8.onnx', '$_hfGigaam/encoder.int8.onnx', 224570814),
+      AssetFile('decoder.onnx', '$_hfGigaam/decoder.onnx', 3331651),
+      AssetFile('joiner.onnx', '$_hfGigaam/joiner.onnx', 1440448),
+      AssetFile('tokens.txt', '$_hfGigaam/tokens.txt', 196),
+    ],
+  ),
+];
+
 class AppState extends ChangeNotifier {
   final SharedPreferences prefs;
   AppState(this.prefs);
@@ -5244,6 +5314,126 @@ class AppState extends ChangeNotifier {
 
   void cancelLocalModelDownload(String id) {
     _cancelledLocalDownloads.add(id);
+  }
+
+  // ---- Asset model manager (TZ2 block 3) ----
+  final Map<String, double> assetProgress = {}; // id -> 0..1 while downloading
+  final Set<String> _cancelledAssets = {};
+  final Map<String, bool> _assetInstalled = {}; // id -> all files present (cache)
+
+  bool assetInstalled(String id) => _assetInstalled[id] == true;
+  bool assetDownloading(String id) => assetProgress.containsKey(id);
+
+  // An asset model is "active" if it's the currently selected engine/voice.
+  bool assetActive(AssetModelSpec spec) =>
+      spec.id == 'gigaam-v3' && sttSidecarEngine == 'gigaam';
+
+  Future<void> refreshAssetModels() async {
+    for (final spec in kAssetModels) {
+      _assetInstalled[spec.id] = await _assetFilesPresent(spec);
+    }
+    notifyListeners();
+  }
+
+  Future<bool> _assetFilesPresent(AssetModelSpec spec) async {
+    try {
+      final base = await modelsDirPath();
+      final sep = io.Platform.pathSeparator;
+      for (final f in spec.files) {
+        final file = io.File('$base$sep${spec.id}$sep${f.name}');
+        if (!await file.exists()) return false;
+        if (f.size > 10000 && await file.length() < f.size * 0.95) return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> downloadAssetModel(AssetModelSpec spec) async {
+    if (assetProgress.containsKey(spec.id)) return;
+    _cancelledAssets.remove(spec.id);
+    assetProgress[spec.id] = 0;
+    notifyListeners();
+    try {
+      final base = await modelsDirPath();
+      final sep = io.Platform.pathSeparator;
+      final dir = io.Directory('$base$sep${spec.id}');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final total = spec.totalSize;
+      var done = 0; // bytes finished in earlier files
+      for (final f in spec.files) {
+        final dest = '${dir.path}$sep${f.name}';
+        final existing = io.File(dest);
+        // Whole-file resume: skip a file that's already fully there.
+        if (await existing.exists() &&
+            f.size > 10000 &&
+            await existing.length() >= f.size * 0.95) {
+          done += f.size;
+          assetProgress[spec.id] = total > 0 ? done / total : 0;
+          notifyListeners();
+          continue;
+        }
+        final fileBase = done;
+        await downloadFileWithProgress(f.url, dest, (received, _) {
+          assetProgress[spec.id] = total > 0 ? (fileBase + received) / total : 0;
+          notifyListeners();
+        }, () => _cancelledAssets.contains(spec.id));
+        done += f.size;
+      }
+      _assetInstalled[spec.id] = await _assetFilesPresent(spec);
+      // Make a now-downloaded GigaAM selectable without re-entering settings:
+      // update the engine capability optimistically and hand the sidecar the
+      // (now-populated) model dir.
+      if (spec.id == 'gigaam-v3' && (_assetInstalled[spec.id] ?? false)) {
+        final e = Map<String, bool>.from(SidecarClient.instance.engines.value);
+        e['gigaam'] = true;
+        SidecarClient.instance.engines.value = e;
+        unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
+      }
+    } catch (_) {
+      _assetInstalled[spec.id] = false;
+    } finally {
+      assetProgress.remove(spec.id);
+      _cancelledAssets.remove(spec.id);
+      notifyListeners();
+    }
+  }
+
+  void cancelAssetDownload(String id) => _cancelledAssets.add(id);
+
+  Future<void> deleteAssetModel(AssetModelSpec spec) async {
+    try {
+      final base = await modelsDirPath();
+      final sep = io.Platform.pathSeparator;
+      final dir = io.Directory('$base$sep${spec.id}');
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } catch (_) {}
+    _assetInstalled[spec.id] = false;
+    notifyListeners();
+  }
+
+  Future<int> assetDiskSize(AssetModelSpec spec) async {
+    try {
+      final base = await modelsDirPath();
+      final sep = io.Platform.pathSeparator;
+      final dir = io.Directory('$base$sep${spec.id}');
+      if (!await dir.exists()) return 0;
+      var total = 0;
+      await for (final e in dir.list(recursive: true)) {
+        if (e is io.File) total += await e.length();
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> openModelsFolder() async {
+    try {
+      final dir = await modelsDirPath();
+      await io.Process.start('explorer.exe', [dir], runInShell: false);
+    } catch (_) {}
   }
 
   Future<void> deleteLocalModel(LocalModelSpec spec) async {
@@ -12220,6 +12410,187 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
   }
 }
 
+// TZ2 block 3: model manager — download / delete asset models (STT / denoise /
+// TTS voices) into <userdata>/models/<id>/, reusing downloadFileWithProgress.
+class _AssetModelsCard extends StatefulWidget {
+  final AppState app;
+  const _AssetModelsCard(this.app);
+  @override
+  State<_AssetModelsCard> createState() => _AssetModelsCardState();
+}
+
+class _AssetModelsCardState extends State<_AssetModelsCard> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => widget.app.refreshAssetModels());
+  }
+
+  List<AssetModelSpec> get _models => kAssetModels;
+
+  Future<void> _confirmDelete(AssetModelSpec spec) async {
+    final app = widget.app;
+    if (app.assetActive(spec)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(app.t('mdlActiveCantDelete'))));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AppDialog(
+        backgroundColor: _card(context),
+        title: Text(spec.name, style: TextStyle(color: _txt(context))),
+        content: Text(app.t('mdlDeleteConfirm'),
+            style: TextStyle(color: _sub(context))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(app.t('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(app.t('mdlDelete'))),
+        ],
+      ),
+    );
+    if (ok == true) await app.deleteAssetModel(spec);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final spec in _models) ...[
+            _tile(spec),
+            const SizedBox(height: 10),
+          ],
+          Row(
+            children: [
+              TextButton.icon(
+                icon: const Icon(Icons.folder_open_outlined, size: 16),
+                label: Text(app.t('mdlOpenFolder')),
+                onPressed: () => app.openModelsFolder(),
+              ),
+              const Spacer(),
+              Builder(builder: (_) {
+                final mb = (kAssetModels
+                            .where((s) => app.assetInstalled(s.id))
+                            .fold<int>(0, (a, s) => a + s.totalSize) /
+                        1e6)
+                    .round();
+                if (mb <= 0) return const SizedBox.shrink();
+                return Text('${app.t('mdlTotalDisk')}: $mb ${app.t('mbShort')}',
+                    style: const TextStyle(
+                        color: Color(0xFF6E7280), fontSize: 11));
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tile(AssetModelSpec spec) {
+    final app = widget.app;
+    final installed = app.assetInstalled(spec.id);
+    final progress = app.assetProgress[spec.id];
+    final downloading = progress != null;
+    final active = app.assetActive(spec);
+
+    String status;
+    Color color;
+    if (downloading) {
+      status = '${(progress.clamp(0.0, 1.0) * 100).round()}%';
+      color = const Color(0xFFB9A6FF);
+    } else if (active) {
+      status = app.t('engActive');
+      color = const Color(0xFF34D399);
+    } else if (installed) {
+      status = app.t('mdlInstalled');
+      color = const Color(0xFF34D399);
+    } else {
+      status = app.t('mdlNotInstalled');
+      color = const Color(0xFF8A8A95);
+    }
+    final sizeMb = (spec.totalSize / 1e6).round();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF15151E),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x14FFFFFF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+                child: Text(spec.name,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700))),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8)),
+              child: Text(status,
+                  style: TextStyle(
+                      color: color,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          Text(app.t(spec.descKey),
+              style: const TextStyle(color: Color(0xFF9AA0B0), fontSize: 12)),
+          const SizedBox(height: 4),
+          Text(
+              '~$sizeMb ${app.t('mbShort')} · ~${spec.ramMb} ${app.t('mdlRamShort')}',
+              style: const TextStyle(color: Color(0xFF6E7280), fontSize: 11)),
+          const SizedBox(height: 10),
+          if (downloading)
+            Row(children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: const Color(0xFF2A2A38)),
+                ),
+              ),
+              IconButton(
+                  icon: const Icon(Icons.close,
+                      size: 18, color: Color(0xFF9AA0B0)),
+                  tooltip: app.t('cancelDownload'),
+                  onPressed: () => app.cancelAssetDownload(spec.id)),
+            ])
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: installed
+                  ? OutlinedButton.icon(
+                      icon: const Icon(Icons.delete_outline, size: 16),
+                      label: Text(app.t('mdlDelete')),
+                      onPressed: () => _confirmDelete(spec))
+                  : FilledButton.icon(
+                      icon: const Icon(Icons.download, size: 16),
+                      label: Text(app.t('mdlDownload')),
+                      onPressed: () => app.downloadAssetModel(spec)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class DesktopSettings extends StatefulWidget {
   const DesktopSettings({super.key});
   @override
@@ -13700,6 +14071,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // from the UI (the fllama engine code stays dormant in the codebase).
   List<_CardSpec> _modelCards(AppState app) {
     return [
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.dns_outlined,
+            title: app.t('cardModels'),
+            rows: [_AssetModelsCard(app)]),
+        full: true,
+      ),
       _CardSpec(
         evsCard(context, icon: Icons.wifi, title: app.t('cardConnMode'), rows: [
           Padding(

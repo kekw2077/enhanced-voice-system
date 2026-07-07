@@ -57,6 +57,15 @@ Future<String> localModelsDirPath() async {
   return modelsDir.path;
 }
 
+// Asset models (STT / denoise / TTS voices) live one dir per id under
+// <root>/models/<id>/ — separate from the GGUF local_models above.
+Future<String> modelsDirPath() async {
+  final root = await appDataRoot();
+  final dir = Directory('$root/models');
+  if (!await dir.exists()) await dir.create(recursive: true);
+  return dir.path;
+}
+
 Future<String> updateDownloadPath(String fileName) async {
   final root = await appDataRoot();
   return '$root/$fileName';
