@@ -804,6 +804,21 @@ const Map<String, Map<String, String>> _i18n = {
     'engGigaamShort': 'Лучшая точность для русского. Рекомендуется',
     'moreDetails': 'Подробнее',
     'lessDetails': 'Свернуть',
+    'cardLlmAdv': 'Дополнительно',
+    'llmAdvDesc':
+        'Параметры запроса к модели. Пустое поле — параметр не отправляется, '
+            'работает значение самой модели.',
+    'llmNumCtx': 'Размер контекста',
+    'llmNumCtxDesc': 'num_ctx — сколько токенов модель держит в контексте',
+    'llmNumPredict': 'Лимит ответа',
+    'llmNumPredictDesc': 'num_predict — максимальная длина ответа в токенах',
+    'llmTemp': 'Температура',
+    'llmTempDesc': 'temperature — 0 предсказуемо, выше — свободнее (0–1.5)',
+    'llmKeepAlive': 'Держать модель в памяти',
+    'llmKeepAliveDesc': 'keep_alive — например 30m или -1 (не выгружать)',
+    'llmDefaultHint': 'по умолчанию',
+    'llmBadNumber': 'Нужно число',
+    'llmTempRange': 'Допустимо 0–1.5',
     'engWhisperDetail':
         'Понимает много языков, но короткие русские команды распознаёт хуже GigaAM. Медленнее на длинных фразах — обрабатывает звук 30-секундными окнами. base и tiny легче и быстрее, но точность ещё ниже — вариант для слабого железа.',
     'engGigaamDetail':
@@ -1595,6 +1610,20 @@ const Map<String, Map<String, String>> _i18n = {
     'engGigaamShort': 'Best accuracy for Russian. Recommended',
     'moreDetails': 'More',
     'lessDetails': 'Less',
+    'cardLlmAdv': 'Advanced',
+    'llmAdvDesc': 'Request parameters for the model. A blank field is not sent '
+        'at all — the model\'s own default applies.',
+    'llmNumCtx': 'Context size',
+    'llmNumCtxDesc': 'num_ctx — how many tokens the model keeps in context',
+    'llmNumPredict': 'Response limit',
+    'llmNumPredictDesc': 'num_predict — maximum response length in tokens',
+    'llmTemp': 'Temperature',
+    'llmTempDesc': 'temperature — 0 is predictable, higher is freer (0–1.5)',
+    'llmKeepAlive': 'Keep model loaded',
+    'llmKeepAliveDesc': 'keep_alive — e.g. 30m, or -1 to never unload',
+    'llmDefaultHint': 'default',
+    'llmBadNumber': 'Must be a number',
+    'llmTempRange': 'Allowed 0–1.5',
     'engWhisperDetail':
         'Understands many languages, but recognizes short Russian commands worse than GigaAM. Slower on long phrases — it processes audio in 30-second windows. base and tiny are lighter and faster but less accurate — for weak hardware.',
     'engGigaamDetail':
@@ -3972,8 +4001,10 @@ class RemoteLLMService implements ILLMService {
     ];
   }
 
-  // RP mode forwards RPSamplingConfig/stopSequences as Ollama's `options`;
-  // non-RP requests are left exactly as before (server defaults).
+  // RP mode forwards RPSamplingConfig/stopSequences as Ollama's `options` and
+  // keeps full control of sampling; everything else uses the user's global
+  // inference options from Settings, which are omitted field-by-field when left
+  // blank so the model default applies.
   Map<String, dynamic> _buildBody(
     Conversation conv,
     List<ChatMessage> history,
@@ -3994,7 +4025,15 @@ class RemoteLLMService implements ILLMService {
         if (conv.rpConfig!.stopSequences.isNotEmpty)
           'stop': conv.rpConfig!.stopSequences,
       };
+    } else {
+      final opts = app.llmOptions();
+      if (opts.isNotEmpty) body['options'] = opts;
     }
+    // Top-level in Ollama's API, not an `options` entry. It only controls how
+    // long the model stays resident, so it is orthogonal to sampling and
+    // applies to roleplay requests too.
+    final ka = app.llmKeepAlive.trim();
+    if (ka.isNotEmpty) body['keep_alive'] = ka;
     return body;
   }
 
@@ -4486,6 +4525,13 @@ class AppState extends ChangeNotifier {
   // 'remote' (internet). localServer/remote both use serverUrl; this just
   // drives the Model settings UI and which fields apply.
   String inferenceMode = 'local';
+  // Per-request inference options forwarded to Ollama. null / empty means "do
+  // not send this field" so the model's own default applies — leaving a box
+  // blank must not silently impose a value.
+  int? llmNumCtx;
+  int? llmNumPredict;
+  double? llmTemperature;
+  String llmKeepAlive = '';
   // User-defined voice commands (catalog). Execution lands in the native
   // phase; for now they are stored and editable.
   List<VoiceCommand> voiceCommands = [];
@@ -4661,6 +4707,11 @@ class AppState extends ChangeNotifier {
     micPauseSeconds = prefs.getInt('micPauseSeconds') ?? 3;
     serverUrl = prefs.getString('serverUrl') ?? '';
     savedServers = prefs.getStringList('savedServers') ?? [];
+    // Absent key -> null -> parameter is not sent at all (see llmOptions).
+    llmNumCtx = prefs.getInt('llmNumCtx');
+    llmNumPredict = prefs.getInt('llmNumPredict');
+    llmTemperature = prefs.getDouble('llmTemperature');
+    llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     // Migrate away placeholder values that earlier versions persisted as if
     // they were real user data.
     if (serverUrl == '192.168.1.100:11434') serverUrl = '';
@@ -4829,6 +4880,24 @@ class AppState extends ChangeNotifier {
     await prefs.setInt('micPauseSeconds', micPauseSeconds);
     await prefs.setString('serverUrl', serverUrl);
     await prefs.setStringList('savedServers', savedServers);
+    // Remove rather than write a sentinel: "unset" has to survive a restart,
+    // otherwise a cleared field would come back as a real value.
+    if (llmNumCtx == null) {
+      await prefs.remove('llmNumCtx');
+    } else {
+      await prefs.setInt('llmNumCtx', llmNumCtx!);
+    }
+    if (llmNumPredict == null) {
+      await prefs.remove('llmNumPredict');
+    } else {
+      await prefs.setInt('llmNumPredict', llmNumPredict!);
+    }
+    if (llmTemperature == null) {
+      await prefs.remove('llmTemperature');
+    } else {
+      await prefs.setDouble('llmTemperature', llmTemperature!);
+    }
+    await prefs.setString('llmKeepAlive', llmKeepAlive);
     await prefs.setString('apiKey', apiKey);
     await prefs.setStringList('models', models);
     await prefs.setString('selectedModel', selectedModel);
@@ -5071,6 +5140,41 @@ class AppState extends ChangeNotifier {
 
   void setInferenceMode(String v) {
     inferenceMode = v;
+    _save();
+    notifyListeners();
+  }
+
+  /// Ollama `options` for a normal (non-roleplay) request, built from whatever
+  /// the user actually filled in. A blank field is omitted entirely so the
+  /// model's own default wins — never send a value the user did not choose.
+  /// `keep_alive` is NOT here: Ollama takes it as a top-level request field,
+  /// not an `options` entry.
+  Map<String, dynamic> llmOptions() => {
+        if (llmNumCtx != null) 'num_ctx': llmNumCtx,
+        if (llmNumPredict != null) 'num_predict': llmNumPredict,
+        if (llmTemperature != null) 'temperature': llmTemperature,
+      };
+
+  void setLlmNumCtx(int? v) {
+    llmNumCtx = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setLlmNumPredict(int? v) {
+    llmNumPredict = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setLlmTemperature(double? v) {
+    llmTemperature = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setLlmKeepAlive(String v) {
+    llmKeepAlive = v;
     _save();
     notifyListeners();
   }
@@ -15418,6 +15522,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         for (final m in app.models)
           _modelRow(app, m, app.modelDisplayName(m, withSuffix: false), ''),
+        _LlmAdvancedCard(app),
       ])),
       _CardSpec(evsCard(context,
           icon: Icons.tune, title: app.t('cardGenParams'), rows: [
@@ -16109,6 +16214,201 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         rows: [_AssistantVoiceCard(app)],
       )),
     ];
+  }
+}
+
+// Advanced Ollama request parameters, collapsed by default (progressive
+// disclosure — the basics stay visible, this is opt-in). Every field is
+// optional: clearing one drops the parameter from the request entirely rather
+// than substituting a default, so the model keeps deciding.
+class _LlmAdvancedCard extends StatefulWidget {
+  const _LlmAdvancedCard(this.app);
+  final AppState app;
+
+  @override
+  State<_LlmAdvancedCard> createState() => _LlmAdvancedCardState();
+}
+
+class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
+  bool _open = false;
+  late final TextEditingController _ctx =
+      TextEditingController(text: widget.app.llmNumCtx?.toString() ?? '');
+  late final TextEditingController _pred =
+      TextEditingController(text: widget.app.llmNumPredict?.toString() ?? '');
+  late final TextEditingController _temp =
+      TextEditingController(text: widget.app.llmTemperature?.toString() ?? '');
+  late final TextEditingController _ka =
+      TextEditingController(text: widget.app.llmKeepAlive);
+  String? _ctxErr;
+  String? _predErr;
+  String? _tempErr;
+
+  @override
+  void dispose() {
+    _ctx.dispose();
+    _pred.dispose();
+    _temp.dispose();
+    _ka.dispose();
+    super.dispose();
+  }
+
+  // Blank clears the parameter; anything unparsable is reported and NOT saved,
+  // so a typo can never reach the request as a silent zero.
+  void _onInt(String raw, void Function(int?) save, void Function(String?) err) {
+    final t = raw.trim();
+    if (t.isEmpty) {
+      err(null);
+      save(null);
+      return;
+    }
+    final v = int.tryParse(t);
+    if (v == null || v <= 0) {
+      err(widget.app.t('llmBadNumber'));
+      return;
+    }
+    err(null);
+    save(v);
+  }
+
+  void _onTemp(String raw) {
+    final app = widget.app;
+    final t = raw.trim();
+    if (t.isEmpty) {
+      setState(() => _tempErr = null);
+      app.setLlmTemperature(null);
+      return;
+    }
+    final v = double.tryParse(t.replaceAll(',', '.'));
+    if (v == null) {
+      setState(() => _tempErr = app.t('llmBadNumber'));
+      return;
+    }
+    if (v < 0 || v > 1.5) {
+      setState(() => _tempErr = app.t('llmTempRange'));
+      return;
+    }
+    setState(() => _tempErr = null);
+    app.setLlmTemperature(v);
+  }
+
+  Widget _field(TextEditingController c, ValueChanged<String> onChanged,
+      {String? error}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
+          alignment: Alignment.centerLeft,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.white.withValues(alpha: 0.04),
+            border: Border.all(
+                color: error == null ? _evsStroke : const Color(0xFFF0685E)),
+          ),
+          child: TextField(
+            controller: c,
+            onChanged: onChanged,
+            style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              hintText: widget.app.t('llmDefaultHint'),
+              hintStyle:
+                  const TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+            ),
+          ),
+        ),
+        if (error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(error,
+                style:
+                    const TextStyle(fontSize: 11, color: Color(0xFFF0685E))),
+          ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(app.t('cardLlmAdv'),
+                          style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFD0D4E2))),
+                      const SizedBox(height: 3),
+                      Text(app.t('llmAdvDesc'),
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF6E7280))),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Icon(_open ? Icons.expand_less : Icons.expand_more,
+                    size: 18, color: const Color(0xFF9AA0B4)),
+              ],
+            ),
+          ),
+        ),
+        if (_open) ...[
+          evsRow(
+            label: app.t('llmNumCtx'),
+            desc: app.t('llmNumCtxDesc'),
+            control: SizedBox(
+              width: 120,
+              child: _field(_ctx,
+                  (v) => _onInt(v, app.setLlmNumCtx,
+                      (e) => setState(() => _ctxErr = e)),
+                  error: _ctxErr),
+            ),
+          ),
+          evsRow(
+            label: app.t('llmNumPredict'),
+            desc: app.t('llmNumPredictDesc'),
+            control: SizedBox(
+              width: 120,
+              child: _field(_pred,
+                  (v) => _onInt(v, app.setLlmNumPredict,
+                      (e) => setState(() => _predErr = e)),
+                  error: _predErr),
+            ),
+          ),
+          evsRow(
+            label: app.t('llmTemp'),
+            desc: app.t('llmTempDesc'),
+            control: SizedBox(
+              width: 120,
+              child: _field(_temp, _onTemp, error: _tempErr),
+            ),
+          ),
+          evsRow(
+            label: app.t('llmKeepAlive'),
+            desc: app.t('llmKeepAliveDesc'),
+            control: SizedBox(
+              width: 120,
+              child: _field(_ka, (v) => app.setLlmKeepAlive(v.trim())),
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }
 
