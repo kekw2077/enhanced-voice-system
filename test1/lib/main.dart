@@ -804,6 +804,12 @@ const Map<String, Map<String, String>> _i18n = {
     'engGigaamShort': 'Лучшая точность для русского. Рекомендуется',
     'moreDetails': 'Подробнее',
     'lessDetails': 'Свернуть',
+    'checkConn': 'Проверить соединение',
+    'connChecking': 'Проверка…',
+    'connOnline': 'Соединение есть',
+    'connModelsCount': 'моделей',
+    'connBadUrl': 'Укажите адрес сервера выше',
+    'refreshModelsBtn': 'Обновить список',
     'cardLlmAdv': 'Дополнительно',
     'llmAdvDesc':
         'Параметры запроса к модели. Пустое поле — параметр не отправляется, '
@@ -1610,6 +1616,12 @@ const Map<String, Map<String, String>> _i18n = {
     'engGigaamShort': 'Best accuracy for Russian. Recommended',
     'moreDetails': 'More',
     'lessDetails': 'Less',
+    'checkConn': 'Check connection',
+    'connChecking': 'Checking…',
+    'connOnline': 'Connected',
+    'connModelsCount': 'models',
+    'connBadUrl': 'Enter the server address above',
+    'refreshModelsBtn': 'Refresh list',
     'cardLlmAdv': 'Advanced',
     'llmAdvDesc': 'Request parameters for the model. A blank field is not sent '
         'at all — the model\'s own default applies.',
@@ -15502,6 +15514,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ],
             ),
           ),
+          _ConnCheckRow(app),
         ]),
         full: true,
       ),
@@ -15522,6 +15535,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         for (final m in app.models)
           _modelRow(app, m, app.modelDisplayName(m, withSuffix: false), ''),
+        _ConnCheckRow(app, showRefresh: true),
         _LlmAdvancedCard(app),
       ])),
       _CardSpec(evsCard(context,
@@ -16214,6 +16228,93 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         rows: [_AssistantVoiceCard(app)],
       )),
     ];
+  }
+}
+
+// Explicit "is the server actually reachable" check with a visible verdict, and
+// the manual model-list refresh. Both drive AppState.fetchModels(), which IS the
+// GET /api/tags round-trip and already records the outcome (unreachable / no
+// models found) — a second probe would just be another thing to keep in sync.
+class _ConnCheckRow extends StatelessWidget {
+  const _ConnCheckRow(this.app, {this.showRefresh = false});
+  final AppState app;
+  final bool showRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUrl = app.serverUrl.trim().isNotEmpty;
+    final busy = app.loadingModels;
+    final err = app.modelsError;
+
+    final (String text, Color color) = !hasUrl
+        ? (app.t('connBadUrl'), const Color(0xFF6E7280))
+        : busy
+            ? (app.t('connChecking'), const Color(0xFFE0C07A))
+            : err != null
+                ? (err, const Color(0xFFE05D5D))
+                : app.models.isEmpty
+                    ? ('', const Color(0xFF6E7280))
+                    : (
+                        '${app.t('connOnline')} · ${app.models.length} ${app.t('connModelsCount')}',
+                        const Color(0xFF54E08A)
+                      );
+
+    Widget btn(String label, IconData icon) => InkWell(
+          borderRadius: BorderRadius.circular(8),
+          // Without an address there is nothing to probe, so the button stays
+          // inert rather than reporting a misleading failure.
+          onTap: (!hasUrl || busy) ? null : () => app.fetchModels(),
+          child: Opacity(
+            opacity: (!hasUrl || busy) ? 0.45 : 1,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _evsStroke),
+                color: Colors.white.withValues(alpha: 0.04),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 14, color: const Color(0xFF9AA0B4)),
+                const SizedBox(width: 5),
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFC0C4D4))),
+              ]),
+            ),
+          ),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 12),
+      child: Row(
+        children: [
+          btn(app.t(showRefresh ? 'refreshModelsBtn' : 'checkConn'),
+              showRefresh ? Icons.refresh : Icons.wifi_find),
+          const SizedBox(width: 10),
+          if (text.isNotEmpty)
+            Flexible(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                      width: 7,
+                      height: 7,
+                      decoration:
+                          BoxDecoration(shape: BoxShape.circle, color: color)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(text,
+                        style: TextStyle(fontSize: 12, color: color),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
