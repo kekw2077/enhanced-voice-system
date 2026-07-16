@@ -28,6 +28,37 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.0.2</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#0E0E15;color:#E6E8F0;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#8A7BE0;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Добавлено:</b> умный подбор голосовых команд — ассистент сам предлагает команды запуска для ваших приложений (по частоте использования), фразы придумывает ИИ, пути берутся из системы.</li>
+          <li><b>Добавлено:</b> управление громкостью приложения голосом — «громкость на 30» ставит уровень конкретной программы (число можно словами).</li>
+          <li><b>Добавлено:</b> интерпретатор озвучки — перед синтезом убирает эмодзи и разметку, приводит текст к произносимому виду.</li>
+          <li><b>Добавлено:</b> раздел «Модель и инференс» — проверка соединения, обновление списка моделей, модель отдельно для поиска и чата, параметры (num_ctx, temperature, keep_alive).</li>
+          <li><b>Добавлено:</b> быстрые профили одним нажатием — Быстро / Качество / Поиск / Чат.</li>
+          <li><b>Улучшено:</b> раскладка настроек подстраивается под ширину окна (1/2/3 колонки), без пустот и «уехавших» карточек.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Thu, 16 Jul 2026 18:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.0.2/EVS-Setup-2.0.2.exe"
+        sparkle:version="2.0.2"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHHCPnMZENEhyAMzEKIUbeiDfQSKLMHdMTce62j8CHEitVAJ/HZE+gQDy6GtIqP9+atug6FsTRahr+Bc="
+        evs:sha256="c4e4b21139b9a42de6dcc2897ce0106fe90b804a0890a318635048411773de68"
+        length="15937762"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.0.1</title>
       <description><![CDATA[
         <style>

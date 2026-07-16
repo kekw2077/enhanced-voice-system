@@ -4,10 +4,10 @@
       "file": "evs_sidecar.zip",
       "exe": "evs_sidecar.exe",
       "archive": true,
-      "version": "9",
+      "version": "10",
       "url": "https://github.com/kekw2077/mirai/releases/download/desktop-components/evs_sidecar.zip",
-      "sha256": "fae692e724db6bcdc90cc6857fcfad73f4a127c880124e4e0f40712397bc75d8",
-      "size": 112336796
+      "sha256": "41abdc74124cb86a4732f82f8ce8dc143c545fcde7b108d9305afa2f4cc5e855",
+      "size": 112598600
     }
   }
 }
