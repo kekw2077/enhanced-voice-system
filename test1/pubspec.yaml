@@ -54,6 +54,8 @@ dependencies:
   package_info_plus: ^8.1.0
   open_filex: ^4.5.0
   system_info_plus: ^0.0.6
+  # QR codes for pairing phones over the local network (remote-input, TZ §14).
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_lints: ^4.0.0

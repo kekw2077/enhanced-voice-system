@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
@@ -1096,6 +1097,36 @@ const Map<String, Map<String, String>> _i18n = {
     'cmdSuggestPrivacy':
         'Имена приложений уходят только в вашу локальную модель. Пути берутся из системы, ИИ их не трогает.',
     'cmdSuggestSaved': 'Добавлено команд: {n}',
+    'navRemote': 'Телефоны',
+    'navRemoteSub': 'удалённый ввод с телефона',
+    'remoteCardListener': 'Удалённый ввод',
+    'remoteEnable': 'Принимать команды с телефонов',
+    'remoteEnableDesc':
+        'Локальный слушатель по Tailscale/LAN. Наружу порт не публикуется; команды принимаются только от привязанных устройств.',
+    'remotePort': 'Порт',
+    'remoteServerOff': 'Слушатель выключен',
+    'remoteServerOn': 'Слушает',
+    'remotePortBusy': 'Порт занят — смените порт',
+    'remoteAddress': 'Адрес для подключения',
+    'remoteResponse': 'Куда отдавать ответ',
+    'remoteRespDesktop': 'Озвучивать на десктопе',
+    'remoteRespPhone': 'Текст на телефон',
+    'remoteRespBoth': 'Оба',
+    'remoteCardDevices': 'Подключённые телефоны',
+    'remoteNoDevices': 'Пока нет привязанных телефонов',
+    'remoteCardAdd': 'Добавить телефон',
+    'remotePairCode': 'Код сопряжения',
+    'remotePairHint':
+        'Введите этот код (или отсканируйте QR) в приложении на телефоне. Действует 5 минут.',
+    'remoteNewCode': 'Обновить код',
+    'remoteScanQr': 'QR для подключения',
+    'remoteUnpair': 'Отвязать',
+    'remotePermVoice': 'Голос',
+    'remotePermText': 'Текст',
+    'remoteOnline': 'в сети',
+    'remoteLastSeen': 'был(а) в сети',
+    'remoteNever': 'ещё не подключался',
+    'remoteEnableFirst': 'Сначала включите приём команд',
     'cmdWizVolume': 'Громкость приложения',
     'volPickApp': 'Приложение (из воспроизводящих сейчас)',
     'volNoSessions':
@@ -1962,6 +1993,36 @@ const Map<String, Map<String, String>> _i18n = {
     'cmdSuggestPrivacy':
         'Only app names go to your local model. Paths come from the system; the AI never touches them.',
     'cmdSuggestSaved': 'Commands added: {n}',
+    'navRemote': 'Phones',
+    'navRemoteSub': 'remote input from a phone',
+    'remoteCardListener': 'Remote input',
+    'remoteEnable': 'Accept commands from phones',
+    'remoteEnableDesc':
+        'Local listener over Tailscale/LAN. The port is not exposed to the internet; only paired devices may send commands.',
+    'remotePort': 'Port',
+    'remoteServerOff': 'Listener off',
+    'remoteServerOn': 'Listening',
+    'remotePortBusy': 'Port is busy — change it',
+    'remoteAddress': 'Connection address',
+    'remoteResponse': 'Where to send the reply',
+    'remoteRespDesktop': 'Speak on desktop',
+    'remoteRespPhone': 'Text back to phone',
+    'remoteRespBoth': 'Both',
+    'remoteCardDevices': 'Connected phones',
+    'remoteNoDevices': 'No paired phones yet',
+    'remoteCardAdd': 'Add a phone',
+    'remotePairCode': 'Pairing code',
+    'remotePairHint':
+        'Enter this code (or scan the QR) in the phone app. Valid for 5 minutes.',
+    'remoteNewCode': 'New code',
+    'remoteScanQr': 'QR to connect',
+    'remoteUnpair': 'Unpair',
+    'remotePermVoice': 'Voice',
+    'remotePermText': 'Text',
+    'remoteOnline': 'online',
+    'remoteLastSeen': 'last seen',
+    'remoteNever': 'never connected',
+    'remoteEnableFirst': 'Enable command receiving first',
     'cmdWizVolume': 'App volume',
     'volPickApp': 'App (from those playing now)',
     'volNoSessions':
@@ -4752,6 +4813,13 @@ class AppState extends ChangeNotifier {
   // User-defined voice commands (catalog). Execution lands in the native
   // phase; for now they are stored and editable.
   List<VoiceCommand> voiceCommands = [];
+  // Remote input from phones over Tailscale/LAN (TZ §14). A local HTTP listener
+  // (RemoteInputServer) accepts authorized text/voice commands. Off by default;
+  // only paired devices (per-device token) may send.
+  bool remoteInputEnabled = false;
+  int remoteInputPort = 8770;
+  String remoteResponseTarget = 'both'; // desktop_tts | phone_text | both
+  List<RemoteDevice> remoteDevices = [];
   // Desktop window/tray/startup preferences (applied by DesktopIntegration).
   bool autostart = false;
   bool minimizeToTray = true;
@@ -5062,6 +5130,20 @@ class AppState extends ChangeNotifier {
         }
       } catch (_) {}
     }
+    remoteInputEnabled = prefs.getBool('remoteInputEnabled') ?? false;
+    remoteInputPort = prefs.getInt('remoteInputPort') ?? 8770;
+    remoteResponseTarget = prefs.getString('remoteResponseTarget') ?? 'both';
+    final rdRaw = prefs.getString('remoteDevices');
+    if (rdRaw != null) {
+      try {
+        final decoded = jsonDecode(rdRaw);
+        if (decoded is List) {
+          remoteDevices = decoded
+              .map((e) => RemoteDevice.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } catch (_) {}
+    }
 
     final pj = prefs.getString('persona');
     if (pj != null) {
@@ -5191,6 +5273,11 @@ class AppState extends ChangeNotifier {
       'voiceCommands',
       jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
     );
+    await prefs.setBool('remoteInputEnabled', remoteInputEnabled);
+    await prefs.setInt('remoteInputPort', remoteInputPort);
+    await prefs.setString('remoteResponseTarget', remoteResponseTarget);
+    await prefs.setString('remoteDevices',
+        jsonEncode(remoteDevices.map((d) => d.toJson()).toList()));
     await prefs.setString(
       'conversations',
       jsonEncode(conversations.map((c) => c.toJson()).toList()),
@@ -5375,6 +5462,20 @@ class AppState extends ChangeNotifier {
         if (decoded is List) {
           voiceCommands = decoded
               .map((e) => VoiceCommand.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } catch (_) {}
+    }
+    remoteInputEnabled = prefs.getBool('remoteInputEnabled') ?? false;
+    remoteInputPort = prefs.getInt('remoteInputPort') ?? 8770;
+    remoteResponseTarget = prefs.getString('remoteResponseTarget') ?? 'both';
+    final rdRaw = prefs.getString('remoteDevices');
+    if (rdRaw != null) {
+      try {
+        final decoded = jsonDecode(rdRaw);
+        if (decoded is List) {
+          remoteDevices = decoded
+              .map((e) => RemoteDevice.fromJson(e as Map<String, dynamic>))
               .toList();
         }
       } catch (_) {}
@@ -6105,6 +6206,90 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  // ---- Remote input from phones (TZ §14) ----
+
+  void setRemoteInputEnabled(bool v) {
+    remoteInputEnabled = v;
+    _save();
+    notifyListeners();
+    if (v) {
+      RemoteInputServer.instance.start(this);
+    } else {
+      RemoteInputServer.instance.stop();
+    }
+  }
+
+  void setRemoteInputPort(int v) {
+    remoteInputPort = v;
+    _save();
+    notifyListeners();
+    if (remoteInputEnabled) RemoteInputServer.instance.start(this); // rebind
+  }
+
+  void setRemoteResponseTarget(String v) {
+    remoteResponseTarget =
+        (v == 'desktop_tts' || v == 'phone_text') ? v : 'both';
+    _save();
+    notifyListeners();
+  }
+
+  void addRemoteDevice(RemoteDevice d) {
+    remoteDevices.add(d);
+    _save();
+    notifyListeners();
+  }
+
+  void removeRemoteDevice(RemoteDevice d) {
+    // Unpair = immediate token revocation (§14.7).
+    remoteDevices.removeWhere((x) => x.id == d.id);
+    _save();
+    notifyListeners();
+  }
+
+  void renameRemoteDevice(RemoteDevice d, String name) {
+    d.name = name.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setRemoteDevicePerms(RemoteDevice d, {bool? voice, bool? text}) {
+    if (voice != null) d.permVoice = voice;
+    if (text != null) d.permText = text;
+    _save();
+    notifyListeners();
+  }
+
+  void setRemoteDeviceEnabled(RemoteDevice d, bool v) {
+    d.enabled = v;
+    _save();
+    notifyListeners();
+  }
+
+  // Server-side: stamp a device's last activity (no full save churn per request
+  // — persisted opportunistically).
+  void touchRemoteDevice(RemoteDevice d) {
+    d.lastSeen = DateTime.now().toUtc().toIso8601String();
+    notifyListeners();
+  }
+
+  RemoteDevice? remoteDeviceByToken(String token) {
+    for (final d in remoteDevices) {
+      if (d.token == token) return d;
+    }
+    return null;
+  }
+
+  // Run a remote text command through the normal LLM backend and return the
+  // reply. A one-off synthetic conversation (global persona, no chat history) —
+  // it must not touch or pollute the user's open chats.
+  Future<String> runRemoteCommand(String text) async {
+    final service = _llmFactory.current;
+    final synthetic = Conversation(id: 'remote-temp', title: '');
+    final history = [ChatMessage(role: 'user', content: text)];
+    final reply = await service.generateResponse(synthetic, history);
+    return persona.enforceEmojiPolicy(reply).trim();
   }
 
   void addVoiceCommand(VoiceCommand c) {
@@ -8994,6 +9179,8 @@ class DesktopIntegration with WindowListener, TrayListener {
       unawaited(MicMeter.instance.start(deviceId: app.inputDeviceId));
       unawaited(_bootstrapSidecar(app));
       VoiceAssistant.instance.attach(app);
+      // Bring the remote-input listener up if it was left enabled (TZ §14).
+      if (app.remoteInputEnabled) RemoteInputServer.instance.start(app);
 
       // Auto-update (Discord-style): AppUpdater silently downloads the new
       // installer in the background and shows an in-app "restart to update"
@@ -12467,6 +12654,227 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
 
 // A user-defined voice command (Voice Commands catalog). Execution comes in
 // the native phase; the type maps to how `value` is interpreted.
+// A phone authorized to send remote commands (TZ §14). The token is a secret —
+// shown masked in the UI, matched verbatim by the server. lastSeen is ISO-8601
+// or '' if never seen.
+class RemoteDevice {
+  final String id;
+  String name;
+  final String token;
+  bool permVoice;
+  bool permText;
+  bool enabled;
+  String lastSeen;
+  RemoteDevice({
+    required this.id,
+    required this.name,
+    required this.token,
+    this.permVoice = true,
+    this.permText = true,
+    this.enabled = true,
+    this.lastSeen = '',
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'token': token,
+        'voice': permVoice,
+        'text': permText,
+        'enabled': enabled,
+        'last_seen': lastSeen,
+      };
+
+  factory RemoteDevice.fromJson(Map<String, dynamic> j) => RemoteDevice(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        token: j['token'] as String? ?? '',
+        permVoice: j['voice'] as bool? ?? true,
+        permText: j['text'] as bool? ?? true,
+        enabled: j['enabled'] as bool? ?? true,
+        lastSeen: j['last_seen'] as String? ?? '',
+      );
+}
+
+// Local HTTP listener that accepts remote commands from paired phones over
+// Tailscale/LAN (TZ §14). Bound to all local interfaces (not port-forwarded to
+// the internet — that's the user's router). Auth is a per-device bearer token
+// issued during pairing; a short-lived one-time code gates pairing itself.
+//
+// Endpoints:
+//   GET  /               -> {ok:true, name:"EVS"}                (discovery)
+//   POST /pair    {code, name?}                 -> {device_id, token}
+//   POST /command/text  (Bearer) {text}         -> {reply}
+//   POST /command/voice (Bearer)                -> 501 (not yet)
+class RemoteInputServer {
+  RemoteInputServer._();
+  static final RemoteInputServer instance = RemoteInputServer._();
+
+  io.HttpServer? _server;
+  AppState? _app;
+  String? _pairCode;
+  DateTime? _pairExpires;
+  final _rnd = math.Random.secure();
+
+  bool get running => _server != null;
+
+  Future<void> start(AppState app) async {
+    _app = app;
+    await stop();
+    try {
+      _server = await io.HttpServer.bind(
+          io.InternetAddress.anyIPv4, app.remoteInputPort, shared: true);
+      _server!.listen(_handle, onError: (_) {});
+      unawaited(appendLog('remote', 'listening on :${app.remoteInputPort}'));
+    } catch (e) {
+      _server = null;
+      unawaited(
+          appendLog('remote', 'bind failed on :${app.remoteInputPort}: $e'));
+      VizOverlayServer.instance.note(app.t('remotePortBusy'), kind: 'err');
+    }
+  }
+
+  Future<void> stop() async {
+    final s = _server;
+    _server = null;
+    if (s != null) {
+      try {
+        await s.close(force: true);
+      } catch (_) {}
+    }
+  }
+
+  // Fresh one-time pairing code with a 5-minute TTL (§14.2).
+  String newPairCode() {
+    final a = (1000 + _rnd.nextInt(9000)).toString();
+    final b = (10 + _rnd.nextInt(90)).toString();
+    _pairCode = '$a-$b';
+    _pairExpires = DateTime.now().add(const Duration(minutes: 5));
+    return _pairCode!;
+  }
+
+  String? get activePairCode =>
+      (_pairExpires != null && DateTime.now().isBefore(_pairExpires!))
+          ? _pairCode
+          : null;
+
+  String _newToken() {
+    final b = List<int>.generate(24, (_) => _rnd.nextInt(256));
+    return base64Url.encode(b).replaceAll('=', '');
+  }
+
+  Future<Map<String, dynamic>> _readJson(io.HttpRequest req) async {
+    final body = await utf8.decoder.bind(req).join();
+    if (body.trim().isEmpty) return {};
+    final d = jsonDecode(body);
+    return d is Map ? d.cast<String, dynamic>() : {};
+  }
+
+  void _send(io.HttpRequest req, Map<String, dynamic> body, {int status = 200}) {
+    req.response
+      ..statusCode = status
+      ..headers.contentType = io.ContentType.json;
+    req.response.write(jsonEncode(body));
+    req.response.close();
+  }
+
+  String? _bearer(io.HttpRequest req) {
+    final h = req.headers.value('authorization') ?? '';
+    return h.toLowerCase().startsWith('bearer ') ? h.substring(7).trim() : null;
+  }
+
+  Future<void> _handle(io.HttpRequest req) async {
+    final app = _app;
+    if (app == null) {
+      _send(req, {'error': 'not_ready'}, status: 503);
+      return;
+    }
+    try {
+      final path = req.uri.path;
+      if (req.method == 'GET' && path == '/') {
+        _send(req, {'ok': true, 'name': 'EVS'});
+        return;
+      }
+      if (req.method == 'POST' && path == '/pair') {
+        final body = await _readJson(req);
+        final code = (body['code'] ?? '').toString().trim();
+        if (activePairCode == null || code != activePairCode) {
+          _send(req, {'error': 'invalid_code'}, status: 401);
+          return;
+        }
+        _pairCode = null; // one-time
+        final dev = RemoteDevice(
+          id: 'd${_rnd.nextInt(1 << 32)}',
+          name: (body['name'] ?? 'Телефон').toString().trim(),
+          token: _newToken(),
+        );
+        app.addRemoteDevice(dev);
+        _send(req, {'device_id': dev.id, 'token': dev.token});
+        return;
+      }
+      // Authorized endpoints.
+      final dev = app.remoteDeviceByToken(_bearer(req) ?? '');
+      if (dev == null || !dev.enabled) {
+        _send(req, {'error': 'unauthorized'}, status: 401);
+        return;
+      }
+      app.touchRemoteDevice(dev);
+      if (req.method == 'POST' && path == '/command/text') {
+        if (!dev.permText) {
+          _send(req, {'error': 'forbidden'}, status: 403);
+          return;
+        }
+        final body = await _readJson(req);
+        final text = (body['text'] ?? '').toString().trim();
+        if (text.isEmpty) {
+          _send(req, {'error': 'empty'}, status: 400);
+          return;
+        }
+        final reply = await app.runRemoteCommand(text);
+        // Speak on the desktop unless the phone asked for text only (§14.5).
+        if (app.remoteResponseTarget != 'phone_text') {
+          final say = await app.interpretForTts(reply);
+          SidecarClient.instance.speak(say,
+              rate: app.ttsRate, volume: app.ttsVolume);
+        }
+        _send(req, {'reply': reply});
+        return;
+      }
+      if (req.method == 'POST' && path == '/command/voice') {
+        // Audio-in over the network isn't wired to the STT sidecar yet.
+        _send(req, {'error': 'voice_not_supported'}, status: 501);
+        return;
+      }
+      _send(req, {'error': 'not_found'}, status: 404);
+    } catch (e) {
+      try {
+        _send(req, {'error': 'server_error'}, status: 500);
+      } catch (_) {}
+    }
+  }
+}
+
+// Non-loopback IPv4 addresses of this machine, so the UI can show where a phone
+// should connect (Tailscale 100.x, LAN 192.168/10.x). Tailscale addresses are
+// surfaced first — that's the reliable path across networks.
+Future<List<String>> localAddresses() async {
+  final out = <String>[];
+  try {
+    for (final ni
+        in await io.NetworkInterface.list(type: io.InternetAddressType.IPv4)) {
+      for (final a in ni.addresses) {
+        if (!a.isLoopback) out.add(a.address);
+      }
+    }
+  } catch (_) {}
+  out.sort((a, b) {
+    final ta = a.startsWith('100.') ? 0 : 1;
+    final tb = b.startsWith('100.') ? 0 : 1;
+    return ta != tb ? ta - tb : a.compareTo(b);
+  });
+  return out;
+}
+
 enum VoiceCommandType { app, file, url, shell, system, media, appVolume }
 
 class VoiceCommand {
@@ -12782,6 +13190,376 @@ class SuggestionEngine {
         s.collides = false;
       }
     }
+  }
+}
+
+// Remote-input settings panel (TZ §14): enable the listener, port, connection
+// address + pairing QR, response target, and the paired-device list. Stateful
+// for the port field, the async local-address lookup and the transient pairing
+// code. Device data lives on AppState, so the surrounding watch() rebuilds this
+// when a phone pairs or is edited.
+class _RemoteInputPanel extends StatefulWidget {
+  const _RemoteInputPanel(this.app);
+  final AppState app;
+  @override
+  State<_RemoteInputPanel> createState() => _RemoteInputPanelState();
+}
+
+class _RemoteInputPanelState extends State<_RemoteInputPanel> {
+  late final TextEditingController _port =
+      TextEditingController(text: widget.app.remoteInputPort.toString());
+  List<String> _addrs = [];
+  String? _pairCode;
+
+  AppState get app => widget.app;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAddrs();
+  }
+
+  Future<void> _loadAddrs() async {
+    final a = await localAddresses();
+    if (mounted) setState(() => _addrs = a);
+  }
+
+  @override
+  void dispose() {
+    _port.dispose();
+    super.dispose();
+  }
+
+  String get _primaryAddr => _addrs.isNotEmpty ? _addrs.first : '127.0.0.1';
+
+  void _newCode() {
+    setState(() => _pairCode = RemoteInputServer.instance.newPairCode());
+  }
+
+  // Payload the phone app scans: everything it needs to pair in one QR.
+  String _qrData() => jsonEncode({
+        'host': _primaryAddr,
+        'port': app.remoteInputPort,
+        if (_pairCode != null) 'code': _pairCode,
+      });
+
+  String _deviceStatus(RemoteDevice d) {
+    if (d.lastSeen.isEmpty) return app.t('remoteNever');
+    final t = DateTime.tryParse(d.lastSeen);
+    if (t == null) return app.t('remoteNever');
+    final diff = DateTime.now().toUtc().difference(t.toUtc());
+    if (diff.inSeconds < 120) return app.t('remoteOnline');
+    final mins = diff.inMinutes;
+    final human = mins < 60
+        ? '$mins м назад'
+        : mins < 1440
+            ? '${mins ~/ 60} ч назад'
+            : '${mins ~/ 1440} дн назад';
+    return '${app.t('remoteLastSeen')} $human';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final on = app.remoteInputEnabled;
+    final running = RemoteInputServer.instance.running;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        evsRow(
+          label: app.t('remoteEnable'),
+          desc: app.t('remoteEnableDesc'),
+          control: evsToggle(on, app.setRemoteInputEnabled),
+        ),
+        if (on) ...[
+          // Status + port.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            child: Row(children: [
+              Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: running
+                          ? const Color(0xFF54E08A)
+                          : const Color(0xFFE05D5D))),
+              const SizedBox(width: 7),
+              Text(running ? app.t('remoteServerOn') : app.t('remoteServerOff'),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: running
+                          ? const Color(0xFF54E08A)
+                          : const Color(0xFFE05D5D))),
+            ]),
+          ),
+          evsRow(
+            label: app.t('remotePort'),
+            control: SizedBox(
+              width: 90,
+              child: _RemoteField(
+                controller: _port,
+                onChanged: (v) {
+                  final p = int.tryParse(v.trim());
+                  if (p != null && p > 0 && p < 65536) app.setRemoteInputPort(p);
+                },
+              ),
+            ),
+          ),
+          // Connection addresses.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
+            child: Text(app.t('remoteAddress'),
+                style: const TextStyle(
+                    fontSize: 12.5, color: Color(0xFFD0D4E2))),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final a in _addrs)
+                  Text('$a:${app.remoteInputPort}',
+                      style: const TextStyle(
+                          fontSize: 12.5,
+                          fontFamily: 'monospace',
+                          color: Color(0xFF9AA0B4))),
+                if (_addrs.isEmpty)
+                  Text('127.0.0.1:${app.remoteInputPort}',
+                      style: const TextStyle(
+                          fontSize: 12.5, color: Color(0xFF6E7280))),
+              ],
+            ),
+          ),
+          evsRow(
+            stacked: true,
+            label: app.t('remoteResponse'),
+            control: evsSegmentedWide<String>([
+              ('desktop_tts', app.t('remoteRespDesktop')),
+              ('phone_text', app.t('remoteRespPhone')),
+              ('both', app.t('remoteRespBoth')),
+            ], app.remoteResponseTarget, app.setRemoteResponseTarget),
+          ),
+          const Divider(color: _evsStroke, height: 20),
+          _addPhoneSection(),
+          const Divider(color: _evsStroke, height: 20),
+          _devicesSection(),
+        ],
+      ],
+    );
+  }
+
+  Widget _addPhoneSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+          child: Text(app.t('remoteCardAdd'),
+              style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFD0D4E2))),
+        ),
+        if (_pairCode == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: evsAddButton(app.t('remoteCardAdd'), _newCode),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8)),
+                  child: QrImageView(
+                    data: _qrData(),
+                    size: 120,
+                    backgroundColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(app.t('remotePairCode'),
+                          style: const TextStyle(
+                              fontSize: 12, color: Color(0xFF9AA0B4))),
+                      const SizedBox(height: 2),
+                      SelectableText(_pairCode!,
+                          style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 2,
+                              color: Colors.white)),
+                      const SizedBox(height: 6),
+                      Text(app.t('remotePairHint'),
+                          style: const TextStyle(
+                              fontSize: 11.5, color: Color(0xFF6E7280))),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: _newCode,
+                        borderRadius: BorderRadius.circular(8),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.refresh,
+                              size: 14, color: Color(0xFF9AA0B4)),
+                          const SizedBox(width: 5),
+                          Text(app.t('remoteNewCode'),
+                              style: const TextStyle(
+                                  fontSize: 12, color: Color(0xFF9AA0B4))),
+                        ]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _devicesSection() {
+    final devs = app.remoteDevices;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+          child: Text(app.t('remoteCardDevices'),
+              style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFD0D4E2))),
+        ),
+        if (devs.isEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: Text(app.t('remoteNoDevices'),
+                style: const TextStyle(fontSize: 12.5, color: Color(0xFF6E7280))),
+          ),
+        for (final d in devs) _deviceRow(d),
+      ],
+    );
+  }
+
+  Widget _deviceRow(RemoteDevice d) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: Colors.white.withValues(alpha: 0.03),
+        border: Border.all(color: _evsStroke),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.smartphone, size: 15, color: Color(0xFF9AA0B4)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(d.name.isEmpty ? 'Телефон' : d.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFD0D4E2))),
+            ),
+            Text(_deviceStatus(d),
+                style: const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
+            const SizedBox(width: 8),
+            evsToggle(d.enabled, (v) => app.setRemoteDeviceEnabled(d, v)),
+          ]),
+          const SizedBox(height: 6),
+          Row(children: [
+            _permChip(app.t('remotePermVoice'), d.permVoice,
+                (v) => app.setRemoteDevicePerms(d, voice: v)),
+            const SizedBox(width: 8),
+            _permChip(app.t('remotePermText'), d.permText,
+                (v) => app.setRemoteDevicePerms(d, text: v)),
+            const Spacer(),
+            InkWell(
+              onTap: () => app.removeRemoteDevice(d),
+              borderRadius: BorderRadius.circular(8),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.link_off, size: 13, color: Color(0xFFE08080)),
+                const SizedBox(width: 4),
+                Text(app.t('remoteUnpair'),
+                    style: const TextStyle(
+                        fontSize: 12, color: Color(0xFFE08080))),
+              ]),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _permChip(String label, bool on, ValueChanged<bool> onTap) {
+    return InkWell(
+      onTap: () => onTap(!on),
+      borderRadius: BorderRadius.circular(7),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(7),
+          color: on ? const Color(0x2654E08A) : Colors.white.withValues(alpha: 0.04),
+          border: Border.all(
+              color: on ? const Color(0xFF54E08A) : _evsStroke),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(on ? Icons.check : Icons.close,
+              size: 12,
+              color: on ? const Color(0xFF54E08A) : const Color(0xFF6E7280)),
+          const SizedBox(width: 4),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: on ? const Color(0xFFD0D4E2) : const Color(0xFF6E7280))),
+        ]),
+      ),
+    );
+  }
+}
+
+// Small bordered text field matching the settings look (used by the remote panel).
+class _RemoteField extends StatelessWidget {
+  const _RemoteField({required this.controller, required this.onChanged});
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 11),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.white.withValues(alpha: 0.04),
+        border: Border.all(color: _evsStroke),
+      ),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        keyboardType: TextInputType.number,
+        style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+        decoration: const InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.zero,
+        ),
+      ),
+    );
   }
 }
 
@@ -15359,6 +16137,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     (Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub'),
     (Icons.auto_awesome_outlined, 'navWidgets', 'navWidgetsSub'),
     (Icons.bolt_outlined, 'navVoiceCommands', 'navVoiceCommandsSub'),
+    (Icons.phone_iphone, 'navRemote', 'navRemoteSub'),
     (Icons.memory, 'navModel', 'navModelSub'),
     (Icons.chat_bubble_outline, 'navPersona', 'navPersonaSub'),
     (Icons.lock_outline, 'navPrivacy', 'navPrivacySub'),
@@ -15768,16 +16547,31 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       case 3:
         return _voiceCommandCards(app);
       case 4:
-        return _modelCards(app);
+        return _remoteInputCards(app);
       case 5:
-        return _personaCards(app);
+        return _modelCards(app);
       case 6:
-        return _privacyCards(app);
+        return _personaCards(app);
       case 7:
+        return _privacyCards(app);
+      case 8:
         return _aboutCards(app);
       default:
         return const [];
     }
+  }
+
+  // =================== SECTION 4: REMOTE INPUT (PHONES) ===================
+  List<_CardSpec> _remoteInputCards(AppState app) {
+    return [
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.wifi_tethering,
+            title: app.t('remoteCardListener'),
+            rows: [_RemoteInputPanel(app)]),
+        full: true,
+      ),
+    ];
   }
 
   // =================== SECTION 0: GENERAL ===================
