@@ -65,6 +65,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/icon/app_icon.ico
+    - assets/icon/icon.png
   uses-material-design: true
   fonts:
     - family: Nunito

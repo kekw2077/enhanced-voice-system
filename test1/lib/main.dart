@@ -8785,7 +8785,6 @@ class _AnimatedBorderState extends State<AnimatedBorder>
 // Mockup palette: violet accent + blue→purple→pink gradient on near-black.
 const Color _evsGBlue = Color(0xFF5068D8);
 const Color _evsGMid = Color(0xFF8855CC);
-const Color _evsGPink = Color(0xFFC060D8);
 const Color _evsViolet = Color(0xFF8A7BE0);
 const Color _evsViolet2 = Color(0xFFB0A8F0);
 const Color _evsStroke = Color(0x0DFFFFFF);
@@ -8802,29 +8801,60 @@ const BoxDecoration _evsBgDecoration = BoxDecoration(
 );
 
 // The conic-gradient "bead" logo used across desktop screens.
-class _EvsLogoMark extends StatelessWidget {
+// The brand mark: the new logo (assets/icon/icon.png) with a one-shot entrance
+// animation that replays each time the widget mounts (fade + scale-overshoot +
+// slight spin-settle), then holds static. Keeps a `const` constructor so the
+// existing `const _EvsLogoMark(...)` call sites stay valid unchanged.
+class _EvsLogoMark extends StatefulWidget {
   final double size;
   const _EvsLogoMark({this.size = 30});
   @override
+  State<_EvsLogoMark> createState() => _EvsLogoMarkState();
+}
+
+class _EvsLogoMarkState extends State<_EvsLogoMark>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade;
+  late final Animation<double> _scale;
+  late final Animation<double> _spin;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 720));
+    _fade = CurvedAnimation(
+        parent: _ctrl, curve: const Interval(0.0, 0.6, curve: Curves.easeOut));
+    _scale = Tween<double>(begin: 0.55, end: 1.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _spin = Tween<double>(begin: -0.45, end: 0.0).animate(
+        CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+    _ctrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: SweepGradient(
-          transform: GradientRotation(2.79),
-          colors: [_evsGBlue, _evsGMid, _evsGPink, _evsGBlue],
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, child) => Opacity(
+        opacity: _fade.value.clamp(0.0, 1.0),
+        child: Transform.rotate(
+          angle: _spin.value,
+          child: Transform.scale(scale: _scale.value, child: child),
         ),
       ),
-      alignment: Alignment.center,
-      child: Container(
-        width: size * 0.46,
-        height: size * 0.46,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          color: _evsBgSolid,
-        ),
+      child: Image.asset(
+        'assets/icon/icon.png',
+        width: widget.size,
+        height: widget.size,
+        filterQuality: FilterQuality.medium,
       ),
     );
   }
