@@ -1105,6 +1105,10 @@ const Map<String, Map<String, String>> _i18n = {
     'typeWeb': 'Сайт',
     'typeSystem': 'Системное',
     'typeMedia': 'Медиа',
+    'typeAppVolume': 'Громкость',
+    'volNotPlaying': '{app} сейчас не воспроизводит звук',
+    'volNoNumber': 'Не расслышал число',
+    'volSet': 'Громкость {app}: {N}%',
     'add': 'Добавить',
     'cardConnMode': 'Режим подключения',
     'modeOnDevice': 'Локально на устройстве (on-device)',
@@ -1934,6 +1938,10 @@ const Map<String, Map<String, String>> _i18n = {
     'typeWeb': 'Site',
     'typeSystem': 'System',
     'typeMedia': 'Media',
+    'typeAppVolume': 'Volume',
+    'volNotPlaying': '{app} is not playing any sound right now',
+    'volNoNumber': "I didn't catch a number",
+    'volSet': '{app} volume: {N}%',
     'add': 'Add',
     'cardConnMode': 'Connection mode',
     'modeOnDevice': 'On-device (local)',
@@ -3782,6 +3790,45 @@ class VoiceInterpreter {
       'было естественно произнести вслух: числа и даты словами, убери эмодзи и '
       'разметку (* # _ ~ ` | > [ ] { }), сохрани знаки . , ! ? — для пауз. Ничего '
       'не добавляй и не комментируй — верни ТОЛЬКО очищенный текст.';
+}
+
+// Extract a number from a spoken phrase — digits ("на 30") or spelled-out
+// Russian ("тридцать", "двадцать пять") — for parametric voice commands like
+// "громкость на {N}" (new-features Ф2 §2.3, §2.7). Range is not enforced here;
+// the caller clamps. Returns null when the phrase has no number.
+class NumberWords {
+  static const Map<String, int> _units = {
+    'ноль': 0, 'один': 1, 'одна': 1, 'одну': 1, 'два': 2, 'две': 2, 'три': 3,
+    'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8, 'девять': 9,
+    'десять': 10, 'одиннадцать': 11, 'двенадцать': 12, 'тринадцать': 13,
+    'четырнадцать': 14, 'пятнадцать': 15, 'шестнадцать': 16, 'семнадцать': 17,
+    'восемнадцать': 18, 'девятнадцать': 19,
+  };
+  static const Map<String, int> _tens = {
+    'двадцать': 20, 'тридцать': 30, 'сорок': 40, 'пятьдесят': 50,
+    'шестьдесят': 60, 'семьдесят': 70, 'восемьдесят': 80, 'девяносто': 90,
+    'сто': 100,
+  };
+
+  static int? extract(String text) {
+    final lower = text.toLowerCase();
+    final d = RegExp(r'\d+').firstMatch(lower);
+    if (d != null) return int.tryParse(d.group(0)!);
+    final words = lower.split(RegExp(r'[^а-яё]+')).where((w) => w.isNotEmpty);
+    int? acc;
+    for (final w in words) {
+      final t = _tens[w];
+      final u = _units[w];
+      if (t != null) {
+        acc = (acc ?? 0) + t;
+      } else if (u != null) {
+        acc = (acc ?? 0) + u;
+      } else if (acc != null) {
+        break; // the numeral run ended
+      }
+    }
+    return acc;
+  }
 }
 
 String _effectiveModelFor(AppState app, Conversation conv) {
@@ -5838,6 +5885,38 @@ class AppState extends ChangeNotifier {
     ttsVolume = v;
     _save();
     notifyListeners();
+  }
+
+  // Run a per-app volume command (Ф2). [utterance] is the recognized phrase, if
+  // any, from which the target number is extracted; test-runs pass ''. Returns
+  // (ok, message-to-say). Handles the §2.6 edge cases: no number → default or a
+  // "didn't catch a number" reply; out of range → clamp; app not playing → a
+  // friendly "not playing sound" reply (ok=false).
+  Future<(bool, String)> applyAppVolume(
+      VoiceCommand cmd, String utterance) async {
+    final sc = SidecarClient.instance;
+    final appLabel = cmd.value.isNotEmpty ? cmd.value : cmd.process;
+    if (cmd.action == 'mute' || cmd.action == 'unmute') {
+      final r = await sc.setAppVolume(cmd.process, cmd.action);
+      final ok = r['ok'] == true;
+      if (!ok) return (false, t('volNotPlaying').replaceAll('{app}', appLabel));
+      return (
+        true,
+        cmd.speakPhrase.trim().isNotEmpty ? cmd.speakPhrase.trim() : t('vaDone')
+      );
+    }
+    var n = NumberWords.extract(utterance) ?? cmd.defaultValue;
+    if (n == null) return (false, t('volNoNumber'));
+    n = n.clamp(cmd.argMin, cmd.argMax);
+    final r =
+        await sc.setAppVolume(cmd.process, cmd.action, value: n / 100.0);
+    if (r['ok'] != true) {
+      return (false, t('volNotPlaying').replaceAll('{app}', appLabel));
+    }
+    final say = cmd.speakPhrase.trim().isNotEmpty
+        ? cmd.speakPhrase.trim().replaceAll('{N}', '$n')
+        : t('volSet').replaceAll('{app}', appLabel).replaceAll('{N}', '$n');
+    return (true, say);
   }
 
   void addVoiceCommand(VoiceCommand c) {
@@ -8221,6 +8300,10 @@ class CommandExecutor {
           return _system(c.value);
         case VoiceCommandType.media:
           return _media(c.value);
+        case VoiceCommandType.appVolume:
+          // Per-app volume needs the sidecar (Core Audio) and the spoken number,
+          // so it is dispatched via AppState.applyAppVolume, not this launcher.
+          return false;
       }
     } catch (_) {
       return false;
@@ -10104,6 +10187,24 @@ class SidecarClient {
           case 'tts.done':
             VoiceLevels.instance.tts.value = 0;
             break;
+          case 'audio.sessions.result':
+            final list = (m['sessions'] as List?)
+                    ?.whereType<Map>()
+                    .map((e) => e.cast<String, dynamic>())
+                    .toList() ??
+                <Map<String, dynamic>>[];
+            for (final c in _sessionWaiters) {
+              if (!c.isCompleted) c.complete(list);
+            }
+            _sessionWaiters.clear();
+            break;
+          case 'app.volume.result':
+            final res = m.cast<String, dynamic>();
+            for (final c in _volumeWaiters) {
+              if (!c.isCompleted) c.complete(res);
+            }
+            _volumeWaiters.clear();
+            break;
           case 'tts.status':
             ttsStatus.value = (
               m['engine'] as String? ?? '',
@@ -10290,6 +10391,39 @@ class SidecarClient {
       'rate': rate,
       'volume': volume,
     });
+  }
+
+  // Pending request/response waiters for the per-app volume feature (Ф2). The
+  // sidecar replies once per request; a list tolerates a rare overlap and is
+  // cleared when the reply lands.
+  final List<Completer<List<Map<String, dynamic>>>> _sessionWaiters = [];
+  final List<Completer<Map<String, dynamic>>> _volumeWaiters = [];
+
+  // Active per-app audio sessions (for the command-config picker). Empty on
+  // timeout or when the sidecar is down.
+  Future<List<Map<String, dynamic>>> listAudioSessions() {
+    final c = Completer<List<Map<String, dynamic>>>();
+    _sessionWaiters.add(c);
+    _send({'type': 'audio.sessions'});
+    return c.future.timeout(const Duration(seconds: 4),
+        onTimeout: () => <Map<String, dynamic>>[]);
+  }
+
+  // Set/adjust/mute a process's volume. [value] is 0..1 for set/increase/
+  // decrease. Result carries {ok, found, volume, ...}; ok=false means the app
+  // had no active session.
+  Future<Map<String, dynamic>> setAppVolume(String process, String action,
+      {double? value}) {
+    final c = Completer<Map<String, dynamic>>();
+    _volumeWaiters.add(c);
+    _send({
+      'type': 'app.volume',
+      'process': process,
+      'action': action,
+      if (value != null) 'value': value,
+    });
+    return c.future.timeout(const Duration(seconds: 4),
+        onTimeout: () => <String, dynamic>{'ok': false, 'found': 0});
   }
 
   void speak(String text, {double rate = 1.0, double volume = 1.0}) =>
@@ -10607,7 +10741,7 @@ class VoiceAssistant {
     //    it, it's not a command.
     final (match, score) = _matchCommand(app, command);
     if (match != null) {
-      await _runCommand(app, match);
+      await _runCommand(app, match, utterance: command);
       return;
     }
     // No command matched. In commands-only mode (chat disabled) tell the user
@@ -10647,7 +10781,10 @@ class VoiceAssistant {
   }
 
   // Execute a catalog/interpreted command with the usual safety policies.
-  Future<void> _runCommand(AppState app, VoiceCommand cmd) async {
+  // [utterance] carries the recognized phrase so parametric commands (app
+  // volume) can read their number from it.
+  Future<void> _runCommand(AppState app, VoiceCommand cmd,
+      {String utterance = ''}) async {
     if (!app.cmdEnabled) {
       _toast(app.t('vaCmdDisabled'));
       VizOverlayServer.instance.note(app.t('vaCmdDisabled'), kind: 'err');
@@ -10664,6 +10801,18 @@ class VoiceAssistant {
     state.value = VaState.running;
     _toast('${app.t('vaRunning')} ${cmd.phrase}');
     VizOverlayServer.instance.note('${app.t('vaRunning')} ${cmd.phrase}');
+    // App-volume runs through the sidecar (Core Audio) and speaks its own
+    // outcome (set / not-playing / no-number), so it bypasses CommandExecutor.
+    if (cmd.type == VoiceCommandType.appVolume) {
+      final (ok, say) = await app.applyAppVolume(cmd, utterance);
+      if (!ok) _toast(say);
+      VizOverlayServer.instance.note(say, kind: ok ? 'ok' : 'err');
+      if (app.voiceResponses) _speak(app, say);
+      unawaited(appendLog('commands',
+          '${cmd.phrase} -> [appVolume] ${cmd.process} : ${ok ? 'OK' : 'FAIL'}'));
+      state.value = _listening ? VaState.listening : VaState.idle;
+      return;
+    }
     final ok = await CommandExecutor.instance.execute(cmd);
     if (!ok) _toast(app.t('vaFailed'));
     VizOverlayServer.instance
@@ -12130,7 +12279,7 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
 
 // A user-defined voice command (Voice Commands catalog). Execution comes in
 // the native phase; the type maps to how `value` is interpreted.
-enum VoiceCommandType { app, file, url, shell, system, media }
+enum VoiceCommandType { app, file, url, shell, system, media, appVolume }
 
 class VoiceCommand {
   String phrase;
@@ -12140,11 +12289,26 @@ class VoiceCommand {
   // Музыку". Only spoken when voice responses are enabled. Empty = say the
   // generic "done" line instead.
   String speakPhrase;
+  // Parametric fields for VoiceCommandType.appVolume (new-features Ф2). `value`
+  // holds the app's display name; `process` the audio-session exe. `phrase` is
+  // a template with {N} (e.g. "громкость на {N}"). action is one of
+  // set/increase/decrease/mute/unmute. defaultValue applies when the utterance
+  // names no number; argMin/argMax bound and clamp it.
+  String process;
+  String action;
+  int? defaultValue;
+  int argMin;
+  int argMax;
   VoiceCommand({
     required this.phrase,
     required this.type,
     required this.value,
     this.speakPhrase = '',
+    this.process = '',
+    this.action = 'set',
+    this.defaultValue,
+    this.argMin = 0,
+    this.argMax = 100,
   });
 
   Map<String, dynamic> toJson() => {
@@ -12152,6 +12316,13 @@ class VoiceCommand {
         'type': type.name,
         'value': value,
         if (speakPhrase.isNotEmpty) 'speak': speakPhrase,
+        if (type == VoiceCommandType.appVolume) ...{
+          'process': process,
+          'action': action,
+          if (defaultValue != null) 'default': defaultValue,
+          'min': argMin,
+          'max': argMax,
+        },
       };
 
   factory VoiceCommand.fromJson(Map<String, dynamic> j) => VoiceCommand(
@@ -12162,6 +12333,11 @@ class VoiceCommand {
         ),
         value: j['value'] as String? ?? '',
         speakPhrase: j['speak'] as String? ?? '',
+        process: j['process'] as String? ?? '',
+        action: j['action'] as String? ?? 'set',
+        defaultValue: (j['default'] as num?)?.toInt(),
+        argMin: (j['min'] as num?)?.toInt() ?? 0,
+        argMax: (j['max'] as num?)?.toInt() ?? 100,
       );
 }
 
@@ -15453,6 +15629,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ),
     );
     if (ok != true) return;
+    // A test-run has no utterance, so app-volume uses the command's default
+    // value; it also reports its own outcome (e.g. app not playing).
+    if (c.type == VoiceCommandType.appVolume) {
+      final (_, say) = await app.applyAppVolume(c, '');
+      if (!mounted) return;
+      showAppSnackBar(context, say);
+      return;
+    }
     final success = await CommandExecutor.instance.execute(c);
     if (!mounted) return;
     showAppSnackBar(context, success ? app.t('cmdRunOk') : app.t('cmdRunFail'));
@@ -15466,6 +15650,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       VoiceCommandType.shell => ('Shell', const Color(0xFFE0C07A)),
       VoiceCommandType.system => (app.t('typeSystem'), _evsViolet2),
       VoiceCommandType.media => (app.t('typeMedia'), const Color(0xFFE0A07A)),
+      VoiceCommandType.appVolume =>
+        (app.t('typeAppVolume'), const Color(0xFF7BA0E0)),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -17672,11 +17858,22 @@ class _ChatScreenState extends State<ChatScreen> {
     if (app.voiceCommands.isNotEmpty) {
       final cmd = CommandExecutor.instance.match(t, app.voiceCommands);
       if (cmd != null) {
+        _controller.clear();
+        if (cmd.type == VoiceCommandType.appVolume) {
+          // Parametric: read the number from the spoken phrase `t`.
+          app.applyAppVolume(cmd, t).then((r) {
+            if (!mounted) return;
+            if (SidecarClient.instance.ttsAvailable) {
+              SidecarClient.instance.speak(r.$2);
+            }
+            showAppSnackBar(context, r.$2);
+          });
+          return;
+        }
         CommandExecutor.instance.execute(cmd);
         if (SidecarClient.instance.ttsAvailable) {
           SidecarClient.instance.speak(app.t('cmdRunOk'));
         }
-        _controller.clear();
         showAppSnackBar(context, '${app.t('cmdRunOk')}: ${cmd.phrase}');
         return;
       }
