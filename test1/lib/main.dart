@@ -979,6 +979,17 @@ const Map<String, Map<String, String>> _i18n = {
     'voiceResponsesDesc': 'Проговаривать ответы ассистента голосом',
     'announceReady': 'Озвучивать готовность',
     'announceReadyDesc': 'Произносить голосом, когда ассистент готов слушать',
+    'ttsInterp': 'Интерпретатор озвучки',
+    'ttsInterpDesc':
+        'Приводит текст к произносимому виду перед синтезом: числа и даты словами, '
+            'без эмодзи и разметки.',
+    'ttsInterpRules': 'Правилами',
+    'ttsInterpRulesHint': 'Быстро, офлайн',
+    'ttsInterpModel': 'Через модель',
+    'ttsInterpModelHint': 'Точнее, но медленнее и нужен сервер',
+    'ttsInterpModelField': 'Модель интерпретатора',
+    'ttsInterpFellBack':
+        'Модель интерпретатора недоступна — озвучиваю по правилам.',
     'readyGreeting': 'Готова слушать',
     'sttStarting': 'Запуск…',
     'sttLoadingModels': 'Загружаю модели…',
@@ -1797,6 +1808,17 @@ const Map<String, Map<String, String>> _i18n = {
     'voiceResponsesDesc': 'Read the assistant\'s replies aloud',
     'announceReady': 'Announce readiness',
     'announceReadyDesc': 'Say aloud when the assistant is ready to listen',
+    'ttsInterp': 'Speech interpreter',
+    'ttsInterpDesc':
+        'Rewrites text into a speakable form before synthesis: numbers and dates '
+            'as words, no emoji or markup.',
+    'ttsInterpRules': 'Rules',
+    'ttsInterpRulesHint': 'Fast, offline',
+    'ttsInterpModel': 'Via model',
+    'ttsInterpModelHint': 'More accurate but slower, needs a server',
+    'ttsInterpModelField': 'Interpreter model',
+    'ttsInterpFellBack':
+        'Interpreter model unavailable — speaking with rules.',
     'readyGreeting': 'Ready to listen',
     'sttStarting': 'Starting…',
     'sttLoadingModels': 'Loading models…',
@@ -3726,6 +3748,42 @@ abstract class ILLMService {
 // turned on for them (Conversation.rpConfig.lockedModel) — once locked, that
 // chat keeps using it regardless of whatever AppState.selectedModel is set
 // to globally afterwards. Non-RP chats always just follow the global model.
+// Voice interpreter (settings TZ §3.2 / §7): clean the assistant's text before
+// it is handed to TTS. The "rules" mode is a pure offline sanitizer — strip the
+// markup a speech engine would read literally (`* # _ ~ ` | > [ ] { } \`) plus
+// emoji, while KEEPING sentence punctuation (. , ! ? —) that drives pauses.
+class VoiceInterpreter {
+  static final RegExp _markup = RegExp(r'[*#_~`|>\[\]{}\\]');
+  static final RegExp _emoji = RegExp(
+    '[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]',
+    unicode: true,
+  );
+  // A markdown link's brackets are stripped by _markup, leaving "text(url)";
+  // drop the bare URL tail so TTS does not spell out "h-t-t-p-s…".
+  static final RegExp _url = RegExp(r'\(?https?://\S+\)?');
+  static final RegExp _spaces = RegExp(r'[ \t]{2,}');
+
+  static String rules(String text) {
+    var s = text.replaceAll(_emoji, '');
+    s = s.replaceAll(_url, ' ');
+    s = s.replaceAll(_markup, '');
+    s = s.replaceAll(_spaces, ' ');
+    // Trim each line, collapse 3+ blank lines to one, drop leading/trailing ws.
+    s = s.split('\n').map((l) => l.trim()).join('\n');
+    s = s.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    return s.trim();
+  }
+
+  // System prompt for the "model" mode. The model rewrites for the ear: numbers
+  // and dates as words, no emoji/markup, punctuation preserved. Reply is the
+  // cleaned text only.
+  static const String modelSystemPrompt =
+      'Ты — нормализатор текста для синтеза речи. Перепиши текст так, чтобы его '
+      'было естественно произнести вслух: числа и даты словами, убери эмодзи и '
+      'разметку (* # _ ~ ` | > [ ] { }), сохрани знаки . , ! ? — для пауз. Ничего '
+      'не добавляй и не комментируй — верни ТОЛЬКО очищенный текст.';
+}
+
 String _effectiveModelFor(AppState app, Conversation conv) {
   if (conv.rpModeEnabled) {
     final locked = conv.rpConfig?.lockedModel;
@@ -4677,6 +4735,13 @@ class AppState extends ChangeNotifier {
   String ttsPiperVoice = '';
   double ttsRate = 1.0;
   double ttsVolume = 1.0;
+  // Voice interpreter (settings TZ §3.2): normalize spoken text. Enabled with
+  // 'rules' by default (TZ). 'model' rewrites via ttsInterpModel and falls back
+  // to rules if that model is unreachable.
+  bool ttsInterpEnabled = true;
+  String ttsInterpMode = 'rules'; // 'rules' | 'model'
+  String ttsInterpModel = 'qwen3-interp';
+  bool _ttsInterpFellBack = false; // one-shot "fell back to rules" notice guard
 
   // STT language resolved against the UI language when set to 'auto'.
   String get effectiveSttLanguage =>
@@ -4862,6 +4927,9 @@ class AppState extends ChangeNotifier {
     ttsPiperVoice = prefs.getString('ttsPiperVoice') ?? '';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
+    ttsInterpEnabled = prefs.getBool('ttsInterpEnabled') ?? true;
+    ttsInterpMode = prefs.getString('ttsInterpMode') ?? 'rules';
+    ttsInterpModel = prefs.getString('ttsInterpModel') ?? 'qwen3-interp';
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -4995,6 +5063,9 @@ class AppState extends ChangeNotifier {
     await prefs.setString('ttsPiperVoice', ttsPiperVoice);
     await prefs.setDouble('ttsRate', ttsRate);
     await prefs.setDouble('ttsVolume', ttsVolume);
+    await prefs.setBool('ttsInterpEnabled', ttsInterpEnabled);
+    await prefs.setString('ttsInterpMode', ttsInterpMode);
+    await prefs.setString('ttsInterpModel', ttsInterpModel);
     await prefs.setString(
       'voiceCommands',
       jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
@@ -5173,6 +5244,9 @@ class AppState extends ChangeNotifier {
     ttsPiperVoice = prefs.getString('ttsPiperVoice') ?? '';
     ttsRate = prefs.getDouble('ttsRate') ?? 1.0;
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
+    ttsInterpEnabled = prefs.getBool('ttsInterpEnabled') ?? true;
+    ttsInterpMode = prefs.getString('ttsInterpMode') ?? 'rules';
+    ttsInterpModel = prefs.getString('ttsInterpModel') ?? 'qwen3-interp';
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -5237,6 +5311,80 @@ class AppState extends ChangeNotifier {
     chatModel = v;
     _save();
     notifyListeners();
+  }
+
+  void setTtsInterpEnabled(bool v) {
+    ttsInterpEnabled = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setTtsInterpMode(String v) {
+    ttsInterpMode = v == 'model' ? 'model' : 'rules';
+    _save();
+    notifyListeners();
+  }
+
+  void setTtsInterpModel(String v) {
+    ttsInterpModel = v.trim();
+    _ttsInterpFellBack = false; // give the new model a fresh chance to notify
+    _save();
+    // No notifyListeners(): the field is edited live via its own controller and
+    // a rebuild here would fight the cursor.
+  }
+
+  /// Normalize [text] for TTS per the interpreter settings. Always safe: any
+  /// failure of the "model" path degrades to the offline rules sanitizer, and a
+  /// disabled interpreter returns the text untouched.
+  Future<String> interpretForTts(String text) async {
+    if (!ttsInterpEnabled) return text;
+    if (ttsInterpMode == 'model') {
+      final refined = await _ttsInterpViaModel(text);
+      if (refined != null && refined.trim().isNotEmpty) return refined.trim();
+      // Model unavailable / failed → rules, and tell the user once (§12).
+      if (!_ttsInterpFellBack) {
+        _ttsInterpFellBack = true;
+        // Fresh global-navigator context (not captured across the await above).
+        final ctx = rootNavKey.currentContext;
+        // ignore: use_build_context_synchronously
+        if (ctx != null) showAppSnackBar(ctx, t('ttsInterpFellBack'));
+      }
+    }
+    return VoiceInterpreter.rules(text);
+  }
+
+  // Best-effort one-shot rewrite via the interpreter model. Returns null on any
+  // problem (no server, model missing, timeout, bad response) so the caller can
+  // fall back. Deliberately non-streaming and short-timeout — this sits in the
+  // speak path.
+  Future<String?> _ttsInterpViaModel(String text) async {
+    final base = baseUrl;
+    if (serverUrl.trim().isEmpty || ttsInterpModel.trim().isEmpty) return null;
+    try {
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
+      final res = await http
+          .post(Uri.parse('$base/api/chat'),
+              headers: headers,
+              body: jsonEncode({
+                'model': ttsInterpModel.trim(),
+                'stream': false,
+                'messages': [
+                  {'role': 'system', 'content': VoiceInterpreter.modelSystemPrompt},
+                  {'role': 'user', 'content': text},
+                ],
+                'options': {'temperature': 0.2},
+              }))
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+      if (data is! Map) return null;
+      final msg = data['message'];
+      final content = msg is Map ? msg['content'] : null;
+      return content is String ? content : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Model name for the outgoing remote request, applying the optional per-mode
@@ -10190,6 +10338,9 @@ class VoiceAssistant {
   // Set true when a voice "stop" phrase interrupts the current command/reply so
   // the in-flight `_handle` won't speak the (now-cancelled) result.
   bool _stopFlag = false;
+  // Serializes TTS so the interpreter (which may be async in "model" mode) can
+  // never reorder streamed sentences: each _speak links onto the previous one.
+  Future<void> _ttsChain = Future.value();
 
   // UI signals (home-screen indicator).
   final ValueNotifier<VaState> state = ValueNotifier(VaState.idle);
@@ -10569,8 +10720,15 @@ class VoiceAssistant {
   }
 
   void _speak(AppState app, String text) {
-    // TTS (system pyttsx3 or Piper) is synthesized inside the main sidecar.
-    SidecarClient.instance.speak(text, rate: app.ttsRate, volume: app.ttsVolume);
+    // Run text through the interpreter (rules/model), then synthesize in the
+    // sidecar. Chained so "model" mode's async rewrite keeps sentence order; a
+    // stop mid-stream skips whatever is still queued.
+    _ttsChain = _ttsChain.then((_) async {
+      if (_stopFlag) return;
+      final say = await app.interpretForTts(text);
+      if (_stopFlag || say.trim().isEmpty) return;
+      SidecarClient.instance.speak(say, rate: app.ttsRate, volume: app.ttsVolume);
+    }).catchError((_) {});
   }
 
   Future<bool> _confirm(AppState app, VoiceCommand c) async {
@@ -16261,6 +16419,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             desc: app.t('announceReadyDesc'),
             control: evsToggle(app.announceReady, app.setAnnounceReady),
           ),
+          _TtsInterpCard(app),
           evsRow(
             label: app.t('ttsRate'),
             desc: app.t('ttsRateDesc'),
@@ -16379,6 +16538,96 @@ class _ConnCheckRow extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+// Voice interpreter controls (settings TZ §3.2): on/off, rules-vs-model, and
+// the interpreter model name when "model" is chosen. Stateful only for the
+// model-name field's controller.
+class _TtsInterpCard extends StatefulWidget {
+  const _TtsInterpCard(this.app);
+  final AppState app;
+  @override
+  State<_TtsInterpCard> createState() => _TtsInterpCardState();
+}
+
+class _TtsInterpCardState extends State<_TtsInterpCard> {
+  late final TextEditingController _model =
+      TextEditingController(text: widget.app.ttsInterpModel);
+
+  @override
+  void dispose() {
+    _model.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        evsRow(
+          label: app.t('ttsInterp'),
+          desc: app.t('ttsInterpDesc'),
+          control: evsToggle(app.ttsInterpEnabled, app.setTtsInterpEnabled),
+        ),
+        if (app.ttsInterpEnabled) ...[
+          evsRow(
+            stacked: true,
+            label: app.t('ttsInterpMode'),
+            control: evsSegmentedWide<String>(
+              [
+                ('rules', app.t('ttsInterpRules')),
+                ('model', app.t('ttsInterpModel')),
+              ],
+              app.ttsInterpMode,
+              (v) => app.setTtsInterpMode(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+            child: Text(
+              app.ttsInterpMode == 'model'
+                  ? app.t('ttsInterpModelHint')
+                  : app.t('ttsInterpRulesHint'),
+              style: const TextStyle(fontSize: 11.5, color: Color(0xFF6E7280)),
+            ),
+          ),
+          if (app.ttsInterpMode == 'model')
+            evsRow(
+              label: app.t('ttsInterpModelField'),
+              control: SizedBox(
+                width: 160,
+                child: Container(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 13),
+                  alignment: Alignment.centerLeft,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white.withValues(alpha: 0.04),
+                    border: Border.all(color: _evsStroke),
+                  ),
+                  child: TextField(
+                    controller: _model,
+                    onChanged: app.setTtsInterpModel,
+                    style: const TextStyle(
+                        fontSize: 12.5, color: Color(0xFFC0C4D4)),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                      hintText: 'qwen3-interp',
+                      hintStyle:
+                          TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ],
     );
   }
 }
