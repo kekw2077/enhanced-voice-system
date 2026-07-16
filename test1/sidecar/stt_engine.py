@@ -927,6 +927,21 @@ class SttEngine:
         self._channels = []
         self._arbiter = None
 
+    # ---- one-shot offline transcription (network voice commands) -------
+
+    def transcribe_pcm(self, np, pcm_i16: bytes) -> str:
+        """Recognize a COMPLETE utterance handed over as 16 kHz mono int16 PCM.
+
+        No mic capture and no VAD — this is the entry point for voice commands
+        arriving over the network (settings-TZ §14: POST /command/voice). The
+        active engine is loaded on demand by its own `transcribe` (Whisper via
+        `_ensure_model`, GigaAM checks `self._rec`), so a cold call still works
+        even before the greedy warmup has finished. Returns the recognized text
+        (possibly empty when the audio held no speech)."""
+        if not pcm_i16:
+            return ""
+        return self._active.transcribe(np, pcm_i16, final=True)
+
     # ---- multi-mic capture + arbitration (TZ2 block 8.2) --------------
 
     def _start_multi(self, mics: list) -> bool:

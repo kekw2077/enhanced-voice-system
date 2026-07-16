@@ -26,6 +26,8 @@ Protocol (JSON text frames)
     {"type": "app.volume", "process": "Yandex Music.exe",
                            "action": "set"|"increase"|"decrease"|"mute"|"unmute",
                            "value": 0.30}             # 0..1 for set/increase/decrease
+    {"type": "stt.transcribe", "id": str, "audio": "<base64>",
+                               "format": "wav"|"pcm16"}  # one-shot network voice cmd
     {"type": "ping"}
   server -> client:
     {"type": "ready", "capabilities": {"stt": bool, "tts": bool,
@@ -45,6 +47,7 @@ Protocol (JSON text frames)
         "sessions": [{"process": str, "display_name": str, "volume": float|null}]}
     {"type": "app.volume.result",
         "ok": bool, "found": int, "volume": float|null, "process": str, "action": str}
+    {"type": "stt.transcribe.result", "id": str, "text": str, "error"?: str}
     {"type": "pong"}
     {"type": "error", "message": "..."}
 """
@@ -52,16 +55,59 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import io
 import json
 import sys
+import wave
 
 import websockets
 
 import gpu
 from gamemode import GameModeMonitor
 from intent import match
-from stt_engine import SttEngine, log_stage
+from stt_engine import SAMPLE_RATE, SttEngine, log_stage
 from tts_engine import TtsEngine
+
+
+def _decode_to_pcm16k_mono(np, raw: bytes, fmt: str = "wav") -> bytes:
+    """Normalize incoming command audio to the STT engines' native format:
+    16 kHz, mono, signed 16-bit little-endian PCM.
+
+    Accepts a full WAV container (any sample rate / channel count / bit depth)
+    or, when `fmt` is "pcm16", already-raw 16 kHz mono int16. Downmix and
+    resampling use numpy only (linear interpolation) — no extra dependency and
+    no audioop, which is gone in Python 3.13+. Raises on unparseable input so
+    the caller can report an error rather than feed the engine garbage."""
+    if fmt == "pcm16":
+        return raw
+
+    with wave.open(io.BytesIO(raw), "rb") as w:
+        channels = w.getnchannels()
+        width = w.getsampwidth()
+        rate = w.getframerate()
+        frames = w.readframes(w.getnframes())
+
+    if width == 1:  # 8-bit WAV is unsigned; center it before scaling to int16
+        samples = (np.frombuffer(frames, dtype=np.uint8).astype(np.float32) - 128.0) \
+            * 256.0
+    elif width == 2:
+        samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+    elif width == 4:
+        samples = np.frombuffer(frames, dtype=np.int32).astype(np.float32) / 65536.0
+    else:
+        raise ValueError(f"unsupported WAV sample width: {width}")
+
+    if channels > 1:  # average channels down to mono
+        samples = samples.reshape(-1, channels).mean(axis=1)
+
+    if rate != SAMPLE_RATE and samples.size:  # linear resample to 16 kHz
+        duration = samples.size / float(rate)
+        n_out = max(1, int(round(duration * SAMPLE_RATE)))
+        src_idx = np.linspace(0.0, samples.size - 1, num=n_out)
+        samples = np.interp(src_idx, np.arange(samples.size), samples)
+
+    return np.clip(samples, -32768.0, 32767.0).astype("<i2").tobytes()
 
 
 async def _handle(ws, stt: SttEngine, tts: TtsEngine,
@@ -204,6 +250,29 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                         _proc, _act,
                         float(_v) if _v is not None else None))
                 emit({"type": "app.volume.result", **r})
+            elif t == "stt.transcribe":
+                # One-shot offline recognition for a network voice command
+                # (settings-TZ §14). `audio` is base64; `format` is "wav"
+                # (default) or "pcm16" (raw 16 kHz mono int16). Decode +
+                # recognize off the event loop; reply is keyed by `id` so the
+                # Dart side can match it even if several arrive at once.
+                rid = data.get("id")
+                b64 = str(data.get("audio", ""))
+                fmt = str(data.get("format", "wav"))
+
+                def _run_transcribe(b64=b64, fmt=fmt):
+                    import numpy as np
+                    pcm = _decode_to_pcm16k_mono(np, base64.b64decode(b64), fmt)
+                    return stt.transcribe_pcm(np, pcm)
+
+                try:
+                    text = await asyncio.get_event_loop().run_in_executor(
+                        None, _run_transcribe)
+                    emit({"type": "stt.transcribe.result",
+                          "id": rid, "text": text})
+                except Exception as e:  # bad audio / decode failure
+                    emit({"type": "stt.transcribe.result",
+                          "id": rid, "text": "", "error": str(e)})
             elif t == "ping":
                 emit({"type": "pong"})
     except websockets.ConnectionClosed:

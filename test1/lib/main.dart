@@ -1108,6 +1108,10 @@ const Map<String, Map<String, String>> _i18n = {
     'cmdSuggestPrivacy':
         'Имена приложений уходят только в вашу локальную модель. Пути берутся из системы, ИИ их не трогает.',
     'cmdSuggestSaved': 'Добавлено команд: {n}',
+    'cmdOnboardTitle': 'Голосовые команды для ваших приложений',
+    'cmdOnboardBody':
+        'EVS может просмотреть установленные приложения и предложить готовые голосовые команды для их запуска. Список можно отредактировать перед сохранением.',
+    'cmdOnboardYes': 'Подобрать команды',
     'navRemote': 'Телефоны',
     'navRemoteSub': 'удалённый ввод с телефона',
     'remoteCardListener': 'Удалённый ввод',
@@ -2015,6 +2019,10 @@ const Map<String, Map<String, String>> _i18n = {
     'cmdSuggestPrivacy':
         'Only app names go to your local model. Paths come from the system; the AI never touches them.',
     'cmdSuggestSaved': 'Commands added: {n}',
+    'cmdOnboardTitle': 'Voice commands for your apps',
+    'cmdOnboardBody':
+        'EVS can look through your installed apps and suggest ready-made voice commands to launch them. You can edit the list before saving.',
+    'cmdOnboardYes': 'Suggest commands',
     'navRemote': 'Phones',
     'navRemoteSub': 'remote input from a phone',
     'remoteCardListener': 'Remote input',
@@ -4846,6 +4854,10 @@ class AppState extends ChangeNotifier {
   int remoteInputPort = 8770;
   String remoteResponseTarget = 'both'; // desktop_tts | phone_text | both
   List<RemoteDevice> remoteDevices = [];
+  // First-run onboarding for the AI voice-command wizard (new-features Ф1 §1.4).
+  // Set once the offer has been shown so it never nags on later launches — the
+  // wizard stays available on demand from the commands screen.
+  bool commandOnboardingSeen = false;
   // Desktop window/tray/startup preferences (applied by DesktopIntegration).
   bool autostart = false;
   bool minimizeToTray = true;
@@ -5168,6 +5180,7 @@ class AppState extends ChangeNotifier {
     remoteInputEnabled = prefs.getBool('remoteInputEnabled') ?? false;
     remoteInputPort = prefs.getInt('remoteInputPort') ?? 8770;
     remoteResponseTarget = prefs.getString('remoteResponseTarget') ?? 'both';
+    commandOnboardingSeen = prefs.getBool('commandOnboardingSeen') ?? false;
     final rdRaw = prefs.getString('remoteDevices');
     if (rdRaw != null) {
       try {
@@ -5313,6 +5326,7 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('remoteInputEnabled', remoteInputEnabled);
     await prefs.setInt('remoteInputPort', remoteInputPort);
     await prefs.setString('remoteResponseTarget', remoteResponseTarget);
+    await prefs.setBool('commandOnboardingSeen', commandOnboardingSeen);
     await prefs.setString('remoteDevices',
         jsonEncode(remoteDevices.map((d) => d.toJson()).toList()));
     await prefs.setString(
@@ -6375,6 +6389,21 @@ class AppState extends ChangeNotifier {
     voiceCommands.add(c);
     _save();
     notifyListeners();
+  }
+
+  // Whether to offer the AI command-suggestion wizard on this launch (Ф1 §1.4).
+  // Windows-only (the app scan + UserAssist ranking are Windows features), once
+  // ever, and only when the user has no app-launch commands yet — someone who
+  // already set them up doesn't need the onboarding.
+  bool get shouldOfferCommandOnboarding =>
+      io.Platform.isWindows &&
+      !commandOnboardingSeen &&
+      !voiceCommands.any((c) => c.type == VoiceCommandType.app);
+
+  void markCommandOnboardingSeen() {
+    if (commandOnboardingSeen) return;
+    commandOnboardingSeen = true;
+    _save();
   }
 
   void removeVoiceCommand(VoiceCommand c) {
@@ -10659,6 +10688,15 @@ class SidecarClient {
             }
             _volumeWaiters.clear();
             break;
+          case 'stt.transcribe.result':
+            // One-shot network-voice recognition (§14). Keyed by request id so
+            // overlapping phone commands don't cross wires.
+            final id = m['id']?.toString() ?? '';
+            final c = _transcribeWaiters.remove(id);
+            if (c != null && !c.isCompleted) {
+              c.complete((m['text'] as String? ?? '').trim());
+            }
+            break;
           case 'tts.status':
             ttsStatus.value = (
               m['engine'] as String? ?? '',
@@ -10853,6 +10891,12 @@ class SidecarClient {
   final List<Completer<List<Map<String, dynamic>>>> _sessionWaiters = [];
   final List<Completer<Map<String, dynamic>>> _volumeWaiters = [];
 
+  // One-shot transcription waiters (network voice, §14), keyed by request id.
+  // Recognition can be slow (cold model, long clip), so several may be in
+  // flight; the map matches each reply to its caller.
+  final Map<String, Completer<String>> _transcribeWaiters = {};
+  int _transcribeSeq = 0;
+
   // Active per-app audio sessions (for the command-config picker). Empty on
   // timeout or when the sidecar is down.
   Future<List<Map<String, dynamic>>> listAudioSessions() {
@@ -10878,6 +10922,28 @@ class SidecarClient {
     });
     return c.future.timeout(const Duration(seconds: 4),
         onTimeout: () => <String, dynamic>{'ok': false, 'found': 0});
+  }
+
+  // Recognize a complete utterance handed over as base64 audio (a WAV
+  // container, or raw 16 kHz mono int16 when [format] is 'pcm16'). Used by the
+  // network voice endpoint (§14): the phone posts audio, the sidecar decodes +
+  // transcribes it, and we route the text through the normal command pipeline.
+  // Returns '' on timeout, a decode/STT failure, or silence.
+  Future<String> transcribeAudio(String audioBase64,
+      {String format = 'wav'}) {
+    final id = 't${_transcribeSeq++}';
+    final c = Completer<String>();
+    _transcribeWaiters[id] = c;
+    _send({
+      'type': 'stt.transcribe',
+      'id': id,
+      'audio': audioBase64,
+      'format': format,
+    });
+    return c.future.timeout(const Duration(seconds: 30), onTimeout: () {
+      _transcribeWaiters.remove(id);
+      return '';
+    });
   }
 
   void speak(String text, {double rate = 1.0, double volume = 1.0}) =>
@@ -12784,7 +12850,8 @@ class RemoteDevice {
 //   GET  /               -> {ok:true, name:"EVS"}                (discovery)
 //   POST /pair    {code, name?}                 -> {device_id, token}
 //   POST /command/text  (Bearer) {text}         -> {reply}
-//   POST /command/voice (Bearer)                -> 501 (not yet)
+//   POST /command/voice (Bearer) audio/* body   -> {text, reply}
+//        (WAV or raw 16 kHz mono PCM16; or JSON {audio:<base64>, format})
 class RemoteInputServer {
   RemoteInputServer._();
   static final RemoteInputServer instance = RemoteInputServer._();
@@ -12847,6 +12914,14 @@ class RemoteInputServer {
     if (body.trim().isEmpty) return {};
     final d = jsonDecode(body);
     return d is Map ? d.cast<String, dynamic>() : {};
+  }
+
+  Future<List<int>> _readBytes(io.HttpRequest req) async {
+    final chunks = <int>[];
+    await for (final c in req) {
+      chunks.addAll(c);
+    }
+    return chunks;
   }
 
   void _send(io.HttpRequest req, Map<String, dynamic> body, {int status = 200}) {
@@ -12920,8 +12995,56 @@ class RemoteInputServer {
         return;
       }
       if (req.method == 'POST' && path == '/command/voice') {
-        // Audio-in over the network isn't wired to the STT sidecar yet.
-        _send(req, {'error': 'voice_not_supported'}, status: 501);
+        if (!dev.permVoice) {
+          _send(req, {'error': 'forbidden'}, status: 403);
+          return;
+        }
+        // Accept either a raw audio body (Content-Type audio/*, WAV or raw
+        // 16 kHz mono PCM16) or a JSON envelope {audio:<base64>, format}. The
+        // audio is decoded + recognized by the sidecar, then the resulting
+        // text takes the same path as /command/text.
+        final ctype = req.headers.contentType?.mimeType ?? '';
+        String b64;
+        String fmt;
+        if (ctype == 'application/json') {
+          final j = await _readJson(req);
+          b64 = (j['audio'] ?? '').toString();
+          fmt = (j['format'] ?? 'wav').toString();
+        } else {
+          final bytes = await _readBytes(req);
+          if (bytes.isEmpty) {
+            _send(req, {'error': 'empty'}, status: 400);
+            return;
+          }
+          b64 = base64.encode(bytes);
+          // RIFF magic ⇒ WAV; otherwise assume raw 16 kHz mono PCM16.
+          fmt = (bytes.length >= 4 &&
+                  bytes[0] == 0x52 &&
+                  bytes[1] == 0x49 &&
+                  bytes[2] == 0x46 &&
+                  bytes[3] == 0x46)
+              ? 'wav'
+              : 'pcm16';
+        }
+        if (b64.isEmpty) {
+          _send(req, {'error': 'empty'}, status: 400);
+          return;
+        }
+        final text =
+            await SidecarClient.instance.transcribeAudio(b64, format: fmt);
+        if (text.isEmpty) {
+          // Nothing recognized (silence, decode failure, or sidecar down).
+          _send(req, {'error': 'stt_failed', 'text': '', 'reply': ''},
+              status: 422);
+          return;
+        }
+        final reply = await app.runRemoteCommand(text);
+        if (app.remoteResponseTarget != 'phone_text') {
+          final say = await app.interpretForTts(reply);
+          SidecarClient.instance
+              .speak(say, rate: app.ttsRate, volume: app.ttsVolume);
+        }
+        _send(req, {'text': text, 'reply': reply});
         return;
       }
       _send(req, {'error': 'not_found'}, status: 404);
@@ -19718,6 +19841,10 @@ class _ChatScreenState extends State<ChatScreen> {
       if (app.showKeyboardOnLaunch) {
         _inputFocus.requestFocus();
       }
+      // First-run: offer the AI command-suggestion wizard (Ф1 §1.4). Awaited so
+      // it doesn't stack on top of the "what's new" dialog below.
+      await _maybeOfferCommandOnboarding(app);
+      if (!mounted) return;
       final entry = await app.consumeWhatsNew();
       if (!mounted || entry == null) return;
       showDialog(
@@ -19746,6 +19873,52 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
     });
+  }
+
+  // First-launch onboarding for the AI command wizard (Ф1 §1.4). Offers once,
+  // on Windows only, when no app-launch commands exist yet. Accepting opens the
+  // existing suggestion wizard; either choice marks the offer as seen so it
+  // never reappears (the wizard stays reachable from the commands screen).
+  Future<void> _maybeOfferCommandOnboarding(AppState app) async {
+    if (!app.shouldOfferCommandOnboarding) return;
+    app.markCommandOnboardingSeen();
+    final accept = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => _AppDialog(
+        title: Text(app.t('cmdOnboardTitle')),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(app.t('cmdOnboardBody')),
+            const SizedBox(height: 12),
+            Text(
+              app.t('cmdSuggestPrivacy'),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF6E7280)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(app.t('later')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(app.t('cmdOnboardYes')),
+          ),
+        ],
+      ),
+    );
+    if (accept != true || !mounted) return;
+    final n = await showDialog<int>(
+      context: context,
+      builder: (_) => _SuggestCommandsDialog(app),
+    );
+    if (n != null && n > 0 && mounted) {
+      showAppSnackBar(
+          context, app.t('cmdSuggestSaved').replaceAll('{n}', '$n'));
+    }
   }
 
   @override
