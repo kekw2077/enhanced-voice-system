@@ -7785,6 +7785,10 @@ class _Palette {
   final Color sub; // secondary text
   final Color accent; // primary interactive
   final Color stroke; // hairline / border
+  final Color body; // light "body" text (secondary-primary)
+  final Color faint; // muted / tertiary text
+  final Color success; // done / success
+  final Color danger; // error
   final Brightness brightness;
   const _Palette({
     required this.bg,
@@ -7794,6 +7798,10 @@ class _Palette {
     required this.sub,
     required this.accent,
     required this.stroke,
+    required this.body,
+    required this.faint,
+    required this.success,
+    required this.danger,
     required this.brightness,
   });
 }
@@ -7807,6 +7815,10 @@ const _Palette _kDark = _Palette(
   sub: Color(0xFF8A8A95),
   accent: Color(0xFF7C8CF8),
   stroke: Color(0x14FFFFFF),
+  body: Color(0xFFD0D4E2),
+  faint: Color(0xFF6E7280),
+  success: Color(0xFF54E08A),
+  danger: Color(0xFFE05D5D),
   brightness: Brightness.dark,
 );
 
@@ -7819,6 +7831,10 @@ const _Palette _kSteam = _Palette(
   sub: Color(0xFF8F98A0),
   accent: Color(0xFF1B90FF),
   stroke: Color(0xFF335266),
+  body: Color(0xFFC6D4DF),
+  faint: Color(0xFF66707A),
+  success: Color(0xFF8FD14F),
+  danger: Color(0xFFFF6B6B),
   brightness: Brightness.dark,
 );
 
@@ -7832,6 +7848,10 @@ const _Palette _kApple = _Palette(
   sub: Color(0xFF6E6E73),
   accent: Color(0xFF0066CC),
   stroke: Color(0xFFE0E0E0),
+  body: Color(0xFF1D1D1F),
+  faint: Color(0xFF86868B),
+  success: Color(0xFF1E8E3E),
+  danger: Color(0xFFD93025),
   brightness: Brightness.light,
 );
 
@@ -7844,6 +7864,10 @@ const _Palette _kDiscord = _Palette(
   sub: Color(0xFF949BA4),
   accent: Color(0xFF5865F2),
   stroke: Color(0xFF3F4147),
+  body: Color(0xFFDBDEE1),
+  faint: Color(0xFF949BA4),
+  success: Color(0xFF23A55A),
+  danger: Color(0xFFED4245),
   brightness: Brightness.dark,
 );
 
@@ -7857,6 +7881,10 @@ const _Palette _kClaude = _Palette(
   sub: Color(0xFF6C6A64),
   accent: Color(0xFFCC785C),
   stroke: Color(0xFFE6DFD8),
+  body: Color(0xFF3D3D3A),
+  faint: Color(0xFF8E8B82),
+  success: Color(0xFF5DB872),
+  danger: Color(0xFFC64545),
   brightness: Brightness.light,
 );
 
@@ -7883,6 +7911,13 @@ Color _bg(BuildContext c) => _pal(c).bg;
 Color _card(BuildContext c) => _pal(c).card;
 Color _txt(BuildContext c) => _pal(c).txt;
 Color _sub(BuildContext c) => _pal(c).sub;
+Color _body(BuildContext c) => _pal(c).body;
+Color _faint(BuildContext c) => _pal(c).faint;
+Color _accent(BuildContext c) => _pal(c).accent;
+Color _stroke(BuildContext c) => _pal(c).stroke;
+Color _card2(BuildContext c) => _pal(c).card2;
+Color _success(BuildContext c) => _pal(c).success;
+Color _danger(BuildContext c) => _pal(c).danger;
 
 // Liquid Glass was removed — only the standard style ships. Kept as a no-op so
 // the (now dead) glass branches at call sites still compile and render the
@@ -8970,6 +9005,28 @@ const BoxDecoration _evsBgDecoration = BoxDecoration(
     stops: [0.0, 0.45, 1.0],
   ),
 );
+
+// Shell window background: keep the dark radial gradient on dark themes; on the
+// light themes (apple/claude) fall back to the flat themed page background so the
+// whole shell actually reads as light instead of a dark plate.
+BoxDecoration _evsShellBg(BuildContext c) =>
+    _pal(c).brightness == Brightness.dark
+        ? _evsBgDecoration
+        : BoxDecoration(color: _bg(c));
+
+// Left nav rail / sidebar background: dark vertical gradient on dark themes, a
+// flat themed card surface on light.
+BoxDecoration _evsRailBg(BuildContext c) => BoxDecoration(
+      border: Border(right: BorderSide(color: _stroke(c))),
+      gradient: _pal(c).brightness == Brightness.dark
+          ? const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF0B0C14), _evsBgSolid],
+            )
+          : null,
+      color: _pal(c).brightness == Brightness.dark ? null : _card(c),
+    );
 
 // The conic-gradient "bead" logo used across desktop screens.
 // The brand mark: the new logo (assets/icon/icon.png) with a one-shot entrance
@@ -10270,7 +10327,7 @@ class AppUpdater {
           width: 440,
           padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
           decoration: BoxDecoration(
-            color: const Color(0xFF12131C),
+            color: _card2(dctx),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0x1AFFFFFF)),
             boxShadow: const [
@@ -10293,8 +10350,8 @@ class AppUpdater {
                   Expanded(
                     child: Text(
                       '${app.t('updAvailableTitle')} — $availableVersion',
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: _txt(dctx),
                           fontSize: 17,
                           fontWeight: FontWeight.w800),
                     ),
@@ -10344,7 +10401,7 @@ class AppUpdater {
                       Navigator.pop(dctx);
                     },
                     child: Text(app.t('updLater'),
-                        style: const TextStyle(color: Color(0xFF9AA0B4))),
+                        style: TextStyle(color: _sub(dctx))),
                   ),
                   const SizedBox(width: 8),
                   InkWell(
@@ -11898,9 +11955,9 @@ class DesktopHome extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _evsBgSolid,
+      backgroundColor: _bg(context),
       body: Container(
-        decoration: _evsBgDecoration,
+        decoration: _evsShellBg(context),
         child: const Column(
           children: [
             _WindowTitleBar(),
@@ -11939,9 +11996,9 @@ class _DesktopSidebar extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.white.withValues(alpha: 0.042),
-          border: Border.all(color: const Color(0x14FFFFFF)),
+          border: Border.all(color: _stroke(context)),
         ),
-        child: Icon(icon, size: 15, color: const Color(0xFFAAB0C0)),
+        child: Icon(icon, size: 15, color: _sub(context)),
       ),
     );
     return tooltip == null ? btn : Tooltip(message: tooltip, child: btn);
@@ -11953,14 +12010,7 @@ class _DesktopSidebar extends StatelessWidget {
     final convs = app.conversations;
     return Container(
       width: 264,
-      decoration: const BoxDecoration(
-        border: Border(right: BorderSide(color: _evsStroke)),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF0B0C14), _evsBgSolid],
-        ),
-      ),
+      decoration: _evsRailBg(context),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -12112,10 +12162,10 @@ class _DesktopSidebar extends StatelessWidget {
                             : Offset.zero;
                         showChatContextMenu(context, pos, c, app);
                       },
-                      child: const Padding(
-                        padding: EdgeInsets.only(left: 4),
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 4),
                         child: Icon(Icons.more_vert,
-                            size: 16, color: Color(0xFF5A6070)),
+                            size: 16, color: _faint(context)),
                       ),
                     ),
                   ),
@@ -13891,7 +13941,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        evsRow(
+        evsRow(context, 
           label: app.t('remoteEnable'),
           desc: app.t('remoteEnableDesc'),
           control: evsToggle(on, app.setRemoteInputEnabled),
@@ -13907,18 +13957,18 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                   decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: running
-                          ? const Color(0xFF54E08A)
-                          : const Color(0xFFE05D5D))),
+                          ? _success(context)
+                          : _danger(context))),
               const SizedBox(width: 7),
               Text(running ? app.t('remoteServerOn') : app.t('remoteServerOff'),
                   style: TextStyle(
                       fontSize: 12,
                       color: running
-                          ? const Color(0xFF54E08A)
-                          : const Color(0xFFE05D5D))),
+                          ? _success(context)
+                          : _danger(context))),
             ]),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('remotePort'),
             control: SizedBox(
               width: 90,
@@ -13935,8 +13985,8 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 6, 14, 2),
             child: Text(app.t('remoteAddress'),
-                style: const TextStyle(
-                    fontSize: 12.5, color: Color(0xFFD0D4E2))),
+                style: TextStyle(
+                    fontSize: 12.5, color: _body(context))),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
@@ -13945,10 +13995,10 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
               children: [
                 for (final a in _addrs)
                   Text('$a:${app.remoteInputPort}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12.5,
                           fontFamily: 'monospace',
-                          color: Color(0xFF9AA0B4))),
+                          color: _sub(context))),
                 if (_addrs.isEmpty)
                   Text('127.0.0.1:${app.remoteInputPort}',
                       style: const TextStyle(
@@ -13956,7 +14006,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
               ],
             ),
           ),
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('remoteResponse'),
             control: evsSegmentedWide<String>([
@@ -13981,10 +14031,10 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           child: Text(app.t('remoteCardAdd'),
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFFD0D4E2))),
+                  color: _body(context))),
         ),
         if (_pairCode == null)
           Padding(
@@ -14017,15 +14067,15 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(app.t('remotePairCode'),
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF9AA0B4))),
+                          style: TextStyle(
+                              fontSize: 12, color: _sub(context))),
                       const SizedBox(height: 2),
                       SelectableText(_pairCode!,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 2,
-                              color: Colors.white)),
+                              color: _txt(context))),
                       const SizedBox(height: 6),
                       Text(app.t('remotePairHint'),
                           style: const TextStyle(
@@ -14035,12 +14085,12 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                         onTap: _newCode,
                         borderRadius: BorderRadius.circular(8),
                         child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          const Icon(Icons.refresh,
-                              size: 14, color: Color(0xFF9AA0B4)),
+                          Icon(Icons.refresh,
+                              size: 14, color: _sub(context)),
                           const SizedBox(width: 5),
                           Text(app.t('remoteNewCode'),
-                              style: const TextStyle(
-                                  fontSize: 12, color: Color(0xFF9AA0B4))),
+                              style: TextStyle(
+                                  fontSize: 12, color: _sub(context))),
                         ]),
                       ),
                     ],
@@ -14061,10 +14111,10 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           child: Text(app.t('remoteCardDevices'),
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFFD0D4E2))),
+                  color: _body(context))),
         ),
         if (devs.isEmpty)
           Padding(
@@ -14090,16 +14140,16 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Icon(Icons.smartphone, size: 15, color: Color(0xFF9AA0B4)),
+            Icon(Icons.smartphone, size: 15, color: _sub(context)),
             const SizedBox(width: 8),
             Expanded(
               child: Text(d.name.isEmpty ? 'Телефон' : d.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFD0D4E2))),
+                      color: _body(context))),
             ),
             Text(_deviceStatus(d),
                 style: const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
@@ -14141,17 +14191,17 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
           borderRadius: BorderRadius.circular(7),
           color: on ? const Color(0x2654E08A) : Colors.white.withValues(alpha: 0.04),
           border: Border.all(
-              color: on ? const Color(0xFF54E08A) : _evsStroke),
+              color: on ? _success(context) : _evsStroke),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(on ? Icons.check : Icons.close,
               size: 12,
-              color: on ? const Color(0xFF54E08A) : const Color(0xFF6E7280)),
+              color: on ? _success(context) : const Color(0xFF6E7280)),
           const SizedBox(width: 4),
           Text(label,
               style: TextStyle(
                   fontSize: 12,
-                  color: on ? const Color(0xFFD0D4E2) : const Color(0xFF6E7280))),
+                  color: on ? _body(context) : const Color(0xFF6E7280))),
         ]),
       ),
     );
@@ -14178,7 +14228,7 @@ class _RemoteField extends StatelessWidget {
         controller: controller,
         onChanged: onChanged,
         keyboardType: TextInputType.number,
-        style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+        style: TextStyle(fontSize: 12.5, color: _body(context)),
         decoration: const InputDecoration(
           isDense: true,
           border: InputBorder.none,
@@ -14260,9 +14310,9 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
   Widget build(BuildContext context) {
     final sugg = _sugg;
     return AlertDialog(
-      backgroundColor: const Color(0xFF15151E),
+      backgroundColor: _card2(context),
       title: Text(app.t('cmdSuggestTitle'),
-          style: const TextStyle(color: Colors.white, fontSize: 17)),
+          style: TextStyle(color: _txt(context), fontSize: 17)),
       content: SizedBox(
         width: 470,
         height: 470,
@@ -14276,8 +14326,8 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
                   const SizedBox(height: 14),
                   Text(app.t('cmdSuggestScanning'),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Color(0xFF9AA0B4), fontSize: 13)),
+                      style: TextStyle(
+                          color: _sub(context), fontSize: 13)),
                 ]),
               )
             : sugg.isEmpty
@@ -14363,12 +14413,12 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
               child: Text(s.program.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFD0D4E2))),
+                      color: _body(context))),
             ),
-            if (s.usage > 0) _badge(app.t('cmdSuggestFreq'), const Color(0xFF54E08A)),
+            if (s.usage > 0) _badge(app.t('cmdSuggestFreq'), _success(context)),
             if (isStore) _badge('Store', const Color(0xFF7BA0E0)),
           ]),
           Padding(
@@ -14376,7 +14426,7 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
             child: TextField(
               controller: _ctrls[s],
               onChanged: (v) => _onEdit(s, v),
-              style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+              style: TextStyle(fontSize: 12.5, color: _body(context)),
               decoration: InputDecoration(
                 isDense: true,
                 filled: true,
@@ -14406,7 +14456,7 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
               isStore ? 'Microsoft Store' : s.program.value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF5A6070)),
+              style: TextStyle(fontSize: 11, color: _faint(context)),
             ),
           ),
         ],
@@ -14575,7 +14625,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF15151E),
+      backgroundColor: _card2(context),
       titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
       contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
       title: Row(children: [
@@ -14583,13 +14633,13 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           IconButton(
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
-            icon: const Icon(Icons.arrow_back, color: Colors.white70, size: 20),
+            icon: Icon(Icons.arrow_back, color: _txt(context), size: 20),
             onPressed: () => setState(() => _step -= 1),
           ),
         if (_step > 0) const SizedBox(width: 8),
         Expanded(
           child: Text(_stepTitle(),
-              style: const TextStyle(color: Colors.white, fontSize: 17)),
+              style: TextStyle(color: _txt(context), fontSize: 17)),
         ),
       ]),
       content: SizedBox(width: 380, child: _stepBody()),
@@ -14633,12 +14683,12 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           Row(children: [
             Expanded(
               child: Text(app.t('volPickApp'),
-                  style: const TextStyle(
-                      fontSize: 13, color: Color(0xFFD0D4E2))),
+                  style: TextStyle(
+                      fontSize: 13, color: _body(context))),
             ),
             IconButton(
               tooltip: app.t('refreshModelsBtn'),
-              icon: const Icon(Icons.refresh, size: 18, color: Color(0xFF9AA0B4)),
+              icon: Icon(Icons.refresh, size: 18, color: _sub(context)),
               onPressed: () {
                 setState(() => _sessions = null);
                 _loadSessions();
@@ -14672,7 +14722,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           ),
           const SizedBox(height: 8),
           Text(app.t('volAction'),
-              style: const TextStyle(fontSize: 12.5, color: Color(0xFF9AA0B4))),
+              style: TextStyle(fontSize: 12.5, color: _sub(context))),
           const SizedBox(height: 6),
           Wrap(
             spacing: 6,
@@ -14685,7 +14735,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                   onSelected: (_) => setState(() => _avAction = a.$1),
                   backgroundColor: const Color(0xFF20202B),
                   selectedColor: const Color(0xFF3A3550),
-                  labelStyle: const TextStyle(color: Color(0xFFD0D4E2)),
+                  labelStyle: TextStyle(color: _body(context)),
                 ),
             ],
           ),
@@ -14697,20 +14747,20 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
             Row(children: [
               Expanded(
                 child: Text(app.t('volDefault'),
-                    style: const TextStyle(
-                        fontSize: 12.5, color: Color(0xFFD0D4E2))),
+                    style: TextStyle(
+                        fontSize: 12.5, color: _body(context))),
               ),
               SizedBox(
                 width: 80,
                 child: TextField(
                   controller: _avDefaultCtrl,
                   keyboardType: TextInputType.number,
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+                  style: TextStyle(fontSize: 12.5, color: _body(context)),
                   decoration: InputDecoration(
                     isDense: true,
                     hintText: app.t('llmDefaultHint'),
                     hintStyle:
-                        const TextStyle(fontSize: 12, color: Color(0xFF5A6070)),
+                        TextStyle(fontSize: 12, color: _faint(context)),
                     filled: true,
                     fillColor: Colors.white.withValues(alpha: 0.04),
                     border: OutlineInputBorder(
@@ -14763,8 +14813,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                 Text(display.isNotEmpty ? display : process,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13, color: Color(0xFFD0D4E2))),
+                    style: TextStyle(
+                        fontSize: 13, color: _body(context))),
                 Text(process,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -14775,7 +14825,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           ),
           if (vol != null)
             Text('${(vol * 100).round()}%',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFF9AA0B4))),
+                style: TextStyle(fontSize: 11.5, color: _sub(context))),
         ]),
       ),
     );
@@ -14874,7 +14924,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
               isDense: true,
               prefixIcon: const Icon(Icons.search, size: 18, color: Color(0xFF7A8090)),
               hintText: app.t('cmdWizSearch'),
-              hintStyle: const TextStyle(color: Color(0xFF5A6070), fontSize: 13),
+              hintStyle: TextStyle(color: _faint(context), fontSize: 13),
             ),
             onChanged: (v) => setState(() => _progFilter = v.toLowerCase()),
           ),
@@ -14912,8 +14962,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                           title: Text(p.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Color(0xFFD0D4E2), fontSize: 13)),
+                              style: TextStyle(
+                                  color: _body(context), fontSize: 13)),
                           onTap: () => _chooseValue(p.value, p.name),
                         );
                       },
@@ -14932,7 +14982,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         TextField(
           controller: _urlCtrl,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: _txt(context)),
           decoration: const InputDecoration(hintText: 'https://…'),
           onSubmitted: (_) => _confirmUrl(),
         ),
@@ -14984,7 +15034,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                 _valueLabel.isNotEmpty ? _valueLabel : _value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Color(0xFFB8BCCB), fontSize: 12.5),
+                style: TextStyle(color: _sub(context), fontSize: 12.5),
               ),
             ),
           ]),
@@ -14993,7 +15043,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         TextField(
           controller: _phraseCtrl,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: _txt(context)),
           decoration: InputDecoration(
             labelText: app.t('cmdWizPhrase'),
             hintText: app.t('cmdWizPhraseHint'),
@@ -15004,7 +15054,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         const SizedBox(height: 12),
         TextField(
           controller: _speakCtrl,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: _txt(context)),
           decoration: InputDecoration(
             labelText: app.t('cmdWizSpeak'),
             hintText: app.t('cmdWizSpeakHint'),
@@ -15027,19 +15077,19 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           color: Colors.white.withValues(alpha: 0.04),
-          border: Border.all(color: const Color(0x14FFFFFF)),
+          border: Border.all(color: _stroke(context)),
         ),
         child: Row(children: [
           Icon(icon, size: 19, color: const Color(0xFF8A7BE0)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(label,
-                style: const TextStyle(
-                    color: Color(0xFFD0D4E2),
+                style: TextStyle(
+                    color: _body(context),
                     fontSize: 14,
                     fontWeight: FontWeight.w600)),
           ),
-          const Icon(Icons.chevron_right, size: 18, color: Color(0xFF5A6070)),
+          Icon(Icons.chevron_right, size: 18, color: _faint(context)),
         ]),
       ),
     );
@@ -15145,7 +15195,7 @@ class _SttTestCardState extends State<_SttTestCard> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
                     color: Colors.white.withValues(alpha: 0.03),
-                    border: Border.all(color: const Color(0x14FFFFFF)),
+                    border: Border.all(color: _stroke(context)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -15168,21 +15218,21 @@ class _SttTestCardState extends State<_SttTestCard> {
                       ],
                       if (_final.isEmpty && _partial.isEmpty)
                         Text(app.t('sttTestHint'),
-                            style: const TextStyle(
-                                color: Color(0xFF5A6070), fontSize: 13)),
+                            style: TextStyle(
+                                color: _faint(context), fontSize: 13)),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
                 Row(children: [
-                  evsGhostButton(
+                  evsGhostButton(context, 
                     _testing ? app.t('sttTestStop') : app.t('sttTestStart'),
                     _testing ? Icons.stop : Icons.mic,
                     onTap: () => _testing ? _stop() : _start(),
                   ),
                   if (_final.isNotEmpty || _partial.isNotEmpty) ...[
                     const SizedBox(width: 8),
-                    evsGhostButton(
+                    evsGhostButton(context, 
                       app.t('sttTestClear'),
                       Icons.clear,
                       onTap: _clear,
@@ -15240,13 +15290,13 @@ class _WebSearchCardState extends State<_WebSearchCard> {
         controller: c,
         onChanged: onChanged,
         obscureText: true,
-        style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+        style: TextStyle(fontSize: 12.5, color: _body(context)),
         decoration: InputDecoration(
           isDense: true,
           border: InputBorder.none,
           contentPadding: EdgeInsets.zero,
           hintText: hint,
-          hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+          hintStyle: TextStyle(fontSize: 12.5, color: _faint(context)),
         ),
       ),
     );
@@ -15438,7 +15488,7 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
                   default:
                     return ParticleSphere(
                       size: 190,
-                      color: Colors.white,
+                      color: _accent(context),
                       soundLevel: _lvl,
                     );
                 }
@@ -15459,10 +15509,10 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
           const SizedBox(width: 8),
           Expanded(
             child: Text(app.t('wsSimVoice'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFD0D4E2))),
+                    color: _body(context))),
           ),
           evsToggle(_simulate, (v) {
             setState(() => _simulate = v);
@@ -15503,7 +15553,7 @@ class _VizStyleTile extends StatelessWidget {
               : Colors.white.withValues(alpha: 0.03),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: selected ? accent : const Color(0x14FFFFFF),
+            color: selected ? accent : _stroke(context),
             width: selected ? 1.5 : 1,
           ),
         ),
@@ -15515,7 +15565,7 @@ class _VizStyleTile extends StatelessWidget {
                   fontSize: 12.5,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   color: selected
-                      ? const Color(0xFFD0D4E2)
+                      ? _body(context)
                       : const Color(0xFF8890A8))),
         ]),
       ),
@@ -15622,7 +15672,7 @@ class _DeviceSelector extends StatelessWidget {
           children: [
             const SizedBox(height: 12),
             Text(app.t('deviceLabel'),
-                style: const TextStyle(color: Color(0xFF9AA0B0), fontSize: 11)),
+                style: TextStyle(color: _sub(context), fontSize: 11)),
             const SizedBox(height: 6),
             evsSegmentedWide<String>(
               [
@@ -15696,8 +15746,8 @@ class _DetailDisclosure extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(detail,
-                style: const TextStyle(
-                    color: Color(0xFF9AA0B0), fontSize: 12, height: 1.45)),
+                style: TextStyle(
+                    color: _sub(context), fontSize: 12, height: 1.45)),
           ),
       ],
     );
@@ -15813,12 +15863,12 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: const Color(0xFF15151E),
+            color: _card2(context),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: selected
                   ? const Color(0x668A7BE0)
-                  : const Color(0x14FFFFFF),
+                  : _stroke(context),
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -15836,8 +15886,8 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                         : const Color(0xFF6E7280)),
                 const SizedBox(width: 10),
                 Text(name,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: _txt(context),
                         fontSize: 15,
                         fontWeight: FontWeight.w700)),
                 const Spacer(),
@@ -15857,8 +15907,8 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
               ]),
               const SizedBox(height: 6),
               Text(desc,
-                  style: const TextStyle(
-                      color: Color(0xFF9AA0B0), fontSize: 12)),
+                  style: TextStyle(
+                      color: _sub(context), fontSize: 12)),
               _DetailDisclosure(
                 open: _expanded.contains(engine),
                 detail: app.t(
@@ -15884,8 +15934,8 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
               if (engine == 'whisper' && selected) ...[
                 const SizedBox(height: 12),
                 Text(app.t('engWhisperSize'),
-                    style: const TextStyle(
-                        color: Color(0xFF9AA0B0), fontSize: 11)),
+                    style: TextStyle(
+                        color: _sub(context), fontSize: 11)),
                 const SizedBox(height: 6),
                 evsSegmentedWide<String>(
                   const [('tiny', 'tiny'), ('base', 'base'), ('small', 'small')],
@@ -15981,10 +16031,10 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
     final tile = Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF15151E),
+        color: _card2(context),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: active ? const Color(0x5534D399) : const Color(0x14FFFFFF),
+            color: active ? const Color(0x5534D399) : _stroke(context),
             width: active ? 1.5 : 1),
       ),
       child: child,
@@ -15998,8 +16048,8 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
     return Row(children: [
       Expanded(
           child: Text(name,
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: _txt(context),
                   fontSize: 15,
                   fontWeight: FontWeight.w700))),
       if (status != null)
@@ -16030,7 +16080,7 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
               app.t('voiceSystemName'), active ? app.t('engActive') : null),
           const SizedBox(height: 6),
           Text(app.t('voiceSystemDesc'),
-              style: const TextStyle(color: Color(0xFF9AA0B0), fontSize: 12)),
+              style: TextStyle(color: _sub(context), fontSize: 12)),
         ],
       ),
     );
@@ -16061,7 +16111,7 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
           _titleRow(spec.name, status),
           const SizedBox(height: 6),
           Text(app.t(spec.descKey),
-              style: const TextStyle(color: Color(0xFF9AA0B0), fontSize: 12)),
+              style: TextStyle(color: _sub(context), fontSize: 12)),
           const SizedBox(height: 4),
           Text('~$sizeMb ${app.t('mbShort')}',
               style: const TextStyle(color: Color(0xFF6E7280), fontSize: 11)),
@@ -16078,8 +16128,8 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
                 ),
               ),
               IconButton(
-                  icon: const Icon(Icons.close,
-                      size: 18, color: Color(0xFF9AA0B0)),
+                  icon: Icon(Icons.close,
+                      size: 18, color: _sub(context)),
                   tooltip: app.t('cancelDownload'),
                   onPressed: () => app.cancelAssetDownload(spec.id)),
             ])
@@ -16224,9 +16274,9 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF15151E),
+        color: _card2(context),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x14FFFFFF)),
+        border: Border.all(color: _stroke(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -16234,8 +16284,8 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
           Row(children: [
             Expanded(
                 child: Text(spec.name,
-                    style: const TextStyle(
-                        color: Colors.white,
+                    style: TextStyle(
+                        color: _txt(context),
                         fontSize: 15,
                         fontWeight: FontWeight.w700))),
             Container(
@@ -16252,7 +16302,7 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
           ]),
           const SizedBox(height: 6),
           Text(app.t(spec.descKey),
-              style: const TextStyle(color: Color(0xFF9AA0B0), fontSize: 12)),
+              style: TextStyle(color: _sub(context), fontSize: 12)),
           const SizedBox(height: 4),
           Text(
               '~$sizeMb ${app.t('mbShort')} · ~${spec.ramMb} ${app.t('mdlRamShort')}',
@@ -16270,8 +16320,8 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
                 ),
               ),
               IconButton(
-                  icon: const Icon(Icons.close,
-                      size: 18, color: Color(0xFF9AA0B0)),
+                  icon: Icon(Icons.close,
+                      size: 18, color: _sub(context)),
                   tooltip: app.t('cancelDownload'),
                   onPressed: () => app.cancelAssetDownload(spec.id)),
             ])
@@ -16342,7 +16392,7 @@ class _DenoiseSelectorState extends State<_DenoiseSelector> {
               const SizedBox(height: 8),
               Text(desc,
                   style:
-                      const TextStyle(color: Color(0xFF9AA0B0), fontSize: 12)),
+                      TextStyle(color: _sub(context), fontSize: 12)),
               _DetailDisclosure(
                 open: _open,
                 detail: app.t(mode == 'off'
@@ -16432,18 +16482,18 @@ class _MultiMicCardState extends State<_MultiMicCard> {
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF15151E),
+        color: _card2(context),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
             color:
-                active ? const Color(0x5534D399) : const Color(0x14FFFFFF)),
+                active ? const Color(0x5534D399) : _stroke(context)),
       ),
       child: Column(children: [
         Row(children: [
           Expanded(
               child: Text(d.label,
-                  style: const TextStyle(
-                      color: Colors.white,
+                  style: TextStyle(
+                      color: _txt(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w600))),
           evsToggle(active, (v) => app.toggleExtraMic(d.id, d.label, v)),
@@ -16535,23 +16585,23 @@ class _GameModeCard extends StatelessWidget {
                       reason == 'vram'
                           ? app.t('gmReasonVram')
                           : app.t('gmReasonFullscreen'),
-                      style: const TextStyle(
-                          color: Color(0xFF9AA0B0), fontSize: 11)),
+                      style: TextStyle(
+                          color: _sub(context), fontSize: 11)),
                 ]),
               ),
-            evsRow(
+            evsRow(context, 
               label: app.t('gmFullscreen'),
               desc: app.t('gmFullscreenDesc'),
               control: evsToggle(
                   app.gameModeFullscreen, (v) => app.setGameModeFullscreen(v)),
             ),
-            evsRow(
+            evsRow(context, 
               label: app.t('gmVram'),
               desc: app.t('gmVramDesc'),
               control: evsToggle(app.gameModeVram, (v) => app.setGameModeVram(v)),
             ),
             if (app.gameModeVram) ...[
-              evsRow(
+              evsRow(context, 
                 label: app.t('gmVramEnter'),
                 control: evsSlider(
                   value: app.gameModeVramEnter.clamp(50, 99),
@@ -16563,7 +16613,7 @@ class _GameModeCard extends StatelessWidget {
                       v, app.gameModeVramExit),
                 ),
               ),
-              evsRow(
+              evsRow(context, 
                 label: app.t('gmVramExit'),
                 control: evsSlider(
                   value: app.gameModeVramExit
@@ -16577,13 +16627,13 @@ class _GameModeCard extends StatelessWidget {
                 ),
               ),
             ],
-            evsRow(
+            evsRow(context, 
               label: app.t('gmNotify'),
               desc: app.t('gmNotifyDesc'),
               control:
                   evsToggle(app.gameModeNotify, (v) => app.setGameModeNotify(v)),
             ),
-            evsRow(
+            evsRow(context, 
               stacked: true,
               label: app.t('gmExclusions'),
               desc: app.t('gmExclusionsDesc'),
@@ -16714,7 +16764,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         orElse: () => items.first);
     return PopupMenuButton<String>(
       tooltip: '',
-      color: const Color(0xFF1C1C26),
+      color: _card(context),
       onSelected: (id) {
         final label = items
             .firstWhere((e) => e.$1 == id, orElse: () => ('', ''))
@@ -16729,10 +16779,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           PopupMenuItem<String>(
             value: it.$1,
             child: Text(it.$2,
-                style: const TextStyle(color: Color(0xFFD0D4E2), fontSize: 13)),
+                style: TextStyle(color: _body(context), fontSize: 13)),
           ),
       ],
-      child: evsSelectButton(current.$2, minWidth: 120),
+      child: evsSelectButton(context, current.$2, minWidth: 120),
     );
   }
 
@@ -16779,9 +16829,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         if (!didPop) _handleExit(app);
       },
       child: Scaffold(
-        backgroundColor: _evsBgSolid,
+        backgroundColor: _bg(context),
         body: Container(
-          decoration: _evsBgDecoration,
+          decoration: _evsShellBg(context),
           child: Column(
             children: [
               const _WindowTitleBar(),
@@ -16814,9 +16864,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           : Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFF15151E),
-                border: Border(top: BorderSide(color: _evsStroke)),
+              decoration: BoxDecoration(
+                color: _card2(context),
+                border: const Border(top: BorderSide(color: _evsStroke)),
               ),
               child: Row(
                 children: [
@@ -16826,7 +16876,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   Expanded(
                     child: Text(app.t('settingsUnsaved'),
                         style:
-                            const TextStyle(color: Colors.white, fontSize: 13)),
+                            TextStyle(color: _txt(context), fontSize: 13)),
                   ),
                   if (app.settingsApplying)
                     const SizedBox(
@@ -16837,7 +16887,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     TextButton(
                       onPressed: () => _revertSettings(app),
                       child: Text(app.t('cancel'),
-                          style: const TextStyle(color: Color(0xFF9AA0B0))),
+                          style: TextStyle(color: _sub(context))),
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
@@ -16901,7 +16951,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               width: 440,
               padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF12131C),
+                color: _card2(context),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: const Color(0x1AFFFFFF)),
                 boxShadow: const [
@@ -16922,8 +16972,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       Expanded(
                         child: Text(
                           app.t('settingsExitTitle'),
-                          style: const TextStyle(
-                              color: Colors.white,
+                          style: TextStyle(
+                              color: _txt(context),
                               fontSize: 17,
                               fontWeight: FontWeight.w800),
                         ),
@@ -16941,12 +16991,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       TextButton(
                         onPressed: () => Navigator.pop(dctx, 'stay'),
                         child: Text(app.t('settingsExitStay'),
-                            style: const TextStyle(color: Color(0xFF9AA0B4))),
+                            style: TextStyle(color: _sub(context))),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(dctx, 'discard'),
                         child: Text(app.t('settingsExitDiscard'),
-                            style: const TextStyle(color: Color(0xFF9AA0B4))),
+                            style: TextStyle(color: _sub(context))),
                       ),
                       const SizedBox(width: 8),
                       InkWell(
@@ -16991,14 +17041,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   Widget _nav(AppState app) {
     return Container(
       width: 244,
-      decoration: const BoxDecoration(
-        border: Border(right: BorderSide(color: _evsStroke)),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF0B0C14), _evsBgSolid],
-        ),
-      ),
+      decoration: _evsRailBg(context),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -17016,21 +17059,21 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: Colors.white.withValues(alpha: 0.042),
-                        border: Border.all(color: const Color(0x14FFFFFF)),
+                        border: Border.all(color: _stroke(context)),
                       ),
-                      child: const Icon(Icons.arrow_back,
-                          size: 15, color: Color(0xFF9AA0B0)),
+                      child: Icon(Icons.arrow_back,
+                          size: 15, color: _sub(context)),
                     ),
                   ),
                   const SizedBox(width: 9),
                   const _EvsLogoMark(size: 28),
                   const SizedBox(width: 9),
-                  const Text('EVS',
+                  Text('EVS',
                       style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.5,
-                          color: Colors.white)),
+                          color: _txt(context))),
                 ],
               ),
             ),
@@ -17124,11 +17167,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             child: Row(
               children: [
                 Text(app.t(s.$2),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 21,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.3,
-                        color: Colors.white)),
+                        color: _txt(context))),
                 const SizedBox(width: 10),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -17274,7 +17317,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.language,
         title: app.t('cardLangLoc'),
         rows: [
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('interfaceLanguage'),
             desc: app.t('interfaceLanguageDesc'),
@@ -17284,7 +17327,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               (v) => app.setLang(v),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
@@ -17301,7 +17344,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.light_mode_outlined,
         title: app.t('cardAppearance'),
         rows: [
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('themeMode'),
             control: evsSegmentedWide<AppThemeMode>(
@@ -17316,7 +17359,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               (v) => app.setThemeMode(v),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('fontSize'),
             desc: app.t('fontSizeDesc'),
             control: SizedBox(
@@ -17353,7 +17396,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           icon: Icons.desktop_windows_outlined,
           title: app.t('cardStartup'),
           rows: [
-            evsRow(
+            evsRow(context, 
               label: app.t('autostart'),
               desc: app.t('autostartDesc'),
               control: evsToggle(app.autostart, (v) {
@@ -17361,18 +17404,18 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 DesktopIntegration.instance.applyAutostart(v);
               }),
             ),
-            evsRow(
+            evsRow(context, 
               label: app.t('minimizeToTray'),
               desc: app.t('minimizeToTrayDesc'),
               control:
                   evsToggle(app.minimizeToTray, (v) => app.setMinimizeToTray(v)),
             ),
-            evsRow(
+            evsRow(context, 
               label: app.t('closeToTray'),
               desc: app.t('closeToTrayDesc'),
               control: evsToggle(app.closeToTray, (v) => app.setCloseToTray(v)),
             ),
-            evsRow(
+            evsRow(context, 
               label: app.t('globalHotkey'),
               desc: app.t('globalHotkeyDesc'),
               control: const Row(
@@ -17406,10 +17449,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       SidecarStatus.connected => (
           '${app.t('sidecarConnected')}'
               '${SidecarClient.instance.sttAvailable ? ' · ${app.sttSidecarEngine == 'gigaam' ? app.t('engGigaamName') : app.t('engWhisperName')}' : ''}',
-          const Color(0xFF54E08A)
+          _success(context)
         ),
       SidecarStatus.starting => (app.t('sidecarStarting'), const Color(0xFFE0C07A)),
-      SidecarStatus.stopped => (app.t('sidecarStopped'), const Color(0xFFE05D5D)),
+      SidecarStatus.stopped => (app.t('sidecarStopped'), _danger(context)),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -17456,7 +17499,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         valueListenable: ComponentManager.instance.statusOf('sidecar'),
         builder: (_, cs, __) {
           if (ss == SidecarStatus.connected) {
-            return _compBadge(app.t('componentReady'), const Color(0xFF54E08A));
+            return _compBadge(app.t('componentReady'), _success(context));
           }
           switch (cs.state) {
             case ComponentState.downloading:
@@ -17469,7 +17512,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       child: LinearProgressIndicator(
                         value: cs.progress > 0 ? cs.progress : null,
                         minHeight: 6,
-                        backgroundColor: const Color(0x14FFFFFF),
+                        backgroundColor: _stroke(context),
                         valueColor: const AlwaysStoppedAnimation(_evsGMid),
                       ),
                     ),
@@ -17485,16 +17528,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   const Color(0xFFE0C07A));
             case ComponentState.ready:
               return _compBadge(
-                  app.t('componentReady'), const Color(0xFF54E08A));
+                  app.t('componentReady'), _success(context));
             case ComponentState.error:
-              return evsGhostButton(app.t('retry'), Icons.refresh,
+              return evsGhostButton(context, app.t('retry'), Icons.refresh,
                   onTap: () => _downloadSidecar(app));
             case ComponentState.absent:
               final info = ComponentManager.instance.infoOf('sidecar');
               final mb = info != null && info.size > 0
                   ? ' (${(info.size / 1048576).round()} MB)'
                   : '';
-              return evsGhostButton('${app.t('download')}$mb', Icons.download,
+              return evsGhostButton(context, '${app.t('download')}$mb', Icons.download,
                   onTap: () => _downloadSidecar(app));
           }
         },
@@ -17530,7 +17573,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       child: LinearProgressIndicator(
                         value: p > 0 ? p : null,
                         minHeight: 6,
-                        backgroundColor: const Color(0x14FFFFFF),
+                        backgroundColor: _stroke(context),
                         valueColor: const AlwaysStoppedAnimation(_evsGMid),
                       ),
                     ),
@@ -17543,20 +17586,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ),
             );
           case UpdateStatus.ready:
-            return evsGhostButton(
+            return evsGhostButton(context, 
                 '${app.t('updRestart')} · ${AppUpdater.instance.availableVersion}',
                 Icons.restart_alt,
                 onTap: () => AppUpdater.instance.applyAndRestart());
           case UpdateStatus.upToDate:
             return InkWell(
               onTap: () => AppUpdater.instance.checkAndDownload(),
-              child: _compBadge(app.t('updUpToDate'), const Color(0xFF54E08A)),
+              child: _compBadge(app.t('updUpToDate'), _success(context)),
             );
           case UpdateStatus.error:
-            return evsGhostButton(app.t('retry'), Icons.refresh,
+            return evsGhostButton(context, app.t('retry'), Icons.refresh,
                 onTap: () => AppUpdater.instance.checkAndDownload());
           case UpdateStatus.idle:
-            return evsGhostButton(app.t('checkUpdate'), Icons.refresh,
+            return evsGhostButton(context, app.t('checkUpdate'), Icons.refresh,
                 onTap: () => AppUpdater.instance.checkAndDownload());
         }
       },
@@ -17572,7 +17615,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(color: const Color(0x14FFFFFF)),
+        border: Border.all(color: _stroke(context)),
       ),
       child: TextField(
         controller: c,
@@ -17581,7 +17624,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         style: TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFFD0D4E2),
+            color: _body(context),
             fontFamily: mono ? 'monospace' : null),
         decoration: const InputDecoration(
             isDense: true,
@@ -17608,13 +17651,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         child: TextField(
           controller: c,
           onChanged: onChanged,
-          style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+          style: TextStyle(fontSize: 12.5, color: _body(context)),
           decoration: InputDecoration(
             isDense: true,
             border: InputBorder.none,
             contentPadding: EdgeInsets.zero,
             hintText: hintText,
-            hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+            hintStyle: TextStyle(fontSize: 12.5, color: _faint(context)),
           ),
         ),
       );
@@ -17628,16 +17671,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: _evsStroke),
-              color: Colors.white.withValues(alpha: 0.04),
+              color: _stroke(context),
             ),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.bookmark_add_outlined,
-                  size: 14, color: Color(0xFF9AA0B4)),
+              Icon(Icons.bookmark_add_outlined,
+                  size: 14, color: _sub(context)),
               const SizedBox(width: 5),
               Text(app.t('saveServerBtn'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11.5,
-                      color: Color(0xFF9AA0B4),
+                      color: _sub(context),
                       fontWeight: FontWeight.w600)),
             ]),
           ),
@@ -17670,7 +17713,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         fontSize: 11.5,
-                        color: active ? accent : const Color(0xFFB8BCCB),
+                        color: active ? accent : _sub(context),
                         fontWeight: FontWeight.w600)),
               ),
               const SizedBox(width: 5),
@@ -17715,12 +17758,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     return [
       _CardSpec(
         evsCard(context, icon: Icons.bolt_outlined, title: app.t('cardCmdExec'), rows: [
-          evsRow(
+          evsRow(context, 
             label: app.t('cmdAllow'),
             desc: app.t('cmdAllowDesc'),
             control: evsToggle(app.cmdEnabled, app.setCmdEnabled),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('chatToggle'),
             desc: app.t('chatToggleDesc'),
             control: evsToggle(app.chatEnabled, app.setChatEnabled),
@@ -17730,7 +17773,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ),
       _CardSpec(evsCard(context,
           icon: Icons.schedule, title: app.t('cardCmdRecognition'), rows: [
-        evsRow(
+        evsRow(context, 
           stacked: true,
           label: app.t('cmdMode'),
           desc: app.t('cmdModeDesc'),
@@ -17740,7 +17783,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             ('first', app.t('cmdModeFirst')),
           ], app.cmdMode, app.setCmdMode),
         ),
-        evsRow(
+        evsRow(context, 
           label: app.t('cmdActivator'),
           desc: app.t('cmdActivatorDesc'),
           control: SizedBox(
@@ -17748,7 +17791,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               child: _inlineField(_activatorCtrl,
                   mono: true, onChanged: (v) => app.setWakeWord(v))),
         ),
-        evsRow(
+        evsRow(context, 
           stacked: true,
           label: app.t('cmdStopWords'),
           desc: app.t('cmdStopWordsDesc'),
@@ -17758,7 +17801,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(evsCard(context,
           icon: Icons.shield_outlined, title: app.t('cardSecurity'), rows: [
-        evsRow(
+        evsRow(context, 
           label: app.t('cmdThreshold'),
           desc: app.t('cmdThresholdDesc'),
           control: evsSlider(
@@ -17770,7 +17813,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             onChanged: (v) => app.setCmdThreshold(v / 100),
           ),
         ),
-        evsRow(
+        evsRow(context, 
           stacked: true,
           label: app.t('cmdConfirm'),
           control: evsSegmentedWide<String>([
@@ -17832,8 +17875,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   Widget _cmdRow(AppState app, VoiceCommand c) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0x09FFFFFF)))),
+      decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: _stroke(context)))),
       child: Row(
         children: [
           Expanded(
@@ -17843,10 +17886,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   child: Text(c.phrase,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFFD0D4E2))),
+                          color: _body(context))),
                 ),
                 if (c.speakPhrase.trim().isNotEmpty)
                   Padding(
@@ -17893,8 +17936,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: Colors.white.withValues(alpha: 0.06)),
-              child: const Icon(Icons.edit_outlined,
-                  size: 13, color: Color(0xFF9AA0B4)),
+              child: Icon(Icons.edit_outlined,
+                  size: 13, color: _sub(context)),
             ),
           ),
           InkResponse(
@@ -17919,11 +17962,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        backgroundColor: const Color(0xFF15151E),
+        backgroundColor: _card2(context),
         title: Text(app.t('cmdRunTitle'),
-            style: const TextStyle(color: Colors.white, fontSize: 16)),
+            style: TextStyle(color: _txt(context), fontSize: 16)),
         content: Text('${c.phrase}\n${c.value}',
-            style: const TextStyle(color: Color(0xFFC0C4D4))),
+            style: TextStyle(color: _body(context))),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(d, false),
@@ -18006,10 +18049,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(app.t(nameKey),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFD0D4E2))),
+                        color: _body(context))),
                 Text(app.t(descKey),
                     style: const TextStyle(
                         fontSize: 10.5, color: Color(0xFF6E7280))),
@@ -18090,7 +18133,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ),
       _CardSpec(evsCard(context,
           icon: Icons.tune, title: app.t('cardWsParams'), rows: [
-        evsRow(
+        evsRow(context, 
           label: app.t('wsAccent'),
           desc: app.t('wsAccentDesc'),
           control: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -18113,7 +18156,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     shape: BoxShape.circle,
                     border: Border.all(
                         color: app.vizAccent == c
-                            ? Colors.white
+                            ? _txt(context)
                             : Colors.transparent,
                         width: 2),
                     boxShadow: app.vizAccent == c
@@ -18129,7 +18172,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ]),
         ),
         if (app.vizType == 'orb') ...[
-          evsNamedSlider(
+          evsNamedSlider(context, 
             label: app.t('wsOrbSize'),
             value: app.orbSize.clamp(120, 320),
             min: 120,
@@ -18139,7 +18182,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             right: '320',
             onChanged: (v) => app.setOrbSize(v),
           ),
-          evsNamedSlider(
+          evsNamedSlider(context, 
             label: app.t('wsOrbSpeed'),
             desc: app.t('wsOrbSpeedDesc'),
             value: app.orbSpeed.clamp(6, 40),
@@ -18152,7 +18195,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
         if (app.vizType == 'lkbars')
-          evsNamedSlider(
+          evsNamedSlider(context, 
             label: app.t('wsBarCount'),
             value: app.barCount.toDouble().clamp(3, 13),
             min: 3,
@@ -18162,7 +18205,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             right: '13',
             onChanged: (v) => app.setBarCount(v.round()),
           ),
-        evsRow(
+        evsRow(context, 
           label: app.t('showVizBg'),
           desc: app.t('showVizBgDesc'),
           control: evsToggle(app.showVizBg, app.setShowVizBg),
@@ -18172,12 +18215,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           icon: Icons.picture_in_picture_alt_outlined,
           title: app.t('ovlEnter'),
           rows: [
-            evsRow(
+            evsRow(context, 
               label: app.t('ovlShow'),
               desc: app.t('ovlEnterDesc'),
               control: evsToggle(app.overlayMode, app.setOverlayMode),
             ),
-            evsRow(
+            evsRow(context, 
               stacked: true,
               label: app.t('ovlSize'),
               desc: app.t('ovlSizeDesc'),
@@ -18233,7 +18276,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       default:
         return ParticleSphere(
             size: 46,
-            color: Colors.white,
+            color: _accent(context),
             soundLevel: VoiceLevels.instance.tts);
     }
   }
@@ -18285,7 +18328,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
             child: Column(
               children: [
-                evsRadioCard(
+                evsRadioCard(context, 
                   selected: app.inferenceMode == 'localServer',
                   title: app.t('modeLocalServer'),
                   desc: app.t('modeLocalServerDesc'),
@@ -18295,7 +18338,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       : null,
                 ),
                 const SizedBox(height: 8),
-                evsRadioCard(
+                evsRadioCard(context, 
                   selected: app.inferenceMode == 'remote',
                   title: app.t('modeRemote'),
                   desc: app.t('modeRemoteDesc'),
@@ -18335,7 +18378,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(evsCard(context,
           icon: Icons.tune, title: app.t('cardGenParams'), rows: [
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: 'Temperature',
           desc: app.t('temperatureDesc'),
           value: _stubNum['temp']!,
@@ -18346,7 +18389,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: '2.0',
           onChanged: (v) => setState(() => _stubNum['temp'] = v),
         ),
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: 'Top-p',
           desc: app.t('topPDesc'),
           value: _stubNum['topp']!,
@@ -18367,8 +18410,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       onTap: () => app.selectModel(key),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-        decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Color(0x09FFFFFF)))),
+        decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: _stroke(context)))),
         child: Row(
           children: [
             Container(
@@ -18385,10 +18428,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(name,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFFD0D4E2))),
+                      color: _body(context))),
             ),
             if (size.isNotEmpty)
               Container(
@@ -18419,7 +18462,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     return [
       _CardSpec(evsCard(context,
           icon: Icons.chat_bubble_outline, title: app.t('cardStyle'), rows: [
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: app.t('formality'),
           value: p.formality,
           valueLabel: pct(p.formality),
@@ -18427,7 +18470,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('formalRight'),
           onChanged: (v) => _persona((x) => x.formality = v),
         ),
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: app.t('empathy'),
           value: p.empathy,
           valueLabel: pct(p.empathy),
@@ -18435,7 +18478,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('empathyRight'),
           onChanged: (v) => _persona((x) => x.empathy = v),
         ),
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: app.t('verbosity'),
           value: p.verbosity,
           valueLabel: pct(p.verbosity),
@@ -18443,7 +18486,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('verbosityRight'),
           onChanged: (v) => _persona((x) => x.verbosity = v),
         ),
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: app.t('humor'),
           value: p.humor,
           valueLabel: pct(p.humor),
@@ -18451,7 +18494,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('humorRight'),
           onChanged: (v) => _persona((x) => x.humor = v),
         ),
-        evsNamedSlider(
+        evsNamedSlider(context, 
           label: app.t('creativity'),
           value: p.creativity,
           valueLabel: pct(p.creativity),
@@ -18462,7 +18505,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(evsCard(context,
           icon: Icons.person_outline, title: app.t('cardAssistant'), rows: [
-        evsRow(
+        evsRow(context, 
           label: app.t('assistantNameLabel'),
           desc: app.t('assistantNameDesc'),
           control: SizedBox(
@@ -18472,7 +18515,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 onChanged: (v) => _persona((x) => x.assistantName = v)),
           ),
         ),
-        evsRow(
+        evsRow(context, 
           stacked: true,
           label: app.t('emojiPolicy'),
           desc: app.t('emojiPolicyDesc'),
@@ -18492,10 +18535,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(app.t('systemPrompt'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFD0D4E2))),
+                      color: _body(context))),
               const SizedBox(height: 2),
               Text(app.t('systemPromptDesc'),
                   style: const TextStyle(fontSize: 12, color: Color(0xFF6E7280))),
@@ -18509,13 +18552,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(
         evsCard(context, icon: Icons.access_time, title: app.t('cardMemory'), rows: [
-          evsRow(
+          evsRow(context, 
             label: app.t('autoSaveFacts'),
             desc: app.t('autoSaveFactsDesc'),
             control: evsToggle(
                 p.autoSaveMemories, (v) => _persona((x) => x.autoSaveMemories = v)),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('askBeforeRemember'),
             desc: app.t('askBeforeRememberDesc'),
             control: evsToggle(p.askBeforeRemembering,
@@ -18540,8 +18583,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   Widget _memItem(AppState app, String text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0x09FFFFFF)))),
+      decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: _stroke(context)))),
       child: Row(
         children: [
           Container(
@@ -18555,7 +18598,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(text,
-                style: const TextStyle(fontSize: 13, color: Color(0xFFC0C4D4))),
+                style: TextStyle(fontSize: 13, color: _body(context))),
           ),
           InkResponse(
             radius: 16,
@@ -18590,15 +18633,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(evsCard(context,
           icon: Icons.dns_outlined, title: app.t('cardNetSec'), rows: [
-        evsRow(
+        evsRow(context, 
             label: app.t('offlineMode'),
             desc: app.t('offlineModeDesc'),
             control: _stubToggle('offline')),
-        evsRow(
+        evsRow(context, 
             label: app.t('noTelemetry'),
             desc: app.t('noTelemetryDesc'),
             control: _stubToggle('noTelemetry')),
-        evsRow(
+        evsRow(context, 
             label: app.t('noModelNet'),
             desc: app.t('noModelNetDesc'),
             control: _stubToggle('noModelNet')),
@@ -18620,12 +18663,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(
         evsCard(context, icon: Icons.delete_outline, title: app.t('cardData'), rows: [
-          evsRow(
+          evsRow(context, 
             label: app.t('clearHistory'),
             desc: app.t('clearHistoryDesc'),
             control: evsDangerButton(app.t('clearHistory'), () => _stubSnack(app)),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('resetMemory'),
             desc: app.t('resetMemoryDesc'),
             control: evsDangerButton(app.t('resetMemory'), () {
@@ -18635,7 +18678,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               });
             }),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('resetAll'),
             desc: app.t('resetAllDesc'),
             control: evsDangerButton(app.t('fullReset'), () => _stubSnack(app)),
@@ -18685,10 +18728,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                           child: Text(it.$2,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 13.5,
                                   fontWeight: FontWeight.w600,
-                                  color: Color(0xFFD0D4E2))),
+                                  color: _body(context))),
                         ),
                       ],
                     ),
@@ -18713,10 +18756,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(text,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFF9098B0))),
+                  color: _sub(context))),
           const SizedBox(width: 6),
           GestureDetector(
             onTap: () => setState(() => _blacklist.remove(text)),
@@ -18732,20 +18775,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     return [
       _CardSpec(
         evsCard(context, icon: Icons.info_outline, title: app.t('navAbout'), rows: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(18, 24, 18, 18),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 24, 18, 18),
             child: Column(
               children: [
-                _EvsLogoMark(size: 60),
-                SizedBox(height: 10),
+                const _EvsLogoMark(size: 60),
+                const SizedBox(height: 10),
                 Text('EVS',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.5,
-                        color: Colors.white)),
-                SizedBox(height: 4),
-                Text('Enhanced Voice System',
+                        color: _txt(context))),
+                const SizedBox(height: 4),
+                const Text('Enhanced Voice System',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -18754,9 +18797,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             ),
           ),
           _aboutRow(app.t('versionLabel'), const _VersionText()),
-          _aboutRow(app.t('platform'), const Text('Windows · x64',
+          _aboutRow(app.t('platform'), Text('Windows · x64',
               style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFFC0C4D4)))),
+                  fontSize: 13, fontWeight: FontWeight.w600, color: _body(context)))),
         ]),
         full: true,
       ),
@@ -18766,11 +18809,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       ])),
       _CardSpec(evsCard(context,
           icon: Icons.refresh, title: app.t('updates'), rows: [
-        evsRow(
+        evsRow(context, 
             label: app.t('autoCheck'),
             desc: app.t('autoCheckDesc'),
             control: evsToggle(app.autoUpdateCheck, app.setAutoUpdateCheck)),
-        evsRow(
+        evsRow(context, 
             label: app.t('checkNow'),
             desc: app.t('updFlowDesc'),
             control: _updateControl(app)),
@@ -18781,16 +18824,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   Widget _aboutRow(String label, Widget value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0x09FFFFFF)))),
+      decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: _stroke(context)))),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w600,
-                  color: Color(0xFFD0D4E2))),
+                  color: _body(context))),
           value,
         ],
       ),
@@ -18804,10 +18847,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(e.version,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFFD0D4E2))),
+                  color: _body(context))),
           const SizedBox(height: 5),
           for (final ch in e.changes)
             Padding(
@@ -18830,7 +18873,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.mic_none,
         title: app.t('cardStt'),
         rows: [
-          evsRow(
+          evsRow(context, 
             label: app.t('sidecar'),
             desc: app.t('sidecarDesc'),
             control: ValueListenableBuilder<SidecarStatus>(
@@ -18838,12 +18881,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               builder: (_, s, __) => _sidecarChip(app, s),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('sidecarComponent'),
             desc: app.t('sidecarComponentDesc'),
             control: _sidecarComponentControl(app),
           ),
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('sttEngine'),
             desc: app.t('sttEngineDesc'),
@@ -18860,8 +18903,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
               child: Text(app.t('cardSttModel'),
-                  style: const TextStyle(
-                      color: Color(0xFFD0D4E2),
+                  style: TextStyle(
+                      color: _body(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w700)),
             ),
@@ -18870,13 +18913,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
             child: Text(app.t('cardDenoise'),
-                style: const TextStyle(
-                    color: Color(0xFFD0D4E2),
+                style: TextStyle(
+                    color: _body(context),
                     fontSize: 13,
                     fontWeight: FontWeight.w700)),
           ),
           _DenoiseSelector(app),
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
@@ -18897,12 +18940,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.settings_voice_outlined,
         title: app.t('cardInputDevice'),
         rows: [
-          evsRow(
+          evsRow(context, 
             label: app.t('inputDevice'),
             desc: app.t('inputDeviceDesc'),
             control: _inputDeviceControl(app),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('inputLevel'),
             control: SizedBox(
               width: 180,
@@ -18913,7 +18956,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   builder: (_, lvl, __) => LinearProgressIndicator(
                     value: lvl.clamp(0.0, 1.0),
                     minHeight: 6,
-                    backgroundColor: const Color(0x14FFFFFF),
+                    backgroundColor: _stroke(context),
                     valueColor: const AlwaysStoppedAnimation(_evsGMid),
                   ),
                 ),
@@ -18923,8 +18966,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 10, 18, 0),
             child: Text(app.t('extraMics'),
-                style: const TextStyle(
-                    color: Color(0xFFD0D4E2),
+                style: TextStyle(
+                    color: _body(context),
                     fontSize: 13,
                     fontWeight: FontWeight.w700)),
           ),
@@ -18942,7 +18985,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.headset_mic_outlined,
         title: app.t('cardListenMode'),
         rows: [
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('activationMode'),
             desc: app.t('activationModeDesc'),
@@ -18952,12 +18995,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               (v) => app.setListenMode(v),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('autoSendPause'),
             desc: app.t('autoSendPauseDesc'),
             control: evsToggle(app.micAutoSend, (v) => app.setMicAutoSend(v)),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('pauseDuration'),
             desc: app.t('pauseDurationDesc'),
             control: evsSlider(
@@ -18969,7 +19012,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setMicPauseSeconds(v.round()),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('showPartial'),
             desc: app.t('showPartialDesc'),
             control: evsToggle(app.showPartial, app.setShowPartial),
@@ -18981,19 +19024,19 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.record_voice_over_outlined,
         title: app.t('cardVoiceResp'),
         rows: [
-          evsRow(
+          evsRow(context, 
             label: app.t('voiceResponses'),
             desc: app.t('voiceResponsesDesc'),
             control: evsToggle(app.voiceResponses, app.setVoiceResponses),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('announceReady'),
             desc: app.t('announceReadyDesc'),
             control: evsToggle(app.announceReady, app.setAnnounceReady),
           ),
           _TtsEngineCard(app),
           _TtsInterpCard(app),
-          evsRow(
+          evsRow(context, 
             label: app.t('ttsRate'),
             desc: app.t('ttsRateDesc'),
             control: evsSlider(
@@ -19005,7 +19048,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setTtsRate(v),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('ttsVolume'),
             control: evsSlider(
               value: (app.ttsVolume * 100).clamp(0, 100),
@@ -19048,12 +19091,12 @@ class _ConnCheckRow extends StatelessWidget {
         : busy
             ? (app.t('connChecking'), const Color(0xFFE0C07A))
             : err != null
-                ? (err, const Color(0xFFE05D5D))
+                ? (err, _danger(context))
                 : app.models.isEmpty
                     ? ('', const Color(0xFF6E7280))
                     : (
                         '${app.t('connOnline')} · ${app.models.length} ${app.t('connModelsCount')}',
-                        const Color(0xFF54E08A)
+                        _success(context)
                       );
 
     Widget btn(String label, IconData icon) => InkWell(
@@ -19068,16 +19111,16 @@ class _ConnCheckRow extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: _evsStroke),
-                color: Colors.white.withValues(alpha: 0.04),
+                color: _stroke(context),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(icon, size: 14, color: const Color(0xFF9AA0B4)),
+                Icon(icon, size: 14, color: _sub(context)),
                 const SizedBox(width: 5),
                 Text(label,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFC0C4D4))),
+                        color: _body(context))),
               ]),
             ),
           ),
@@ -19189,10 +19232,10 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(app.t(nameKey),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFD0D4E2))),
+                        color: _body(context))),
                 Text(app.t(hintKey),
                     style:
                         const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
@@ -19222,8 +19265,8 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
           isExpanded: true,
           isDense: true,
           dropdownColor: const Color(0xFF1A1B25),
-          style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
-          icon: const Icon(Icons.expand_more, size: 18, color: Color(0xFF9AA0B4)),
+          style: TextStyle(fontSize: 12.5, color: _body(context)),
+          icon: Icon(Icons.expand_more, size: 18, color: _sub(context)),
           items: [
             for (final e in _emotions)
               DropdownMenuItem(value: e.$1, child: Text(app.t(e.$2))),
@@ -19247,14 +19290,14 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         child: Text(app.t('ttsCosyWiringHint'),
             style: const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
       ),
-      evsRow(
+      evsRow(context, 
         stacked: true,
         label: app.t('ttsCosyVoice'),
         desc: app.t('ttsCosyVoiceHint'),
         control:
             _RemoteField(controller: _voice, onChanged: app.setCosyvoiceVoice),
       ),
-      evsRow(
+      evsRow(context, 
         stacked: true,
         label: app.t('ttsCosyClone'),
         control: Column(
@@ -19270,13 +19313,13 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: _evsStroke),
-                    color: Colors.white.withValues(alpha: 0.04),
+                    color: _stroke(context),
                   ),
                   child: Text(app.t('ttsCosyClonePick'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFFC0C4D4))),
+                          color: _body(context))),
                 ),
               ),
               const SizedBox(width: 10),
@@ -19288,8 +19331,8 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                           .split(io.Platform.pathSeparator)
                           .last,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      fontSize: 11.5, color: Color(0xFF9AA0B4)),
+                  style: TextStyle(
+                      fontSize: 11.5, color: _sub(context)),
                 ),
               ),
             ]),
@@ -19303,7 +19346,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
           ],
         ),
       ),
-      evsRow(
+      evsRow(context, 
         label: app.t('ttsCosySpeed'),
         control: evsSlider(
           value: app.cosyvoiceSpeed.clamp(0.5, 2.0),
@@ -19314,19 +19357,19 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
           onChanged: app.setCosyvoiceSpeed,
         ),
       ),
-      evsRow(
+      evsRow(context, 
         stacked: true,
         label: app.t('ttsCosyEmotion'),
         control: _cosyEmotionDropdown(),
       ),
-      evsRow(
+      evsRow(context, 
         stacked: true,
         label: app.t('ttsCosyInstruct'),
         desc: app.t('ttsCosyInstructHint'),
         control: _RemoteField(
             controller: _instruct, onChanged: app.setCosyvoiceInstruct),
       ),
-      evsRow(
+      evsRow(context, 
         stacked: true,
         label: app.t('ttsCosyDevice'),
         control: AnimatedBuilder(
@@ -19356,8 +19399,8 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
           child: Text(app.t('ttsEngineTitle'),
-              style: const TextStyle(
-                  color: Color(0xFFD0D4E2),
+              style: TextStyle(
+                  color: _body(context),
                   fontSize: 13,
                   fontWeight: FontWeight.w700)),
         ),
@@ -19378,7 +19421,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                 style: const TextStyle(fontSize: 11.5, color: Color(0xFFE0A07A))),
           ),
         // Endpoint + check.
-        evsRow(
+        evsRow(context, 
           stacked: true,
           label: app.t('ttsCosyEndpoint'),
           control: Column(
@@ -19405,14 +19448,14 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: _evsStroke),
-                      color: Colors.white.withValues(alpha: 0.04),
+                      color: _stroke(context),
                     ),
                     child: Text(
                         _checking ? app.t('ttsCosyChecking') : app.t('ttsCosyCheck'),
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFFC0C4D4))),
+                            color: _body(context))),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -19424,8 +19467,8 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                         decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: cosyOnline
-                                ? const Color(0xFF54E08A)
-                                : const Color(0xFFE05D5D))),
+                                ? _success(context)
+                                : _danger(context))),
                     const SizedBox(width: 6),
                     Text(
                         cosyOnline
@@ -19434,8 +19477,8 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                         style: TextStyle(
                             fontSize: 12,
                             color: cosyOnline
-                                ? const Color(0xFF54E08A)
-                                : const Color(0xFFE05D5D))),
+                                ? _success(context)
+                                : _danger(context))),
                   ]),
               ]),
             ],
@@ -19475,13 +19518,13 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        evsRow(
+        evsRow(context, 
           label: app.t('ttsInterp'),
           desc: app.t('ttsInterpDesc'),
           control: evsToggle(app.ttsInterpEnabled, app.setTtsInterpEnabled),
         ),
         if (app.ttsInterpEnabled) ...[
-          evsRow(
+          evsRow(context, 
             stacked: true,
             label: app.t('ttsInterpMode'),
             control: evsSegmentedWide<String>(
@@ -19503,7 +19546,7 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
             ),
           ),
           if (app.ttsInterpMode == 'model')
-            evsRow(
+            evsRow(context, 
               label: app.t('ttsInterpModelField'),
               control: SizedBox(
                 width: 160,
@@ -19519,15 +19562,15 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
                   child: TextField(
                     controller: _model,
                     onChanged: app.setTtsInterpModel,
-                    style: const TextStyle(
-                        fontSize: 12.5, color: Color(0xFFC0C4D4)),
-                    decoration: const InputDecoration(
+                    style: TextStyle(
+                        fontSize: 12.5, color: _body(context)),
+                    decoration: InputDecoration(
                       isDense: true,
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                       hintText: 'qwen3-interp',
                       hintStyle:
-                          TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+                          TextStyle(fontSize: 12.5, color: _faint(context)),
                     ),
                   ),
                 ),
@@ -19557,13 +19600,13 @@ class _ModelModeCard extends StatelessWidget {
             : app.modelDisplayName(current, withSuffix: false);
     return PopupMenuButton<String>(
       tooltip: '',
-      color: const Color(0xFF1C1C26),
+      color: _card(context),
       onSelected: onPick,
       itemBuilder: (_) => [
         PopupMenuItem<String>(
           value: '',
           child: Text(app.t('modelDefaultGlobal'),
-              style: const TextStyle(color: Color(0xFFD0D4E2), fontSize: 13)),
+              style: TextStyle(color: _body(context), fontSize: 13)),
         ),
         // Keep a missing-but-selected value in the menu so it can be seen and
         // cleared instead of vanishing.
@@ -19577,10 +19620,10 @@ class _ModelModeCard extends StatelessWidget {
           PopupMenuItem<String>(
             value: m,
             child: Text(app.modelDisplayName(m, withSuffix: false),
-                style: const TextStyle(color: Color(0xFFD0D4E2), fontSize: 13)),
+                style: TextStyle(color: _body(context), fontSize: 13)),
           ),
       ],
-      child: evsSelectButton(label, minWidth: 150),
+      child: evsSelectButton(context, label, minWidth: 150),
     );
   }
 
@@ -19595,10 +19638,10 @@ class _ModelModeCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(app.t('modelPerMode'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFFD0D4E2))),
+                      color: _body(context))),
               const SizedBox(height: 3),
               Text(app.t('modelPerModeDesc'),
                   style:
@@ -19606,11 +19649,11 @@ class _ModelModeCard extends StatelessWidget {
             ],
           ),
         ),
-        evsRow(
+        evsRow(context, 
           label: app.t('modelForSearch'),
           control: _picker(context, app.searchModel, app.setSearchModel),
         ),
-        evsRow(
+        evsRow(context, 
           label: app.t('modelForChat'),
           control: _picker(context, app.chatModel, app.setChatModel),
         ),
@@ -19712,14 +19755,14 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
           child: TextField(
             controller: c,
             onChanged: onChanged,
-            style: const TextStyle(fontSize: 12.5, color: Color(0xFFC0C4D4)),
+            style: TextStyle(fontSize: 12.5, color: _body(context)),
             decoration: InputDecoration(
               isDense: true,
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
               hintText: widget.app.t('llmDefaultHint'),
               hintStyle:
-                  const TextStyle(fontSize: 12.5, color: Color(0xFF5A6070)),
+                  TextStyle(fontSize: 12.5, color: _faint(context)),
             ),
           ),
         ),
@@ -19751,10 +19794,10 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(app.t('cardLlmAdv'),
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w600,
-                              color: Color(0xFFD0D4E2))),
+                              color: _body(context))),
                       const SizedBox(height: 3),
                       Text(app.t('llmAdvDesc'),
                           style: const TextStyle(
@@ -19764,13 +19807,13 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                 ),
                 const SizedBox(width: 10),
                 Icon(_open ? Icons.expand_less : Icons.expand_more,
-                    size: 18, color: const Color(0xFF9AA0B4)),
+                    size: 18, color: _sub(context)),
               ],
             ),
           ),
         ),
         if (_open) ...[
-          evsRow(
+          evsRow(context, 
             label: app.t('llmNumCtx'),
             desc: app.t('llmNumCtxDesc'),
             control: SizedBox(
@@ -19781,7 +19824,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                   error: _ctxErr),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('llmNumPredict'),
             desc: app.t('llmNumPredictDesc'),
             control: SizedBox(
@@ -19792,7 +19835,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                   error: _predErr),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('llmTemp'),
             desc: app.t('llmTempDesc'),
             control: SizedBox(
@@ -19800,7 +19843,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
               child: _field(_temp, _onTemp, error: _tempErr),
             ),
           ),
-          evsRow(
+          evsRow(context, 
             label: app.t('llmKeepAlive'),
             desc: app.t('llmKeepAliveDesc'),
             control: SizedBox(
@@ -19864,7 +19907,7 @@ Widget evsCard(
   );
 }
 
-Widget evsRow({
+Widget evsRow(BuildContext context, {
   required String label,
   String? desc,
   required Widget control,
@@ -19874,10 +19917,10 @@ Widget evsRow({
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(label,
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFFD0D4E2))),
+              color: _body(context))),
       if (desc != null) ...[
         const SizedBox(height: 2),
         Text(desc,
@@ -19888,8 +19931,8 @@ Widget evsRow({
   );
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: Color(0x09FFFFFF))),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: _stroke(context))),
     ),
     // Stacked: label on top, control full-width below (used for wide
     // segmented selectors so they don't fold into a floating block). Inline:
@@ -19918,7 +19961,7 @@ Widget evsRow({
 }
 
 // Full-width segmented selector: equal-width pills in a single row that fills
-// the available width (used with `evsRow(stacked: true)`). Replaces the
+// the available width (used with `evsRow(context, stacked: true)`). Replaces the
 // right-aligned Wrap that folded 3–4 options into a cramped floating block.
 Widget evsSegmentedWide<T>(
   List<(T, String)> options,
@@ -20054,7 +20097,7 @@ Widget evsToggle(bool value, ValueChanged<bool> onChanged) {
 }
 
 // Dropdown-styled display button (non-functional placeholder for stub selects).
-Widget evsSelectButton(String label, {double minWidth = 148, VoidCallback? onTap}) {
+Widget evsSelectButton(BuildContext context, String label, {double minWidth = 148, VoidCallback? onTap}) {
   return GestureDetector(
     onTap: onTap,
     child: Container(
@@ -20064,7 +20107,7 @@ Widget evsSelectButton(String label, {double minWidth = 148, VoidCallback? onTap
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(color: const Color(0x14FFFFFF)),
+        border: Border.all(color: _stroke(context)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -20072,10 +20115,10 @@ Widget evsSelectButton(String label, {double minWidth = 148, VoidCallback? onTap
           Flexible(
             child: Text(label,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFD0D4E2))),
+                    color: _body(context))),
           ),
           const SizedBox(width: 7),
           const Icon(Icons.keyboard_arrow_down,
@@ -20086,7 +20129,7 @@ Widget evsSelectButton(String label, {double minWidth = 148, VoidCallback? onTap
   );
 }
 
-Widget evsGhostButton(String label, IconData icon, {VoidCallback? onTap}) {
+Widget evsGhostButton(BuildContext context, String label, IconData icon, {VoidCallback? onTap}) {
   return GestureDetector(
     onTap: onTap,
     child: Container(
@@ -20095,7 +20138,7 @@ Widget evsGhostButton(String label, IconData icon, {VoidCallback? onTap}) {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         color: Colors.white.withValues(alpha: 0.042),
-        border: Border.all(color: const Color(0x14FFFFFF)),
+        border: Border.all(color: _stroke(context)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -20153,7 +20196,7 @@ Widget evsSlider({
 }
 
 // Full-width labelled slider (Style/Generation cards in the mockups).
-Widget evsNamedSlider({
+Widget evsNamedSlider(BuildContext context, {
   required String label,
   String? desc,
   required double value,
@@ -20166,8 +20209,8 @@ Widget evsNamedSlider({
 }) {
   return Container(
     padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-    decoration: const BoxDecoration(
-      border: Border(bottom: BorderSide(color: Color(0x09FFFFFF))),
+    decoration: BoxDecoration(
+      border: Border(bottom: BorderSide(color: _stroke(context))),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -20176,10 +20219,10 @@ Widget evsNamedSlider({
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(label,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFFD0D4E2))),
+                    color: _body(context))),
             if (valueLabel != null)
               Text(valueLabel,
                   style: const TextStyle(
@@ -20222,7 +20265,7 @@ Widget evsNamedSlider({
 }
 
 // Selectable connection-mode card (Model section).
-Widget evsRadioCard({
+Widget evsRadioCard(BuildContext context, {
   required bool selected,
   required String title,
   required String desc,
@@ -20272,7 +20315,7 @@ Widget evsRadioCard({
                         fontWeight: FontWeight.w700,
                         color: selected
                             ? const Color(0xFFD4CFF0)
-                            : const Color(0xFFD0D4E2))),
+                            : _body(context))),
                 const SizedBox(height: 2),
                 Text(desc,
                     style: const TextStyle(
@@ -20415,9 +20458,9 @@ class _WinBtn extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           hoverColor:
-              danger ? const Color(0x33E05D5D) : const Color(0x14FFFFFF),
+              danger ? const Color(0x33E05D5D) : _stroke(context),
           child: Center(
-              child: Icon(icon, size: iconSize, color: const Color(0xFF9AA0B0))),
+              child: Icon(icon, size: iconSize, color: _sub(context))),
         ),
       ),
     );
@@ -20893,7 +20936,7 @@ class _ChatScreenState extends State<ChatScreen> {
           child: _vaPill(
               Icons.system_update_alt,
               '${app.t('updReadyShort')} ${AppUpdater.instance.availableVersion} · ${app.t('updRestart')}',
-              const Color(0xFF54E08A)),
+              _success(context)),
         );
       },
     );
@@ -20918,7 +20961,7 @@ class _ChatScreenState extends State<ChatScreen> {
           builder: (_, s, __) {
             final (label, color) = switch (s) {
               VaState.armed => (app.t('vaArmed'), const Color(0xFF4FC3F7)),
-              VaState.thinking => (app.t('vaThinking'), const Color(0xFF54E08A)),
+              VaState.thinking => (app.t('vaThinking'), _success(context)),
               VaState.running => (app.t('vaRunning'), const Color(0xFFE0C07A)),
               _ => (app.t('vaListening'), const Color(0xFF8A7BE0)),
             };
@@ -20934,7 +20977,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     return _vaPill(
                         Icons.check_circle,
                         '«${app.wakeWord}» — ${app.t('vaWakeHeard')}',
-                        const Color(0xFF54E08A));
+                        _success(context));
                   }
                   return _vaPill(Icons.graphic_eq, label, color);
                 },
@@ -21236,7 +21279,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: LinearProgressIndicator(
                   minHeight: 4,
                   backgroundColor: _sub(context).withValues(alpha: 0.15),
-                  valueColor: const AlwaysStoppedAnimation(Color(0xFF2F8DFF)),
+                  valueColor: AlwaysStoppedAnimation(_accent(context)),
                 ),
               ),
             ],
@@ -21395,7 +21438,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }) {
     final iconWidget = Icon(
       icon,
-      color: active ? const Color(0xFF2F6BFF) : _txt(context),
+      color: active ? _accent(context) : _txt(context),
       size: 22,
     );
     // Glass style (non-active) → translucent blurred circle; active state
@@ -21413,12 +21456,12 @@ class _ChatScreenState extends State<ChatScreen> {
               shape: BoxShape.circle,
               border: Border.all(
                 color: active
-                    ? const Color(0xFF2F6BFF)
+                    ? _accent(context)
                     : _sub(context).withValues(alpha: 0.3),
                 width: active ? 1.5 : 1,
               ),
               color: active
-                  ? const Color(0xFF2F6BFF).withValues(alpha: 0.18)
+                  ? _accent(context).withValues(alpha: 0.18)
                   : _card(context).withValues(alpha: 0.4),
             ),
             child: iconWidget,
@@ -21468,7 +21511,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   size: 200,
                   color: Theme.of(context).brightness == Brightness.dark
                       ? Colors.white
-                      : const Color(0xFF2F6BFF),
+                      : _accent(context),
                   scattered: keyboardOpen,
                   soundLevel: VoiceLevels.instance.tts,
                 ),
@@ -21866,7 +21909,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     color: selected == cat ? Colors.white : _txt(context),
                     fontWeight: FontWeight.w500,
                   ),
-                  selectedColor: const Color(0xFF2F8DFF),
+                  selectedColor: _accent(context),
                   backgroundColor: _bg(context).withValues(alpha: 0.4),
                   side: BorderSide(color: _sub(context).withValues(alpha: 0.2)),
                   onSelected: (_) => setDialogState(() => selected = cat),
@@ -22475,7 +22518,7 @@ class _RecentAttachSheetState extends State<_RecentAttachSheet> {
                   height: 20,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: picked ? const Color(0xFF2F8DFF) : Colors.black38,
+                    color: picked ? _accent(context) : Colors.black38,
                     border: Border.all(color: Colors.white70, width: 1.2),
                   ),
                   child: picked
@@ -22506,7 +22549,7 @@ class _RecentAttachSheetState extends State<_RecentAttachSheet> {
           children: [
             Icon(
               icon,
-              color: selected ? const Color(0xFF2F8DFF) : _sub(context),
+              color: selected ? _accent(context) : _sub(context),
               size: 22,
             ),
             const SizedBox(height: 4),
@@ -22620,9 +22663,9 @@ class _ModelMenu extends StatelessWidget {
                 maxHeight: MediaQuery.of(context).size.height * 0.6,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFF1C1C26),
+                color: _card(context),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: _stroke(context)),
               ),
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Column(
@@ -22635,19 +22678,19 @@ class _ModelMenu extends StatelessWidget {
                       children: [
                         Text(
                           app.t('downloadedModels'),
-                          style: const TextStyle(
-                            color: Colors.white54,
+                          style: TextStyle(
+                            color: _sub(context),
                             fontSize: 14,
                           ),
                         ),
                         const Spacer(),
                         if (app.loadingModels)
-                          const SizedBox(
+                          SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white54,
+                              color: _sub(context),
                             ),
                           )
                         else
@@ -22656,9 +22699,9 @@ class _ModelMenu extends StatelessWidget {
                               app.buzz();
                               app.fetchModels();
                             },
-                            child: const Icon(
+                            child: Icon(
                               Icons.refresh,
-                              color: Colors.white54,
+                              color: _sub(context),
                               size: 18,
                             ),
                           ),
@@ -22678,8 +22721,8 @@ class _ModelMenu extends StatelessWidget {
                               ),
                               child: Text(
                                 app.modelsError ?? app.t('noModelsFound'),
-                                style: const TextStyle(
-                                  color: Colors.white38,
+                                style: TextStyle(
+                                  color: _faint(context),
                                   fontSize: 15,
                                 ),
                               ),
@@ -22703,8 +22746,8 @@ class _ModelMenu extends StatelessWidget {
                                           ? Icons.check
                                           : Icons.circle_outlined,
                                       color: app.selectedModel == m
-                                          ? Colors.white
-                                          : Colors.white24,
+                                          ? _txt(context)
+                                          : _faint(context),
                                       size: 20,
                                     ),
                                     const SizedBox(width: 14),
@@ -22712,8 +22755,8 @@ class _ModelMenu extends StatelessWidget {
                                       child: Text(
                                         app.modelDisplayName(m),
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: TextStyle(
+                                          color: _txt(context),
                                           fontSize: 18,
                                         ),
                                       ),
@@ -22726,18 +22769,21 @@ class _ModelMenu extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Divider(
-                    color: Colors.white12,
+                  Divider(
+                    color: _stroke(context),
                     indent: 20,
                     endIndent: 20,
                   ),
                   _menuItem(
+                    context,
                     Icons.inventory_2_outlined,
                     app.t('manageModels'),
                     onManage,
                   ),
-                  _menuItem(Icons.edit_outlined, app.t('newChat'), onNewChat),
-                  _menuItem(null, app.t('createImage'), onCreateImage),
+                  _menuItem(
+                      context, Icons.edit_outlined, app.t('newChat'), onNewChat),
+                  _menuItem(
+                      context, null, app.t('createImage'), onCreateImage),
                 ],
               ),
             ),
@@ -22747,7 +22793,8 @@ class _ModelMenu extends StatelessWidget {
     );
   }
 
-  Widget _menuItem(IconData? icon, String label, VoidCallback onTap) {
+  Widget _menuItem(
+      BuildContext context, IconData? icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -22755,7 +22802,7 @@ class _ModelMenu extends StatelessWidget {
         child: Row(
           children: [
             if (icon != null) ...[
-              Icon(icon, color: Colors.white, size: 20),
+              Icon(icon, color: _txt(context), size: 20),
               const SizedBox(width: 14),
             ] else
               const SizedBox(width: 34),
@@ -22763,7 +22810,7 @@ class _ModelMenu extends StatelessWidget {
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
+                style: TextStyle(color: _txt(context), fontSize: 18),
               ),
             ),
           ],
@@ -23583,10 +23630,10 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF4FACFE), Color(0xFF2F6BFF)],
+            colors: [const Color(0xFF4FACFE), _accent(context)],
           ),
           borderRadius: BorderRadius.circular(20),
         ),
@@ -23712,8 +23759,8 @@ class _ConversationsSheetState extends State<ConversationsSheet> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFF2F6BFF).withValues(alpha: 0.28),
-            const Color(0xFF15151E).withValues(alpha: 0.05),
+            _accent(context).withValues(alpha: 0.28),
+            _card2(context).withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
@@ -24340,7 +24387,7 @@ class SettingsSheet extends StatelessWidget {
               SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackShape: const GradientSliderTrackShape(),
-                  thumbColor: const Color(0xFF2F6BFF),
+                  thumbColor: _accent(context),
                 ),
                 child: Slider(
                   value: tempSize,
@@ -24411,7 +24458,7 @@ class SettingsSheet extends StatelessWidget {
               ])
                 RadioListTile<AppThemeMode>(
                   value: entry.$1,
-                  activeColor: const Color(0xFF2F8DFF),
+                  activeColor: _accent(context),
                   title: Text(entry.$2, style: TextStyle(color: _txt(context))),
                 ),
             ],
@@ -24448,7 +24495,7 @@ class SettingsSheet extends StatelessWidget {
               ])
                 RadioListTile<String>(
                   value: l[0],
-                  activeColor: const Color(0xFF2F8DFF),
+                  activeColor: _accent(context),
                   title: Text(l[1], style: TextStyle(color: _txt(context))),
                 ),
             ],
@@ -25033,7 +25080,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
             child: LiquidGlassTabs(
               selectedIndex: _tab,
               onChanged: (i) => setState(() => _tab = i),
-              accent: const Color(0xFF2F8DFF),
+              accent: _accent(context),
               tabs: [
                 GlassTab(label: app.t('tabMemory'), icon: Icons.memory),
                 GlassTab(
@@ -25108,8 +25155,8 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
             onPressed: _save,
             child: Text(
               app.t('done'),
-              style: const TextStyle(
-                color: Color(0xFF2F8DFF),
+              style: TextStyle(
+                color: _accent(context),
                 fontWeight: FontWeight.w600,
                 fontSize: 16,
               ),
@@ -25146,7 +25193,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
         decoration: BoxDecoration(
           border: Border(
             bottom: BorderSide(
-              color: selected ? const Color(0xFF2F8DFF) : Colors.transparent,
+              color: selected ? _accent(context) : Colors.transparent,
               width: 3,
             ),
           ),
@@ -25156,7 +25203,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           children: [
             Icon(
               icon,
-              color: selected ? const Color(0xFF2F8DFF) : _sub(context),
+              color: selected ? _accent(context) : _sub(context),
               size: 20,
             ),
             const SizedBox(width: 8),
@@ -25502,10 +25549,10 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
                                   minWidth: 32,
                                   minHeight: 32,
                                 ),
-                                icon: const Icon(
+                                icon: Icon(
                                   Icons.push_pin,
                                   size: 18,
-                                  color: Color(0xFF2F8DFF),
+                                  color: _accent(context),
                                 ),
                                 onPressed: () => setState(() {
                                   app.toggleMessagePin(
@@ -25973,7 +26020,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackShape: const GradientSliderTrackShape(),
-              thumbColor: const Color(0xFF2F6BFF),
+              thumbColor: _accent(context),
             ),
             child: Slider(
               value: value.clamp(min, max),
@@ -26005,7 +26052,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
               color: current == v ? Colors.white : _txt(context),
               fontWeight: FontWeight.w500,
             ),
-            selectedColor: const Color(0xFF2F8DFF),
+            selectedColor: _accent(context),
             backgroundColor: _bg(context).withValues(alpha: 0.4),
             side: BorderSide(color: _sub(context).withValues(alpha: 0.2)),
             onSelected: (_) => onSelect(v),
@@ -26171,10 +26218,10 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: const Color(0xFF2F8DFF).withValues(alpha: 0.15),
+              color: _accent(context).withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: const Color(0xFF2F8DFF), size: 18),
+            child: Icon(icon, color: _accent(context), size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -26399,7 +26446,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackShape: const GradientSliderTrackShape(),
-            thumbColor: const Color(0xFF2F6BFF),
+            thumbColor: _accent(context),
           ),
           child: Slider(value: value, onChanged: onChanged),
         ),
@@ -26449,7 +26496,7 @@ class _PersonalizationScreenState extends State<PersonalizationScreen> {
               color: value == o ? Colors.white : _txt(context),
               fontWeight: FontWeight.w500,
             ),
-            selectedColor: const Color(0xFF2F8DFF),
+            selectedColor: _accent(context),
             backgroundColor: _bg(context).withValues(alpha: 0.4),
             side: BorderSide(color: _sub(context).withValues(alpha: 0.2)),
             onSelected: (_) => onSelect(o),
