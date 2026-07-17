@@ -17256,6 +17256,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               [
                 (AppThemeMode.dark, app.t('themeDark')),
                 (AppThemeMode.steam, app.t('themeSteam')),
+                (AppThemeMode.apple, app.t('themeApple')),
               ],
               app.themeMode,
               (v) => app.setThemeMode(v),
@@ -24350,6 +24351,7 @@ class SettingsSheet extends StatelessWidget {
               for (final entry in [
                 (AppThemeMode.dark, app.t('themeDark')),
                 (AppThemeMode.steam, app.t('themeSteam')),
+                (AppThemeMode.apple, app.t('themeApple')),
               ])
                 RadioListTile<AppThemeMode>(
                   value: entry.$1,
