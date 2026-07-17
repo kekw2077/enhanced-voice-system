@@ -1504,6 +1504,8 @@ const Map<String, Map<String, String>> _i18n = {
     'themeDark': 'Тёмная',
     'themeSteam': 'Steam',
     'themeApple': 'Apple',
+    'themeClaude': 'Claude',
+    'themeDiscord': 'Discord',
     'themeGray': 'Серая',
     'appStyle': 'Стиль приложения',
     'appStyleDialogTitle': 'Стиль приложения',
@@ -2436,6 +2438,8 @@ const Map<String, Map<String, String>> _i18n = {
     'themeDark': 'Dark',
     'themeSteam': 'Steam',
     'themeApple': 'Apple',
+    'themeClaude': 'Claude',
+    'themeDiscord': 'Discord',
     'themeGray': 'Gray',
     'appStyle': 'App style',
     'appStyleDialogTitle': 'App style',
@@ -4571,13 +4575,11 @@ class TokenCounter {
 
 /* ============================ СОСТОЯНИЕ ============================ */
 
-// Only one theme ships today: dark (the palette the user's OS resolved to). The
-// enum and its selector are kept single-valued on purpose — new palettes will be
-// added as new enum values + list entries, and the switching mechanism stays.
-// `apple` (light) is defined but not yet exposed in the theme picker — its
-// light-mode readability pass over the remaining hardcoded colors is a
-// compiler-in-the-loop follow-up. `dark` and `steam` ship now.
-enum AppThemeMode { dark, apple, steam }
+// Selectable themes. Dark palettes (dark/steam/discord) ride the color seams +
+// ThemeData cleanly. Light palettes (apple/claude) also switch, but their full
+// readability over the remaining hardcoded dark-assuming colors is a
+// compiler-in-the-loop pass (see APPLE-THEME-TODO.md).
+enum AppThemeMode { dark, apple, steam, claude, discord }
 
 // Liquid Glass was removed — only the standard (solid) style remains. Kept as a
 // single-value enum so the appStyle field / prefs migration stay graceful.
@@ -7820,8 +7822,8 @@ const _Palette _kSteam = _Palette(
   brightness: Brightness.dark,
 );
 
-// Apple — light, museum-gallery palette (appleDESIGN.md). Defined but dormant
-// (not in the picker) until the light-mode color pass lands.
+// Apple — light, museum-gallery palette (appleDESIGN.md). Light theme: full
+// readability needs the color pass (APPLE-THEME-TODO.md).
 const _Palette _kApple = _Palette(
   bg: Color(0xFFFFFFFF),
   card: Color(0xFFF5F5F7),
@@ -7833,12 +7835,41 @@ const _Palette _kApple = _Palette(
   brightness: Brightness.light,
 );
 
+// Discord — dark blurple community palette (discordDESIGN.md).
+const _Palette _kDiscord = _Palette(
+  bg: Color(0xFF313338),
+  card: Color(0xFF2B2D31),
+  card2: Color(0xFF1E1F22),
+  txt: Color(0xFFDBDEE1),
+  sub: Color(0xFF949BA4),
+  accent: Color(0xFF5865F2),
+  stroke: Color(0xFF3F4147),
+  brightness: Brightness.dark,
+);
+
+// Claude — warm cream editorial palette (claudeDESIGN.md). Light theme: full
+// readability needs the color pass (APPLE-THEME-TODO.md).
+const _Palette _kClaude = _Palette(
+  bg: Color(0xFFFAF9F5),
+  card: Color(0xFFEFE9DE),
+  card2: Color(0xFFF5F0E8),
+  txt: Color(0xFF141413),
+  sub: Color(0xFF6C6A64),
+  accent: Color(0xFFCC785C),
+  stroke: Color(0xFFE6DFD8),
+  brightness: Brightness.light,
+);
+
 _Palette _palFor(AppThemeMode m) {
   switch (m) {
     case AppThemeMode.apple:
       return _kApple;
     case AppThemeMode.steam:
       return _kSteam;
+    case AppThemeMode.claude:
+      return _kClaude;
+    case AppThemeMode.discord:
+      return _kDiscord;
     case AppThemeMode.dark:
       return _kDark;
   }
@@ -17278,6 +17309,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 (AppThemeMode.dark, app.t('themeDark')),
                 (AppThemeMode.steam, app.t('themeSteam')),
                 (AppThemeMode.apple, app.t('themeApple')),
+                (AppThemeMode.claude, app.t('themeClaude')),
+                (AppThemeMode.discord, app.t('themeDiscord')),
               ],
               app.themeMode,
               (v) => app.setThemeMode(v),
@@ -24373,6 +24406,8 @@ class SettingsSheet extends StatelessWidget {
                 (AppThemeMode.dark, app.t('themeDark')),
                 (AppThemeMode.steam, app.t('themeSteam')),
                 (AppThemeMode.apple, app.t('themeApple')),
+                (AppThemeMode.claude, app.t('themeClaude')),
+                (AppThemeMode.discord, app.t('themeDiscord')),
               ])
                 RadioListTile<AppThemeMode>(
                   value: entry.$1,
