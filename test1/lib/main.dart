@@ -3597,6 +3597,9 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.1.3', [
+    'Дочерние процессы теперь различимы в диспетчере задач (вкладка «Подробности»): виджет визуализации запускается как evs_widget.exe — отдельно от evs.exe (главное приложение) и evs_sidecar.exe (голосовой движок), видно, за что отвечает каждый.',
+  ]),
   ChangelogEntry('2.1.2', [
     'Исправлено: обновление не устанавливалось, а приложение уходило в петлю перезапуска — установщик обновления не переживал закрытие приложения и фактически не запускался (лог установки не появлялся ни разу). Теперь установка идёт отдельным самостоятельным процессом через планировщик задач и переживает выход приложения; каждый шаг пишется в update-runner.log.',
     'Примечание: этот фикс живёт ВНУТРИ обновления, поэтому текущую (сломанную) версию он вылечить не может — эту сборку нужно один раз установить вручную, дальше авто-обновления заработают штатно.',
@@ -9556,12 +9559,34 @@ class VizOverlayServer {
     });
   }
 
+  // The widget runs the SAME binary with --viz-overlay; launch it from a
+  // distinctly-named copy so it shows as "evs_widget.exe" in Task Manager's
+  // Details tab instead of a second anonymous "evs.exe" (you can tell the
+  // visualization widget apart from the main app and the voice sidecar).
+  // Refreshed whenever the main exe changes (after an update); falls back to the
+  // main exe if the directory isn't writable. NB: the updater's kill-list
+  // (applyAndRestart) must include evs_widget.exe so updates can replace files.
+  Future<String> _widgetExe() async {
+    final main = io.Platform.resolvedExecutable;
+    try {
+      final sep = io.Platform.pathSeparator;
+      final copy = io.File('${io.File(main).parent.path}${sep}evs_widget.exe');
+      final src = io.File(main);
+      if (!await copy.exists() || await copy.length() != await src.length()) {
+        await src.copy(copy.path);
+      }
+      return copy.path;
+    } catch (_) {
+      return main;
+    }
+  }
+
   Future<void> _spawn() async {
     _enabled = true;
     try {
       await _ensureServer();
       if (_proc != null) return;
-      final proc = await io.Process.start(io.Platform.resolvedExecutable,
+      final proc = await io.Process.start(await _widgetExe(),
           ['--viz-overlay', '--port=${_http!.port}']);
       _proc = proc;
       ProcessJob.instance.add(proc.pid); // die with the app
@@ -10540,13 +10565,15 @@ setlocal enableextensions
 set "RLOG=$runnerLog"
 echo [%date% %time%] updater started > "%RLOG%"
 :waitloop
-tasklist /FI "IMAGENAME eq evs.exe" 2>nul | find /I "evs.exe" >nul
-if not errorlevel 1 (
+set "RUNNING="
+tasklist /FI "IMAGENAME eq evs.exe" 2>nul | find /I "evs.exe" >nul && set "RUNNING=1"
+tasklist /FI "IMAGENAME eq evs_widget.exe" 2>nul | find /I "evs_widget.exe" >nul && set "RUNNING=1"
+if defined RUNNING (
   timeout /t 1 /nobreak >nul
   goto waitloop
 )
 echo [%date% %time%] evs closed, killing leftovers >> "%RLOG%"
-taskkill /F /IM evs.exe /IM evs_sidecar.exe >nul 2>&1
+taskkill /F /IM evs.exe /IM evs_widget.exe /IM evs_sidecar.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 echo [%date% %time%] launching installer >> "%RLOG%"
 "$path" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="$runDir" /LOG="$installLog"
