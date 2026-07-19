@@ -28,6 +28,37 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.4.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Меньше нагрузки на процессор:</b> декоративные анимации больше не крутятся впустую. Новый режим «Умные» (по умолчанию) включает их только когда ассистент активен; в трее всё замирает. Регулировка: «Внешний вид» → «Анимации интерфейса».</li>
+          <li><b>Сфера реагирует на звук</b> во всех местах (чат, оверлей, виджеты).</li>
+          <li>Настройки клона голоса (XTTS) и CosyVoice разделены на отдельные секции.</li>
+          <li><b>Команды громкости с {N} исправлены:</b> «громкость на 30» распознаётся (число цифрами или словами), без числа — значение по умолчанию.</li>
+          <li><b>Быстрые профили:</b> активный подсвечивается, профили можно настраивать, есть сброс.</li>
+          <li>Исправлена верстка настроек и фон тёмной темы Claude.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 19 Jul 2026 23:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.4.1/EVS-Setup-2.4.1.exe"
+        sparkle:version="2.4.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD0CHQCA+kzbtLZELqgEeIOEDumSh/s5Wb+nq8T/JeU2AhwSLxQIUziJOlIc9WuyeIzgSi77BbDqO1EuDbZE"
+        evs:sha256="0ced83e0ef67c227b6af9563087add86ade2855383b5cf136202f3da87a9d86c"
+        length="16585432"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.4.0</title>
       <description><![CDATA[
         <style>
