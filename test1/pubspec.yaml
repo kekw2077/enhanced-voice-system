@@ -1,7 +1,7 @@
 name: evs
 description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 2.3.1+32
+version: 2.3.2+33
 
 environment:
   sdk: ">=3.10.0 <4.0.0"

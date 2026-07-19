@@ -190,6 +190,8 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                     # (it re-engages next poll if conditions still hold).
                     game.release()
                     stt.set_device(str(data.get("device")))
+                if "vad" in data:
+                    stt.set_vad_aggressiveness(data.get("vad"))
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),

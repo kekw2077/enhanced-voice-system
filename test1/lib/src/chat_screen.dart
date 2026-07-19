@@ -106,7 +106,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: 12),
             Text(
               app.t('cmdSuggestPrivacy'),
-              style: const TextStyle(fontSize: 12, color: Color(0xFF6E7280)),
+              style: TextStyle(fontSize: 12, color: _faint(context)),
             ),
           ],
         ),

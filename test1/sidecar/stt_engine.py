@@ -1002,13 +1002,21 @@ class SttEngine:
                         "message": f"multi-mic start failed: {e}"})
             return False
 
+    def set_vad_aggressiveness(self, n) -> None:
+        """webrtcvad aggressiveness 0..3 (higher = stricter / LESS sensitive).
+        Default 3. Applied when a capture thread (re)starts."""
+        try:
+            self._vad_aggr = max(0, min(3, int(n)))
+        except (TypeError, ValueError):
+            pass
+
     def _process_channel(self, ch: dict) -> None:
         """One mic's capture->denoise->VAD, emitting finalized segments (finals
         only, with voice energy) to the arbiter — behaviour mirrors _process."""
         import numpy as np
         import webrtcvad
 
-        vad = webrtcvad.Vad(3)
+        vad = webrtcvad.Vad(getattr(self, "_vad_aggr", 3))
         speech: list[bytes] = []
         speaking = False
         silence = 0
@@ -1096,7 +1104,7 @@ class SttEngine:
         # noise floor that level 2 happily labels "speech" — the segment then
         # NEVER closes, stt.final never fires and the assistant looks dead
         # (observed live: 150 s of nonstop partials, zero finals).
-        vad = webrtcvad.Vad(3)
+        vad = webrtcvad.Vad(getattr(self, "_vad_aggr", 3))
         log_stage("VAD loaded")
         first_frame = True
         speech: list[bytes] = []

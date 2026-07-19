@@ -243,7 +243,7 @@ class _WebSearchCardState extends State<_WebSearchCard> {
             const SizedBox(height: 14),
             Text(app.t('webSearchKeysHint'),
                 style:
-                    const TextStyle(fontSize: 11.5, color: Color(0xFF6E7280))),
+                    TextStyle(fontSize: 11.5, color: _faint(context))),
             const SizedBox(height: 10),
             _label(app.t('webSearchTavily')),
             _keyField(_tavily, 'tvly-…', app.setTavilyKey),
@@ -383,8 +383,8 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
                         kind: 'waveflat', size: 220, reactive: true);
                   case 'none':
                     return Text(app.t('vizNone'),
-                        style: const TextStyle(
-                            fontSize: 13, color: Color(0xFF6E7280)));
+                        style: TextStyle(
+                            fontSize: 13, color: _faint(context)));
                   default:
                     return ParticleSphere(
                       size: 190,
@@ -589,7 +589,7 @@ class _DeviceSelector extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(app.t(hintKey),
-                style: const TextStyle(color: Color(0xFF6E7280), fontSize: 11)),
+                style: TextStyle(color: _faint(context), fontSize: 11)),
             if (offloaded)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -788,7 +788,7 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                     size: 18,
                     color: selected
                         ? const Color(0xFFB9A6FF)
-                        : const Color(0xFF6E7280)),
+                        : _faint(context)),
                 const SizedBox(width: 10),
                 Text(name,
                     style: TextStyle(
@@ -831,8 +831,8 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       '${snap.data ?? ''}\nHF: $kGigaamHfRepo',
-                      style: const TextStyle(
-                          color: Color(0xFF6E7280), fontSize: 10.5),
+                      style: TextStyle(
+                          color: _faint(context), fontSize: 10.5),
                     ),
                   ),
                 ),
@@ -1019,7 +1019,7 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
               style: TextStyle(color: _sub(context), fontSize: 12)),
           const SizedBox(height: 4),
           Text('~$sizeMb ${app.t('mbShort')}',
-              style: const TextStyle(color: Color(0xFF6E7280), fontSize: 11)),
+              style: TextStyle(color: _faint(context), fontSize: 11)),
           const SizedBox(height: 10),
           if (downloading)
             Row(children: [
@@ -1142,8 +1142,8 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
                     .round();
                 if (mb <= 0) return const SizedBox.shrink();
                 return Text('${app.t('mdlTotalDisk')}: $mb ${app.t('mbShort')}',
-                    style: const TextStyle(
-                        color: Color(0xFF6E7280), fontSize: 11));
+                    style: TextStyle(
+                        color: _faint(context), fontSize: 11));
               }),
             ],
           ),
@@ -1211,7 +1211,7 @@ class _AssetModelsCardState extends State<_AssetModelsCard> {
           const SizedBox(height: 4),
           Text(
               '~$sizeMb ${app.t('mbShort')} · ~${spec.ramMb} ${app.t('mdlRamShort')}',
-              style: const TextStyle(color: Color(0xFF6E7280), fontSize: 11)),
+              style: TextStyle(color: _faint(context), fontSize: 11)),
           const SizedBox(height: 10),
           if (downloading)
             Row(children: [
@@ -1887,8 +1887,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   ),
                   const SizedBox(height: 12),
                   Text(app.t('settingsUnsaved'),
-                      style: const TextStyle(
-                          color: Color(0xFF6E7280), fontSize: 12)),
+                      style: TextStyle(
+                          color: _faint(context), fontSize: 12)),
                   const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -2081,8 +2081,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text('— ${app.t(s.$3)}',
-                      style: const TextStyle(
-                          fontSize: 13, color: Color(0xFF6E7280))),
+                      style: TextStyle(
+                          fontSize: 13, color: _faint(context))),
                 ),
               ],
             ),
@@ -2430,8 +2430,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   ),
                   const SizedBox(width: 8),
                   Text('${(cs.progress * 100).round()}%',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF6E7280))),
+                      style: TextStyle(
+                          fontSize: 12, color: _faint(context))),
                 ]),
               );
             case ComponentState.verifying:
@@ -2490,8 +2490,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   ),
                   const SizedBox(width: 8),
                   Text('${(p * 100).round()}%',
-                      style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF6E7280))),
+                      style: TextStyle(
+                          fontSize: 12, color: _faint(context))),
                 ]),
               ),
             );
@@ -2740,7 +2740,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             Padding(
               padding: const EdgeInsets.all(18),
               child: Text(app.t('cmdEmpty'),
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF6E7280))),
+                  style: TextStyle(fontSize: 13, color: _faint(context))),
             ),
           for (final c in cmds) _cmdRow(app, c),
           Padding(
@@ -2821,7 +2821,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               child: Text(c.value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF6E7280)))),
+                  style: TextStyle(fontSize: 12.5, color: _faint(context)))),
           InkResponse(
             radius: 18,
             onTap: () => _runCommand(app, c),
@@ -2963,8 +2963,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         fontWeight: FontWeight.w600,
                         color: _body(context))),
                 Text(app.t(descKey),
-                    style: const TextStyle(
-                        fontSize: 10.5, color: Color(0xFF6E7280))),
+                    style: TextStyle(
+                        fontSize: 10.5, color: _faint(context))),
               ],
             ),
           ]),
@@ -3180,8 +3180,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             particleCount: 520,
             background: Color(0xFF04040A));
       case 'none':
-        return const Icon(Icons.hide_source,
-            size: 26, color: Color(0xFF6E7280));
+        return Icon(Icons.hide_source,
+            size: 26, color: _faint(context));
       default:
         return ParticleSphere(
             size: 46,
@@ -3202,7 +3202,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
             child: Text(app.t('presetsDesc'),
-                style: const TextStyle(fontSize: 12, color: Color(0xFF6E7280))),
+                style: TextStyle(fontSize: 12, color: _faint(context))),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
@@ -3277,7 +3277,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           Padding(
             padding: const EdgeInsets.all(18),
             child: Text(app.t('noModelsYet'),
-                style: const TextStyle(fontSize: 13, color: Color(0xFF6E7280))),
+                style: TextStyle(fontSize: 13, color: _faint(context))),
           ),
         for (final m in app.models)
           _modelRow(app, m, app.modelDisplayName(m, withSuffix: false), ''),
@@ -3450,7 +3450,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       color: _body(context))),
               const SizedBox(height: 2),
               Text(app.t('systemPromptDesc'),
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF6E7280))),
+                  style: TextStyle(fontSize: 12, color: _faint(context))),
               const SizedBox(height: 8),
               _inlineField(_promptCtrl,
                   maxLines: 3,
@@ -3697,11 +3697,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         letterSpacing: 0.5,
                         color: _txt(context))),
                 const SizedBox(height: 4),
-                const Text('Enhanced Voice System',
+                Text('Enhanced Voice System',
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF6E7280))),
+                        color: _faint(context))),
               ],
             ),
           ),
@@ -3765,8 +3765,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Text('·  $ch',
-                  style: const TextStyle(
-                      fontSize: 12.5, height: 1.5, color: Color(0xFF6E7280))),
+                  style: TextStyle(
+                      fontSize: 12.5, height: 1.5, color: _faint(context))),
             ),
         ],
       ),
@@ -3828,6 +3828,21 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     fontWeight: FontWeight.w700)),
           ),
           _DenoiseSelector(app),
+          evsRow(context,
+            stacked: true,
+            label: app.t('micSensitivity'),
+            desc: app.t('micSensitivityDesc'),
+            control: evsSegmentedWide<int>(context,
+              [
+                (3, app.t('micSensLow')),
+                (2, app.t('micSensMed')),
+                (1, app.t('micSensHigh')),
+                (0, app.t('micSensMax')),
+              ],
+              app.micVadAggr,
+              (v) => app.setMicVadAggr(v),
+            ),
+          ),
           evsRow(context, 
             stacked: true,
             label: app.t('recognitionLanguage'),
@@ -3883,7 +3898,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 2, 18, 0),
             child: Text(app.t('extraMicsDesc'),
-                style: const TextStyle(color: Color(0xFF6E7280), fontSize: 12)),
+                style: TextStyle(color: _faint(context), fontSize: 12)),
           ),
           _MultiMicCard(app),
         ],
@@ -4147,7 +4162,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                         color: _body(context))),
                 Text(app.t(hintKey),
                     style:
-                        const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
+                        TextStyle(fontSize: 11, color: _faint(context))),
               ],
             ),
           ),
@@ -4197,7 +4212,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
       Padding(
         padding: const EdgeInsets.fromLTRB(18, 4, 18, 6),
         child: Text(app.t('ttsCosyWiringHint'),
-            style: const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
+            style: TextStyle(fontSize: 11, color: _faint(context))),
       ),
       evsRow(context, 
         stacked: true,
@@ -4251,7 +4266,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                 onChanged: app.setCosyvoiceClonePromptText),
             const SizedBox(height: 4),
             Text(app.t('ttsCosyClonePromptHint'),
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
+                style: TextStyle(fontSize: 11, color: _faint(context))),
           ],
         ),
       ),
@@ -4453,7 +4468,7 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
               app.ttsInterpMode == 'model'
                   ? app.t('ttsInterpModelHint')
                   : app.t('ttsInterpRulesHint'),
-              style: const TextStyle(fontSize: 11.5, color: Color(0xFF6E7280)),
+              style: TextStyle(fontSize: 11.5, color: _faint(context)),
             ),
           ),
           if (app.ttsInterpMode == 'model')
@@ -4556,7 +4571,7 @@ class _ModelModeCard extends StatelessWidget {
               const SizedBox(height: 3),
               Text(app.t('modelPerModeDesc'),
                   style:
-                      const TextStyle(fontSize: 12, color: Color(0xFF6E7280))),
+                      TextStyle(fontSize: 12, color: _faint(context))),
             ],
           ),
         ),
@@ -4711,8 +4726,8 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                               color: _body(context))),
                       const SizedBox(height: 3),
                       Text(app.t('llmAdvDesc'),
-                          style: const TextStyle(
-                              fontSize: 12, color: Color(0xFF6E7280))),
+                          style: TextStyle(
+                              fontSize: 12, color: _faint(context))),
                     ],
                   ),
                 ),

@@ -725,8 +725,8 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                           color: _sub(context))),
                 if (_addrs.isEmpty)
                   Text('127.0.0.1:${app.remoteInputPort}',
-                      style: const TextStyle(
-                          fontSize: 12.5, color: Color(0xFF6E7280))),
+                      style: TextStyle(
+                          fontSize: 12.5, color: _faint(context))),
               ],
             ),
           ),
@@ -802,8 +802,8 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                               color: _txt(context))),
                       const SizedBox(height: 6),
                       Text(app.t('remotePairHint'),
-                          style: const TextStyle(
-                              fontSize: 11.5, color: Color(0xFF6E7280))),
+                          style: TextStyle(
+                              fontSize: 11.5, color: _faint(context))),
                       const SizedBox(height: 8),
                       InkWell(
                         onTap: _newCode,
@@ -844,7 +844,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
             child: Text(app.t('remoteNoDevices'),
-                style: const TextStyle(fontSize: 12.5, color: Color(0xFF6E7280))),
+                style: TextStyle(fontSize: 12.5, color: _faint(context))),
           ),
         for (final d in devs) _deviceRow(d),
       ],
@@ -876,7 +876,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                       color: _body(context))),
             ),
             Text(_deviceStatus(d),
-                style: const TextStyle(fontSize: 11, color: Color(0xFF6E7280))),
+                style: TextStyle(fontSize: 11, color: _faint(context))),
             const SizedBox(width: 8),
             evsToggle(context, d.enabled, (v) => app.setRemoteDeviceEnabled(d, v)),
           ]),
@@ -920,12 +920,12 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(on ? Icons.check : Icons.close,
               size: 12,
-              color: on ? _success(context) : const Color(0xFF6E7280)),
+              color: on ? _success(context) : _faint(context)),
           const SizedBox(width: 4),
           Text(label,
               style: TextStyle(
                   fontSize: 12,
-                  color: on ? _body(context) : const Color(0xFF6E7280))),
+                  color: on ? _body(context) : _faint(context))),
         ]),
       ),
     );
@@ -1057,18 +1057,18 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
             : sugg.isEmpty
                 ? Center(
                     child: Text(app.t('cmdSuggestEmpty'),
-                        style: const TextStyle(color: Color(0xFF6E7280))))
+                        style: TextStyle(color: _faint(context))))
                 : Column(children: [
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Row(children: [
-                        const Icon(Icons.lock_outline,
-                            size: 14, color: Color(0xFF6E7280)),
+                        Icon(Icons.lock_outline,
+                            size: 14, color: _faint(context)),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Text(app.t('cmdSuggestPrivacy'),
-                              style: const TextStyle(
-                                  fontSize: 11.5, color: Color(0xFF6E7280))),
+                              style: TextStyle(
+                                  fontSize: 11.5, color: _faint(context))),
                         ),
                       ]),
                     ),
@@ -1129,7 +1129,7 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
                 onChanged:
                     s.collides ? null : (v) => setState(() => s.selected = v ?? false),
                 visualDensity: VisualDensity.compact,
-                side: const BorderSide(color: Color(0xFF6E7280)),
+                side: BorderSide(color: _faint(context)),
               ),
             ),
             const SizedBox(width: 6),
@@ -1431,8 +1431,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                     ? Center(
                         child: Text(app.t('volNoSessions'),
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                fontSize: 12.5, color: Color(0xFF6E7280))))
+                            style: TextStyle(
+                                fontSize: 12.5, color: _faint(context))))
                     : ListView(
                         children: [
                           for (final s in sessions)
@@ -1528,7 +1528,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         child: Row(children: [
           Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off,
               size: 16,
-              color: selected ? const Color(0xFF7BA0E0) : const Color(0xFF6E7280)),
+              color: selected ? const Color(0xFF7BA0E0) : _faint(context)),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -1542,8 +1542,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                 Text(process,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 11, color: Color(0xFF6E7280))),
+                    style: TextStyle(
+                        fontSize: 11, color: _faint(context))),
               ],
             ),
           ),
@@ -1674,7 +1674,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                     if (filtered.isEmpty) {
                       return Center(
                           child: Text(app.t('cmdWizNoPrograms'),
-                              style: const TextStyle(color: Color(0xFF6E7280))));
+                              style: TextStyle(color: _faint(context))));
                     }
                     return ListView.builder(
                       itemCount: filtered.length,

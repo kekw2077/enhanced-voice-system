@@ -233,6 +233,7 @@ class AppState extends ChangeNotifier {
   // Noise suppression before the VAD (TZ2 block 1). 'light' is the default but
   // needs the GTCRN model; the sidecar fail-safes to off until it's present.
   String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
+  int micVadAggr = 3; // webrtcvad aggressiveness 0..3 (higher = stricter / less sensitive)
   // Compute device for GPU-capable engines (TZ2 block 6). Only Whisper has a
   // CUDA path here; the selector is hidden entirely when no GPU is detected.
   String sttDevice = 'cpu'; // 'cpu' | 'cuda'
@@ -492,6 +493,7 @@ class AppState extends ChangeNotifier {
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
+    micVadAggr = prefs.getInt('micVadAggr') ?? 3;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
     gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
     gameModeVram = prefs.getBool('gameModeVram') ?? true;
@@ -683,6 +685,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('sttEngine', sttEngine);
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
     await prefs.setString('denoiseMode', denoiseMode);
+    await prefs.setInt('micVadAggr', micVadAggr);
     await prefs.setString('sttDevice', sttDevice);
     await prefs.setBool('gameModeFullscreen', gameModeFullscreen);
     await prefs.setBool('gameModeVram', gameModeVram);
@@ -819,6 +822,9 @@ class AppState extends ChangeNotifier {
       unawaited(SidecarClient.instance.setDenoise(denoiseMode));
     } catch (_) {}
     try {
+      unawaited(SidecarClient.instance.setVadAggressiveness(micVadAggr));
+    } catch (_) {}
+    try {
       SidecarClient.instance.setSttDevice(sttDevice);
     } catch (_) {}
     try {
@@ -877,6 +883,7 @@ class AppState extends ChangeNotifier {
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
+    micVadAggr = prefs.getInt('micVadAggr') ?? 3;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
     gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
     gameModeVram = prefs.getBool('gameModeVram') ?? true;
@@ -1360,6 +1367,13 @@ class AppState extends ChangeNotifier {
 
   // Switch noise suppression (off | light | strong). Applies live for preview;
   // persists on Save, resynced on Save/Cancel via _applySettingsSideEffects.
+  void setMicVadAggr(int n) {
+    micVadAggr = n.clamp(0, 3);
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setVadAggressiveness(micVadAggr));
+  }
+
   void setDenoiseMode(String v) {
     denoiseMode = (v == 'light' || v == 'strong') ? v : 'off';
     // Remember the choice for the current input device (TZ2 block 8.1) so it

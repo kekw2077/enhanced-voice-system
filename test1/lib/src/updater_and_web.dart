@@ -292,8 +292,7 @@ class AppUpdater {
             await windowManager.focus();
           } catch (_) {}
           final ctx = rootNavKey.currentContext;
-          // ignore: use_build_context_synchronously
-          if (ctx != null) {
+          if (ctx != null && ctx.mounted) {
             showAppSnackBar(
                 ctx, app.t('updApplied').replaceAll('{v}', expected));
           }
@@ -496,7 +495,7 @@ class AppUpdater {
               ],
               Text(app.t('updDialogHint'),
                   style:
-                      const TextStyle(color: Color(0xFF6E7280), fontSize: 12)),
+                      TextStyle(color: _faint(dctx), fontSize: 12)),
               const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,

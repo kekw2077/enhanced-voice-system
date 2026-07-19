@@ -35,6 +35,7 @@ class SidecarClient {
   final ValueNotifier<Map<String, bool>> engines =
       ValueNotifier(const {'whisper': false, 'gigaam': false});
   String _denoise = 'off'; // off | light | strong
+  int _vadAggr = 3; // webrtcvad aggressiveness 0..3 (higher = stricter / less sensitive)
   String _denoiseDir = ''; // <userdata>/models (holds denoise-gtcrn/, denoise-df/)
   final ValueNotifier<(String mode, String state, String? message)?>
       denoiseStatus = ValueNotifier(null);
@@ -198,7 +199,7 @@ class SidecarClient {
     status.value = SidecarStatus.connected;
     // Tell the sidecar which Whisper model to use (it lazy-loads on first
     // transcription / model change).
-    _send({'type': 'stt.config', 'model': _sttModel});
+    _send({'type': 'stt.config', 'model': _sttModel, 'vad': _vadAggr});
     _ws!.listen((data) {
       try {
         final m = jsonDecode(data as String) as Map<String, dynamic>;
@@ -419,6 +420,11 @@ class SidecarClient {
   }
 
   // Switch the noise-suppression mode live (off | light | strong) — TZ2 block 1.
+  Future<void> setVadAggressiveness(int n) async {
+    _vadAggr = n.clamp(0, 3);
+    _send({'type': 'stt.config', 'vad': _vadAggr});
+  }
+
   Future<void> setDenoise(String mode) async {
     _denoise = (mode == 'light' || mode == 'strong') ? mode : 'off';
     await _ensureDenoiseDir();
