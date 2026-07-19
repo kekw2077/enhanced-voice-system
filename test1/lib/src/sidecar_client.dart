@@ -1106,7 +1106,23 @@ class VoiceAssistant {
       final phrase = _norm(c.phrase);
       if (phrase.isEmpty) continue;
       double s;
-      if (t == phrase) {
+      if (phrase.contains('{n}')) {
+        // Parametric template ("громкость на {N}"): {N} is a NUMBER slot, not a
+        // literal token — "громкость на 30" must match it. Score on the literal
+        // words only; the value itself is read from the utterance when the
+        // command runs (NumberWords.extract, falling back to defaultValue).
+        // Without this the "{n}" token was never present in what the user said,
+        // the token-subset test failed and the command was "not found".
+        final literal = _norm(phrase.replaceAll('{n}', ' '));
+        final pTokens = literal.split(' ').where((e) => e.isNotEmpty).toSet();
+        if (pTokens.isNotEmpty && pTokens.every(tTokens.contains)) {
+          // A spoken number makes it a definite match; without one the command
+          // still runs on its configured default, so keep it a strong match.
+          s = NumberWords.extract(text) != null ? 1.0 : 0.9;
+        } else {
+          s = _ratio(t, literal);
+        }
+      } else if (t == phrase) {
         s = 1.0;
       } else if (t.contains(phrase) || phrase.contains(t)) {
         s = 0.9;

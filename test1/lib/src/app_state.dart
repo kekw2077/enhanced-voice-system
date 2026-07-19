@@ -577,6 +577,17 @@ class AppState extends ChangeNotifier {
     cloneEnabled = prefs.getBool('cloneEnabled') ?? false;
     cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
+    activeVoicePreset = prefs.getString('activeVoicePreset') ?? '';
+    try {
+      final vp = prefs.getString('voicePresets');
+      if (vp != null && vp.isNotEmpty) {
+        final d = jsonDecode(vp) as Map<String, dynamic>;
+        voicePresets = {
+          for (final e in d.entries)
+            e.key: (e.value as Map).cast<String, dynamic>()
+        };
+      }
+    } catch (_) {}
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -773,6 +784,8 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('cloneEnabled', cloneEnabled);
     await prefs.setString('cloneSamplePath', cloneSamplePath);
     await prefs.setStringList('clonePhraseLib', clonePhraseLib);
+    await prefs.setString('activeVoicePreset', activeVoicePreset);
+    await prefs.setString('voicePresets', jsonEncode(voicePresets));
     await prefs.setString(
       'voiceCommands',
       jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
@@ -989,6 +1002,17 @@ class AppState extends ChangeNotifier {
     cloneEnabled = prefs.getBool('cloneEnabled') ?? false;
     cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
+    activeVoicePreset = prefs.getString('activeVoicePreset') ?? '';
+    try {
+      final vp = prefs.getString('voicePresets');
+      if (vp != null && vp.isNotEmpty) {
+        final d = jsonDecode(vp) as Map<String, dynamic>;
+        voicePresets = {
+          for (final e in d.entries)
+            e.key: (e.value as Map).cast<String, dynamic>()
+        };
+      }
+    } catch (_) {}
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -1067,24 +1091,88 @@ class AppState extends ChangeNotifier {
   // settings through their normal setters (so persistence + sidecar updates
   // happen), and only touches toggle/segment-backed fields so the UI reflects
   // the change on the next rebuild without fighting any text controller.
-  void applyVoicePreset(String id) {
-    switch (id) {
-      case 'fast': // Быстро: CPU, light denoise, no web search
-        setSttDevice('cpu');
-        setDenoiseMode('light');
-        setWebSearchEnabled(false);
-        break;
-      case 'quality': // Качество: GPU, strong denoise
-        setSttDevice('cuda');
-        setDenoiseMode('strong');
-        break;
-      case 'search': // Поиск: web results on
-        setWebSearchEnabled(true);
-        break;
-      case 'chat': // Чат: web results off
-        setWebSearchEnabled(false);
-        break;
+  // ---- Quick profiles («Быстрые профили») ------------------------------
+  // Each profile applies a SUBSET of three settings; an absent key means "leave
+  // this one alone". They are data rather than hardcoded switch arms so the user
+  // can retune them, and `activeVoicePreset` marks the last one applied — it is
+  // cleared the moment any governed setting is changed by hand, so the
+  // highlight never claims a profile that no longer reflects reality.
+  static const Map<String, Map<String, dynamic>> kDefaultVoicePresets = {
+    'fast': {'device': 'cpu', 'denoise': 'light', 'web': false},
+    'quality': {'device': 'cuda', 'denoise': 'strong'},
+    'search': {'web': true},
+    'chat': {'web': false},
+  };
+
+  // Overrides only; anything absent falls back to the built-in defaults.
+  Map<String, Map<String, dynamic>> voicePresets = {};
+  String activeVoicePreset = '';
+  bool _applyingPreset = false;
+
+  Map<String, dynamic> presetConfig(String id) =>
+      voicePresets[id] ?? kDefaultVoicePresets[id] ?? const {};
+
+  bool get presetsCustomized => voicePresets.isNotEmpty;
+
+  // Human summary of what a profile changes, built from its CURRENT config so
+  // an edited profile never shows a stale description.
+  String presetDescription(String id) {
+    final cfg = presetConfig(id);
+    final parts = <String>[];
+    final dev = cfg['device'];
+    if (dev is String && dev.isNotEmpty) {
+      parts.add(t(dev == 'cuda' ? 'presetDevGpu' : 'presetDevCpu'));
     }
+    final dn = cfg['denoise'];
+    if (dn is String && dn.isNotEmpty) {
+      parts.add(t(dn == 'strong'
+          ? 'presetDnStrong'
+          : dn == 'light'
+              ? 'presetDnLight'
+              : 'presetDnOff'));
+    }
+    final web = cfg['web'];
+    if (web is bool) parts.add(t(web ? 'presetWebOn' : 'presetWebOff'));
+    return parts.isEmpty ? t('presetEmpty') : parts.join(' · ');
+  }
+
+  void applyVoicePreset(String id) {
+    final cfg = presetConfig(id);
+    if (cfg.isEmpty) return;
+    _applyingPreset = true;
+    final dev = cfg['device'];
+    if (dev is String && dev.isNotEmpty) setSttDevice(dev);
+    final dn = cfg['denoise'];
+    if (dn is String && dn.isNotEmpty) setDenoiseMode(dn);
+    final web = cfg['web'];
+    if (web is bool) setWebSearchEnabled(web);
+    _applyingPreset = false;
+    activeVoicePreset = id;
+    _save();
+    notifyListeners();
+  }
+
+  // Called by the setters a profile governs: a manual change means the active
+  // profile no longer describes the current state.
+  void _presetTouched() {
+    if (_applyingPreset || activeVoicePreset.isEmpty) return;
+    activeVoicePreset = '';
+    _save();
+  }
+
+  void setVoicePreset(String id, Map<String, dynamic> cfg) {
+    voicePresets[id] = cfg;
+    // Editing the active profile invalidates the "applied" mark.
+    if (activeVoicePreset == id) activeVoicePreset = '';
+    _save();
+    notifyListeners();
+  }
+
+  void resetVoicePresets() {
+    voicePresets = {};
+    activeVoicePreset = '';
+    _save();
+    notifyListeners();
   }
 
   void setChatModel(String v) {
@@ -1546,6 +1634,7 @@ class AppState extends ChangeNotifier {
     // Remember the choice for the current input device (TZ2 block 8.1) so it
     // sticks per-mic (and is not re-defaulted on the next device switch).
     deviceDenoise[inputDeviceId] = denoiseMode;
+    _presetTouched();
     _save();
     notifyListeners();
     unawaited(SidecarClient.instance.setDenoise(denoiseMode));
@@ -1555,6 +1644,7 @@ class AppState extends ChangeNotifier {
   // STT compute device (TZ2 block 6). Live preview; persisted on Save.
   void setSttDevice(String v) {
     sttDevice = v == 'cuda' ? 'cuda' : 'cpu';
+    _presetTouched();
     _save();
     notifyListeners();
     SidecarClient.instance.setSttDevice(sttDevice);
@@ -1769,6 +1859,7 @@ class AppState extends ChangeNotifier {
 
   void setWebSearchEnabled(bool v) {
     webSearchEnabled = v;
+    _presetTouched();
     _save();
     notifyListeners();
   }

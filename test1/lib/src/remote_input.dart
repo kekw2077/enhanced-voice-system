@@ -1775,6 +1775,15 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           onChanged: (_) => setState(() {}),
           onSubmitted: (_) => _finish(),
         ),
+        // Parametric volume commands: spell out how {N} relates to the value
+        // field on the previous step, otherwise "громкость на {N}" reads like a
+        // literal phrase you have to say verbatim.
+        if (_type == VoiceCommandType.appVolume)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(app.t('cmdWizVolHint'),
+                style: TextStyle(fontSize: 11.5, color: _faint(context))),
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: _speakCtrl,

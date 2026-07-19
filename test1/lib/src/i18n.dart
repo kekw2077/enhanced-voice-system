@@ -100,6 +100,25 @@ const Map<String, Map<String, String>> _i18n = {
     'presetChat': 'Чат',
     'presetChatDesc': 'Веб-поиск выключен',
     'presetApplied': 'Профиль применён: {name}',
+    // Fragments the profile description is assembled from (so an edited
+    // profile always describes what it actually does).
+    'presetDevCpu': 'CPU',
+    'presetDevGpu': 'GPU',
+    'presetDnOff': 'без шумоподавления',
+    'presetDnLight': 'лёгкое шумоподавление',
+    'presetDnStrong': 'сильное шумоподавление',
+    'presetWebOn': 'веб-поиск включён',
+    'presetWebOff': 'веб-поиск выключен',
+    'presetEmpty': 'ничего не меняет',
+    'presetsReset': 'Сбросить профили',
+    'presetsResetDone': 'Профили возвращены к стандартным',
+    'presetsCustomHint': 'Профили изменены вручную.',
+    'presetEditTitle': 'Настройка профиля',
+    'presetEditHint':
+        'Отметьте, какие параметры меняет профиль. Неотмеченные он не трогает.',
+    'presetFieldDevice': 'Устройство распознавания',
+    'presetFieldDenoise': 'Шумоподавление',
+    'presetFieldWeb': 'Веб-поиск',
     'modelPerMode': 'Модель по режиму',
     'modelPerModeDesc':
         'Разные модели для поиска и обычного чата. Поисковая используется, когда '
@@ -291,6 +310,11 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineCosy': 'CosyVoice',
     'ttsEngineCosyHint': 'качество, GPU',
     'ttsCosyUnavailable': 'CosyVoice недоступен — сервер не отвечает',
+    'cloneSectionTitle': 'Клон голоса — локальный (CPU)',
+    'cloneSectionHint':
+        'Свой клонировщик, работает на этом компьютере без видеокарты. '
+            'К настройкам сервера CosyVoice выше отношения не имеет.',
+    'ttsCosySectionTitle': 'CosyVoice — внешний сервер (GPU)',
     'cloneTitle': 'Клон голоса (XTTS · CPU)',
     'cloneHint':
         'Временный локальный клонировщик: отвечает голосом из образца WAV. '
@@ -425,6 +449,10 @@ const Map<String, Map<String, String>> _i18n = {
     'cardCatalog': 'Каталог команд',
     'cmdEmpty': 'Пока нет команд — добавьте первую.',
     'cmdAdd': 'Добавить команду',
+    'cmdWizVolHint':
+        '{N} — место для числа: скажите «громкость на 30», и применится 30. '
+            'Уберите {N} (например «громкость музыки») — применится значение из '
+            'поля на прошлом шаге.',
     'cmdPhrase': 'Фраза-триггер',
     'cmdValue': 'Значение (путь, URL, действие)',
     'next': 'Далее',
@@ -1074,6 +1102,23 @@ const Map<String, Map<String, String>> _i18n = {
     'presetChat': 'Chat',
     'presetChatDesc': 'Web search off',
     'presetApplied': 'Profile applied: {name}',
+    'presetDevCpu': 'CPU',
+    'presetDevGpu': 'GPU',
+    'presetDnOff': 'no noise suppression',
+    'presetDnLight': 'light noise suppression',
+    'presetDnStrong': 'strong noise suppression',
+    'presetWebOn': 'web search on',
+    'presetWebOff': 'web search off',
+    'presetEmpty': 'changes nothing',
+    'presetsReset': 'Reset profiles',
+    'presetsResetDone': 'Profiles restored to defaults',
+    'presetsCustomHint': 'Profiles have been edited.',
+    'presetEditTitle': 'Edit profile',
+    'presetEditHint':
+        'Tick the settings this profile changes. Unticked ones are left alone.',
+    'presetFieldDevice': 'Recognition device',
+    'presetFieldDenoise': 'Noise suppression',
+    'presetFieldWeb': 'Web search',
     'modelPerMode': 'Model per mode',
     'modelPerModeDesc':
         'Separate models for search and ordinary chat. The search model is used '
@@ -1263,6 +1308,11 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineCosy': 'CosyVoice',
     'ttsEngineCosyHint': 'quality, GPU',
     'ttsCosyUnavailable': 'CosyVoice unavailable — server not responding',
+    'cloneSectionTitle': 'Voice clone — local (CPU)',
+    'cloneSectionHint':
+        'Your own cloner, running on this computer with no GPU. Unrelated to '
+            'the CosyVoice server settings above.',
+    'ttsCosySectionTitle': 'CosyVoice — external server (GPU)',
     'cloneTitle': 'Voice clone (XTTS · CPU)',
     'cloneHint':
         'Temporary local cloner: replies in the voice from a WAV sample. Runs '
@@ -1397,6 +1447,9 @@ const Map<String, Map<String, String>> _i18n = {
     'cardCatalog': 'Command catalog',
     'cmdEmpty': 'No commands yet — add the first one.',
     'cmdAdd': 'Add command',
+    'cmdWizVolHint':
+        '{N} is a number slot: say "volume to 30" and 30 is applied. Drop {N} '
+            '(e.g. "music volume") and the value from the previous step is used.',
     'cmdPhrase': 'Trigger phrase',
     'cmdValue': 'Value (path, URL, action)',
     'next': 'Next',

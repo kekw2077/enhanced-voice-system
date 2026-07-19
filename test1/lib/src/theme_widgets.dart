@@ -1491,39 +1491,47 @@ class _AnimatedBorderState extends State<AnimatedBorder>
 
 // Mockup palette: violet accent + blue→purple→pink gradient on near-black.
 const Color _evsGMid = Color(0xFF8855CC);
-const Color _evsBgSolid = Color(0xFF09090F);
+// Tint a colour toward white (positive) or black (negative) by `amount`.
+// The shell/rail gradients are DERIVED from the theme background with this, so
+// every dark theme keeps the same "radial highlight, darker edges" character in
+// its own hue — previously they were hardcoded navy, which made the warm Claude
+// dark theme fall back to the plain dark theme's cold background.
+Color _shade(Color base, double amount) => amount >= 0
+    ? Color.alphaBlend(Colors.white.withValues(alpha: amount), base)
+    : Color.alphaBlend(Colors.black.withValues(alpha: -amount), base);
 
-// Desktop window background — the radial gradient from the mockups.
-const BoxDecoration _evsBgDecoration = BoxDecoration(
-  gradient: RadialGradient(
-    center: Alignment(0.2, -0.7),
-    radius: 1.2,
-    colors: [Color(0xFF13151E), Color(0xFF0D0E16), _evsBgSolid],
-    stops: [0.0, 0.45, 1.0],
-  ),
-);
+// Shell window background: a radial highlight over the themed background on dark
+// themes; on the light themes (apple/claude) a flat themed page background so
+// the whole shell reads as light instead of a dark plate.
+BoxDecoration _evsShellBg(BuildContext c) {
+  final p = _pal(c);
+  if (p.brightness != Brightness.dark) return BoxDecoration(color: p.bg);
+  return BoxDecoration(
+    gradient: RadialGradient(
+      center: const Alignment(0.2, -0.7),
+      radius: 1.2,
+      colors: [_shade(p.bg, 0.05), p.bg, _shade(p.bg, -0.28)],
+      stops: const [0.0, 0.45, 1.0],
+    ),
+  );
+}
 
-// Shell window background: keep the dark radial gradient on dark themes; on the
-// light themes (apple/claude) fall back to the flat themed page background so the
-// whole shell actually reads as light instead of a dark plate.
-BoxDecoration _evsShellBg(BuildContext c) =>
-    _pal(c).brightness == Brightness.dark
-        ? _evsBgDecoration
-        : BoxDecoration(color: _bg(c));
-
-// Left nav rail / sidebar background: dark vertical gradient on dark themes, a
-// flat themed card surface on light.
-BoxDecoration _evsRailBg(BuildContext c) => BoxDecoration(
-      border: Border(right: BorderSide(color: _stroke(c))),
-      gradient: _pal(c).brightness == Brightness.dark
-          ? const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF0B0C14), _evsBgSolid],
-            )
-          : null,
-      color: _pal(c).brightness == Brightness.dark ? null : _card(c),
-    );
+// Left nav rail / sidebar background: a subtly darker vertical gradient of the
+// themed background on dark themes, a flat themed card surface on light.
+BoxDecoration _evsRailBg(BuildContext c) {
+  final p = _pal(c);
+  return BoxDecoration(
+    border: Border(right: BorderSide(color: _stroke(c))),
+    gradient: p.brightness == Brightness.dark
+        ? LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_shade(p.bg, -0.12), _shade(p.bg, -0.28)],
+          )
+        : null,
+    color: p.brightness == Brightness.dark ? null : _card(c),
+  );
+}
 
 // The conic-gradient "bead" logo used across desktop screens.
 // The brand mark: the new logo (assets/icon/icon.png) with a one-shot entrance

@@ -1737,14 +1737,24 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         backgroundColor: _bg(context),
         body: Container(
           decoration: _evsShellBg(context),
+          // Same shell shape as DesktopHome: the nav rail spans the FULL window
+          // height and the title bar sits only over the content column. The old
+          // order (title bar across the top, rail below it) left a strip above a
+          // visibly shortened rail.
           child: Column(
             children: [
-              const _WindowTitleBar(),
               Expanded(
                 child: Row(
                   children: [
                     _nav(app),
-                    Expanded(child: _sectionScaffold(app)),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          const _WindowTitleBar(),
+                          Expanded(child: _sectionScaffold(app)),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -2932,45 +2942,74 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     if (cmd != null) app.addVoiceCommand(cmd);
   }
 
-  Widget _presetChip(AppState app, String id, String nameKey, String descKey,
-      IconData icon) {
-    return Tooltip(
-      message: app.t(descKey),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () {
-          app.applyVoicePreset(id);
-          showAppSnackBar(context,
-              app.t('presetApplied').replaceAll('{name}', app.t(nameKey)));
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: _overlayFill(context, 0.05),
-            border: Border.all(color: _stroke(context)),
-          ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(icon, size: 15, color: _accent(context)),
-            const SizedBox(width: 7),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(app.t(nameKey),
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: _body(context))),
-                Text(app.t(descKey),
-                    style: TextStyle(
-                        fontSize: 10.5, color: _faint(context))),
-              ],
-            ),
-          ]),
+  // A quick-profile chip: tap applies it, the pencil (or a long press) edits
+  // what it changes. The active profile is outlined in the accent colour and
+  // its description is rendered from the CURRENT config, so an edited profile
+  // never advertises settings it no longer applies.
+  Widget _presetChip(AppState app, String id, String nameKey, IconData icon) {
+    final active = app.activeVoicePreset == id;
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () {
+        app.applyVoicePreset(id);
+        showAppSnackBar(context,
+            app.t('presetApplied').replaceAll('{name}', app.t(nameKey)));
+      },
+      onLongPress: () => _editPreset(app, id, nameKey),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: active
+              ? _accent(context).withValues(alpha: 0.14)
+              : _overlayFill(context, 0.05),
+          border: Border.all(
+              color: active ? _accent(context) : _stroke(context),
+              width: active ? 1.4 : 1),
         ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(active ? Icons.check_circle : icon,
+              size: 15, color: _accent(context)),
+          const SizedBox(width: 7),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(app.t(nameKey),
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _body(context))),
+              Text(app.presetDescription(id),
+                  style: TextStyle(fontSize: 10.5, color: _faint(context))),
+            ],
+          ),
+          const SizedBox(width: 6),
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => _editPreset(app, id, nameKey),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child:
+                  Icon(Icons.edit_outlined, size: 14, color: _faint(context)),
+            ),
+          ),
+        ]),
       ),
     );
+  }
+
+  Future<void> _editPreset(AppState app, String id, String nameKey) async {
+    final res = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _PresetEditDialog(
+        app: app,
+        id: id,
+        nameKey: nameKey,
+        initial: Map<String, dynamic>.from(app.presetConfig(id)),
+      ),
+    );
+    if (res != null) app.setVoicePreset(id, res);
   }
 
   Future<void> _openSuggestCommands(AppState app) async {
@@ -3210,17 +3249,33 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _presetChip(app, 'fast', 'presetFast', 'presetFastDesc',
-                    Icons.bolt_outlined),
-                _presetChip(app, 'quality', 'presetQuality', 'presetQualityDesc',
-                    Icons.hd_outlined),
-                _presetChip(app, 'search', 'presetSearch', 'presetSearchDesc',
-                    Icons.travel_explore),
-                _presetChip(app, 'chat', 'presetChat', 'presetChatDesc',
-                    Icons.chat_bubble_outline),
+                _presetChip(app, 'fast', 'presetFast', Icons.bolt_outlined),
+                _presetChip(app, 'quality', 'presetQuality', Icons.hd_outlined),
+                _presetChip(app, 'search', 'presetSearch', Icons.travel_explore),
+                _presetChip(
+                    app, 'chat', 'presetChat', Icons.chat_bubble_outline),
               ],
             ),
           ),
+          // Restore the built-in profile definitions (only offered once at
+          // least one profile has been edited).
+          if (app.presetsCustomized)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Row(children: [
+                evsGhostButton(context, app.t('presetsReset'), Icons.restore,
+                    onTap: () {
+                  app.resetVoicePresets();
+                  showAppSnackBar(context, app.t('presetsResetDone'));
+                }),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(app.t('presetsCustomHint'),
+                      style:
+                          TextStyle(fontSize: 11, color: _faint(context))),
+                ),
+              ]),
+            ),
         ]),
         full: true,
       ),
@@ -3959,6 +4014,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             control: evsToggle(context, app.announceReady, app.setAnnounceReady),
           ),
           _TtsEngineCard(app),
+          _VoiceCloneCard(app),
           _TtsInterpCard(app),
           evsRow(context, 
             label: app.t('ttsRate'),
@@ -4141,7 +4197,6 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
       TextEditingController(text: widget.app.cosyvoiceClonePromptText);
   late final TextEditingController _instruct =
       TextEditingController(text: widget.app.cosyvoiceInstruct);
-  final TextEditingController _phrase = TextEditingController();
   bool _checking = false;
 
   // Emotion presets → i18n label keys (map to instruct phrases once wired).
@@ -4168,210 +4223,9 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
     _voice.dispose();
     _clonePrompt.dispose();
     _instruct.dispose();
-    _phrase.dispose();
     super.dispose();
   }
 
-  // ---- Voice clone (XTTS · CPU) — a temporary local cloner while a GPU for
-  // CosyVoice is awaited. Its cache is engine-agnostic (shared with CosyVoice).
-  Future<void> _pickCloneWav() async {
-    final res = await FilePicker.pickFiles();
-    final p = res?.files.single.path;
-    if (p != null && p.isNotEmpty) app.setCloneSamplePath(p);
-  }
-
-  Widget _compBadge(String text, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: color.withValues(alpha: 0.12),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 12.5, fontWeight: FontWeight.w700, color: color)),
-      );
-
-  Widget _cloneComponentControl() {
-    return ValueListenableBuilder<ComponentStatus>(
-      valueListenable: ComponentManager.instance.statusOf('clone'),
-      builder: (_, cs, __) {
-        switch (cs.state) {
-          case ComponentState.downloading:
-            return SizedBox(
-              width: 180,
-              child: Row(children: [
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.all(Radius.circular(3)),
-                    child: LinearProgressIndicator(
-                      value: cs.progress > 0 ? cs.progress : null,
-                      minHeight: 6,
-                      backgroundColor: _stroke(context),
-                      valueColor: const AlwaysStoppedAnimation(_evsGMid),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text('${(cs.progress * 100).round()}%',
-                    style: TextStyle(fontSize: 12, color: _faint(context))),
-              ]),
-            );
-          case ComponentState.verifying:
-            return _compBadge(app.t('componentVerifying'), _warn(context));
-          case ComponentState.ready:
-            return _compBadge(app.t('componentReady'), _success(context));
-          case ComponentState.error:
-            return evsGhostButton(context, app.t('retry'), Icons.refresh,
-                onTap: () => ComponentManager.instance.ensure('clone'));
-          case ComponentState.absent:
-            final info = ComponentManager.instance.infoOf('clone');
-            final gb = info != null && info.size > 0
-                ? ' (${(info.size / 1073741824).toStringAsFixed(1)} GB)'
-                : '';
-            return evsGhostButton(context, '${app.t('download')}$gb',
-                Icons.download,
-                onTap: () => ComponentManager.instance.ensure('clone'));
-        }
-      },
-    );
-  }
-
-  Widget _prerenderStatus() {
-    return ValueListenableBuilder<(int, int, String)>(
-      valueListenable: SidecarClient.instance.prerenderProgress,
-      builder: (_, pr, __) {
-        final done = pr.$1, total = pr.$2, state = pr.$3;
-        if (total == 0 || state == 'done' || state == 'skip') {
-          return const SizedBox.shrink();
-        }
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
-          child: Text('${app.t('clonePrerender')} $done/$total',
-              style: TextStyle(fontSize: 11, color: _accent(context))),
-        );
-      },
-    );
-  }
-
-  // Editable extra phrases pre-rendered into the cloned voice (on top of the
-  // built-in system + command speak-phrases).
-  Widget _clonePhraseLib() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (app.clonePhraseLib.isNotEmpty)
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final p in app.clonePhraseLib)
-                Chip(
-                  label: Text(p, style: TextStyle(fontSize: 11.5, color: _body(context))),
-                  backgroundColor: _overlayFill(context, 0.05),
-                  side: BorderSide(color: _stroke(context)),
-                  deleteIconColor: _faint(context),
-                  onDeleted: () => app.removeClonePhrase(p),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                ),
-            ],
-          ),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(child: _RemoteField(controller: _phrase, onChanged: (_) {})),
-          const SizedBox(width: 8),
-          InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () {
-              app.addClonePhrase(_phrase.text);
-              _phrase.clear();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _stroke(context)),
-                color: _stroke(context),
-              ),
-              child: Text(app.t('clonePhraseAdd'),
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: _body(context))),
-            ),
-          ),
-        ]),
-      ],
-    );
-  }
-
-  List<Widget> _xttsCloneControls() {
-    return [
-      const SizedBox(height: 4),
-      evsRow(context,
-        label: app.t('cloneTitle'),
-        desc: app.t('cloneHint'),
-        control: evsToggle(context, app.cloneEnabled, app.setCloneEnabled),
-      ),
-      if (app.cloneEnabled) ...[
-        evsRow(context,
-          stacked: true,
-          label: app.t('cloneComponent'),
-          desc: app.t('cloneComponentDesc'),
-          control: _cloneComponentControl(),
-        ),
-        evsRow(context,
-          stacked: true,
-          label: app.t('cloneSample'),
-          control: Row(children: [
-            InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: _pickCloneWav,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _stroke(context)),
-                  color: _stroke(context),
-                ),
-                child: Text(app.t('cloneSamplePick'),
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: _body(context))),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                app.cloneSamplePath.isEmpty
-                    ? app.t('cloneSampleNone')
-                    : app.cloneSamplePath
-                        .split(io.Platform.pathSeparator)
-                        .last,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, color: _sub(context)),
-              ),
-            ),
-          ]),
-        ),
-        _prerenderStatus(),
-        evsRow(context,
-          stacked: true,
-          label: app.t('clonePhraseLib'),
-          desc: app.t('clonePhraseLibHint'),
-          control: _clonePhraseLib(),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
-          child: Text(app.t('cloneCpuNote'),
-              style: TextStyle(fontSize: 11, color: _faint(context))),
-        ),
-      ],
-    ];
-  }
 
   Widget _engineChip(String id, String nameKey, String hintKey,
       {required bool enabled}) {
@@ -4449,8 +4303,22 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
   List<Widget> _cosyDeepControls() {
     final sc = SidecarClient.instance;
     return [
+      // Scope header: everything below belongs to the REMOTE CosyVoice server
+      // (including its own clone sample) — not to the local XTTS clone card.
       Padding(
-        padding: const EdgeInsets.fromLTRB(18, 4, 18, 6),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+        child: Row(children: [
+          Icon(Icons.dns_outlined, size: 15, color: _sub(context)),
+          const SizedBox(width: 7),
+          Text(app.t('ttsCosySectionTitle'),
+              style: TextStyle(
+                  color: _body(context),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700)),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 6),
         child: Text(app.t('ttsCosyWiringHint'),
             style: TextStyle(fontSize: 11, color: _faint(context))),
       ),
@@ -4578,9 +4446,6 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                 enabled: cosyOnline),
           ]),
         ),
-        // Voice clone (XTTS · CPU) — the working local cloner. Its phrase cache
-        // is engine-agnostic, so CosyVoice reuses it once its server is up.
-        ..._xttsCloneControls(),
         if (!cosyOnline)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
@@ -4656,6 +4521,380 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         // the voice cloner is discoverable and can be configured up front (they
         // still only take effect once the CosyVoice server is reachable).
         ..._cosyDeepControls(),
+      ],
+    );
+  }
+}
+
+// Editor for ONE quick profile: pick which settings it applies and their
+// values. An unchecked row means the profile leaves that setting untouched —
+// that's how "Поиск"/"Чат" stay single-purpose while "Быстро" changes three
+// things at once.
+class _PresetEditDialog extends StatefulWidget {
+  const _PresetEditDialog({
+    required this.app,
+    required this.id,
+    required this.nameKey,
+    required this.initial,
+  });
+  final AppState app;
+  final String id;
+  final String nameKey;
+  final Map<String, dynamic> initial;
+  @override
+  State<_PresetEditDialog> createState() => _PresetEditDialogState();
+}
+
+class _PresetEditDialogState extends State<_PresetEditDialog> {
+  late String? _device = widget.initial['device'] as String?;
+  late String? _denoise = widget.initial['denoise'] as String?;
+  late bool? _web = widget.initial['web'] as bool?;
+
+  AppState get app => widget.app;
+
+  Widget _section({
+    required String label,
+    required bool on,
+    required ValueChanged<bool> onToggle,
+    required Widget child,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            SizedBox(
+              width: 28,
+              child: Checkbox(
+                value: on,
+                onChanged: (v) => onToggle(v ?? false),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(fontSize: 12.5, color: _body(context))),
+            ),
+          ]),
+          if (on)
+            Padding(
+              padding: const EdgeInsets.only(left: 28, top: 6),
+              child: child,
+            ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: _card2(context),
+      title: Text('${app.t('presetEditTitle')} · ${app.t(widget.nameKey)}',
+          style: TextStyle(color: _txt(context), fontSize: 15)),
+      content: SizedBox(
+        width: 380,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(app.t('presetEditHint'),
+                  style: TextStyle(fontSize: 11.5, color: _faint(context))),
+              const SizedBox(height: 4),
+              _section(
+                label: app.t('presetFieldDevice'),
+                on: _device != null,
+                onToggle: (v) => setState(() => _device = v ? 'cpu' : null),
+                child: evsSegmentedWide<String>(context, [
+                  ('cpu', app.t('deviceCpu')),
+                  ('cuda', app.t('deviceGpu')),
+                ], _device ?? 'cpu', (v) => setState(() => _device = v)),
+              ),
+              _section(
+                label: app.t('presetFieldDenoise'),
+                on: _denoise != null,
+                onToggle: (v) => setState(() => _denoise = v ? 'light' : null),
+                child: evsSegmentedWide<String>(context, [
+                  ('off', app.t('presetDnOff')),
+                  ('light', app.t('presetDnLight')),
+                  ('strong', app.t('presetDnStrong')),
+                ], _denoise ?? 'light', (v) => setState(() => _denoise = v)),
+              ),
+              _section(
+                label: app.t('presetFieldWeb'),
+                on: _web != null,
+                onToggle: (v) => setState(() => _web = v ? true : null),
+                child: evsSegmentedWide<bool>(context, [
+                  (true, app.t('presetWebOn')),
+                  (false, app.t('presetWebOff')),
+                ], _web ?? true, (v) => setState(() => _web = v)),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(app.t('cancel')),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, <String, dynamic>{
+            if (_device != null) 'device': _device,
+            if (_denoise != null) 'denoise': _denoise,
+            if (_web != null) 'web': _web,
+          }),
+          child: Text(app.t('save')),
+        ),
+      ],
+    );
+  }
+}
+
+// Voice clone (XTTS · CPU) — a self-contained section, deliberately SEPARATE
+// from the CosyVoice controls above: both offer "clone from a WAV sample", but
+// this one is the local CPU cloner (its own component + phrase cache) while
+// CosyVoice's sample belongs to its remote GPU server. Keeping them in one card
+// made the two sets of settings read as one and confused which was which.
+class _VoiceCloneCard extends StatefulWidget {
+  const _VoiceCloneCard(this.app);
+  final AppState app;
+  @override
+  State<_VoiceCloneCard> createState() => _VoiceCloneCardState();
+}
+
+class _VoiceCloneCardState extends State<_VoiceCloneCard> {
+  final TextEditingController _phrase = TextEditingController();
+
+  AppState get app => widget.app;
+
+  @override
+  void dispose() {
+    _phrase.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickCloneWav() async {
+    final res = await FilePicker.pickFiles();
+    final p = res?.files.single.path;
+    if (p != null && p.isNotEmpty) app.setCloneSamplePath(p);
+  }
+
+  Widget _compBadge(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: color.withValues(alpha: 0.12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12.5, fontWeight: FontWeight.w700, color: color)),
+      );
+
+  Widget _componentControl() {
+    return ValueListenableBuilder<ComponentStatus>(
+      valueListenable: ComponentManager.instance.statusOf('clone'),
+      builder: (_, cs, __) {
+        switch (cs.state) {
+          case ComponentState.downloading:
+            return SizedBox(
+              width: 180,
+              child: Row(children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.all(Radius.circular(3)),
+                    child: LinearProgressIndicator(
+                      value: cs.progress > 0 ? cs.progress : null,
+                      minHeight: 6,
+                      backgroundColor: _stroke(context),
+                      valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('${(cs.progress * 100).round()}%',
+                    style: TextStyle(fontSize: 12, color: _faint(context))),
+              ]),
+            );
+          case ComponentState.verifying:
+            return _compBadge(app.t('componentVerifying'), _warn(context));
+          case ComponentState.ready:
+            return _compBadge(app.t('componentReady'), _success(context));
+          case ComponentState.error:
+            return evsGhostButton(context, app.t('retry'), Icons.refresh,
+                onTap: () => ComponentManager.instance.ensure('clone'));
+          case ComponentState.absent:
+            final info = ComponentManager.instance.infoOf('clone');
+            final gb = info != null && info.size > 0
+                ? ' (${(info.size / 1073741824).toStringAsFixed(1)} GB)'
+                : '';
+            return evsGhostButton(context, '${app.t('download')}$gb',
+                Icons.download,
+                onTap: () => ComponentManager.instance.ensure('clone'));
+        }
+      },
+    );
+  }
+
+  Widget _prerenderStatus() {
+    return ValueListenableBuilder<(int, int, String)>(
+      valueListenable: SidecarClient.instance.prerenderProgress,
+      builder: (_, pr, __) {
+        final done = pr.$1, total = pr.$2, state = pr.$3;
+        if (total == 0 || state == 'done' || state == 'skip') {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
+          child: Text('${app.t('clonePrerender')} $done/$total',
+              style: TextStyle(fontSize: 11, color: _accent(context))),
+        );
+      },
+    );
+  }
+
+  // Editable extra phrases pre-rendered into the cloned voice (on top of the
+  // built-in system + command speak-phrases).
+  Widget _phraseLib() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (app.clonePhraseLib.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final p in app.clonePhraseLib)
+                Chip(
+                  label: Text(p,
+                      style:
+                          TextStyle(fontSize: 11.5, color: _body(context))),
+                  backgroundColor: _overlayFill(context, 0.05),
+                  side: BorderSide(color: _stroke(context)),
+                  deleteIconColor: _faint(context),
+                  onDeleted: () => app.removeClonePhrase(p),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(
+              child: _RemoteField(controller: _phrase, onChanged: (_) {})),
+          const SizedBox(width: 8),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              app.addClonePhrase(_phrase.text);
+              _phrase.clear();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _stroke(context)),
+                color: _stroke(context),
+              ),
+              child: Text(app.t('clonePhraseAdd'),
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _body(context))),
+            ),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 2),
+          child: Row(children: [
+            Icon(Icons.graphic_eq, size: 15, color: _accent(context)),
+            const SizedBox(width: 7),
+            Text(app.t('cloneSectionTitle'),
+                style: TextStyle(
+                    color: _body(context),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+          ]),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+          child: Text(app.t('cloneSectionHint'),
+              style: TextStyle(fontSize: 11, color: _faint(context))),
+        ),
+        evsRow(context,
+          label: app.t('cloneTitle'),
+          desc: app.t('cloneHint'),
+          control: evsToggle(context, app.cloneEnabled, app.setCloneEnabled),
+        ),
+        if (app.cloneEnabled) ...[
+          evsRow(context,
+            stacked: true,
+            label: app.t('cloneComponent'),
+            desc: app.t('cloneComponentDesc'),
+            control: _componentControl(),
+          ),
+          evsRow(context,
+            stacked: true,
+            label: app.t('cloneSample'),
+            control: Row(children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: _pickCloneWav,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _stroke(context)),
+                    color: _stroke(context),
+                  ),
+                  child: Text(app.t('cloneSamplePick'),
+                      style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: _body(context))),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  app.cloneSamplePath.isEmpty
+                      ? app.t('cloneSampleNone')
+                      : app.cloneSamplePath
+                          .split(io.Platform.pathSeparator)
+                          .last,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: _sub(context)),
+                ),
+              ),
+            ]),
+          ),
+          _prerenderStatus(),
+          evsRow(context,
+            stacked: true,
+            label: app.t('clonePhraseLib'),
+            desc: app.t('clonePhraseLibHint'),
+            control: _phraseLib(),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
+            child: Text(app.t('cloneCpuNote'),
+                style: TextStyle(fontSize: 11, color: _faint(context))),
+          ),
+        ],
       ],
     );
   }
