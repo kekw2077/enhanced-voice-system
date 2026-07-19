@@ -28,6 +28,33 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.3.0</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Темы управляют семантикой:</b> в палитру добавлены роли info/warn, и статусы подключения, полосы CPU/RAM/VRAM, тона баннеров, цвета типов команд и состояния визуализации теперь следуют теме (success/danger/info/warn/accent).</li>
+          <li>Убрана последняя остаточная лаванда (состояние «думает» визуализации и мелкие иконки).</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 19 Jul 2026 12:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.3.0/EVS-Setup-2.3.0.exe"
+        sparkle:version="2.3.0"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHBJqAFCY2IdQc/yWae4ovDfisXs48qOilzhq3nkCHBvGKdUJ0NQYKBYEse1xXQ9ZaQbcTwhPwL6hch4="
+        evs:sha256="bb63454223071a8a5c4711e437caa0d9b021000b114366a13787137b316addfa"
+        length="16558269"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.2.1</title>
       <description><![CDATA[
         <style>

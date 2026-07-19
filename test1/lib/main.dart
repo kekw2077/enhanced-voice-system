@@ -3593,6 +3593,10 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.3.0', [
+    'Темы теперь управляют и семантическими цветами: в палитру добавлены роли info/warn, а статусы подключения, полосы CPU/RAM/VRAM, тона баннеров, цвета типов команд и состояния визуализации следуют теме (success/danger/info/warn/accent) — новая тема перекрашивает эти элементы целиком.',
+    'Убрана последняя остаточная лаванда (состояние «думает» у визуализации и мелкие иконки).',
+  ]),
   ChangelogEntry('2.2.1', [
     'Исправлены невидимые на светлых темах рамки во всех карточках настроек, диалогах, полях ввода и разделителях — единый токен обводки следует теме.',
     'Выбранные состояния (движок распознавания и др.) и метки разделов теперь следуют акценту/теме, без жёстко-синего и «слепого» серого на кремовом.',
@@ -7816,9 +7820,10 @@ class _ImmersiveSplashState extends State<ImmersiveSplash>
 
 // Semantic theme palette. The color helpers below resolve against the active
 // AppThemeMode, so the hundreds of `_bg(context)`/`_card(context)`/… call sites
-// re-theme automatically. Rare one-off hardcoded literals are not yet tokenised
-// (tracked as a follow-up), so `apple` (light) stays out of the picker until its
-// readability pass lands; `dark` and `steam` are complete.
+// re-theme automatically. A theme file specifies these 14 roles; everything
+// semantic (connection statuses, CPU/RAM/VRAM bars, command-type badges, banner
+// tones) is mapped onto the five anchors accent/success/danger/info/warn, so a
+// new theme repaints the entire UI — no per-element hardcoded colours.
 class _Palette {
   final Color bg; // page background
   final Color card; // primary surface
@@ -7829,8 +7834,10 @@ class _Palette {
   final Color stroke; // hairline / border
   final Color body; // light "body" text (secondary-primary)
   final Color faint; // muted / tertiary text
-  final Color success; // done / success
+  final Color success; // done / success / connected
   final Color danger; // error
+  final Color info; // in-progress / neutral-informational (connecting, loading)
+  final Color warn; // caution / attention (no-model, starting)
   final Brightness brightness;
   const _Palette({
     required this.bg,
@@ -7844,6 +7851,8 @@ class _Palette {
     required this.faint,
     required this.success,
     required this.danger,
+    required this.info,
+    required this.warn,
     required this.brightness,
   });
 }
@@ -7861,6 +7870,8 @@ const _Palette _kDark = _Palette(
   faint: Color(0xFF6E7280),
   success: Color(0xFF54E08A),
   danger: Color(0xFFE05D5D),
+  info: Color(0xFF5B9DF0),
+  warn: Color(0xFFE0B24A),
   brightness: Brightness.dark,
 );
 
@@ -7878,6 +7889,8 @@ const _Palette _kClaude = _Palette(
   faint: Color(0xFF8E8B82),
   success: Color(0xFF5DB872),
   danger: Color(0xFFC64545),
+  info: Color(0xFF2C6FD6),
+  warn: Color(0xFFB8862A),
   brightness: Brightness.light,
 );
 
@@ -7895,6 +7908,8 @@ const _Palette _kClaudeDark = _Palette(
   faint: Color(0xFF8E8C85),
   success: Color(0xFF5DB872),
   danger: Color(0xFFE0685E),
+  info: Color(0xFF5B9DF0),
+  warn: Color(0xFFE0B24A),
   brightness: Brightness.dark,
 );
 
@@ -7944,12 +7959,8 @@ Color _onAccent(BuildContext c) => _accent(c).computeLuminance() > 0.55
     : Colors.white;
 
 // Semantic status colours (info/warn) — tuned per brightness for contrast.
-Color _info(BuildContext c) => _pal(c).brightness == Brightness.dark
-    ? const Color(0xFF5B9DF0)
-    : const Color(0xFF2C6FD6);
-Color _warn(BuildContext c) => _pal(c).brightness == Brightness.dark
-    ? const Color(0xFFE0B24A)
-    : const Color(0xFFB8862A);
+Color _info(BuildContext c) => _pal(c).info;
+Color _warn(BuildContext c) => _pal(c).warn;
 
 // Modal barrier behind dialogs/sheets.
 Color _scrim(BuildContext c) => Colors.black
@@ -12603,9 +12614,9 @@ class _DesktopSystemWidget extends StatelessWidget {
                       active ? '${(s.cpu * 100).round()}%' : '—', s.cpu,
                       [_accent(context)], _accent(context)),
                   _bar(context, 'RAM', ramTxt, s.ram,
-                      const [Color(0xFF5DE0D8)], const Color(0xFF3BA79E)),
-                  _bar(context, 'VRAM', '—', 0.0, const [Color(0xFFE08A5D)],
-                      const Color(0xFFC2703B)),
+                      [_info(context)], _info(context)),
+                  _bar(context, 'VRAM', '—', 0.0, [_warn(context)],
+                      _warn(context)),
                 ],
               );
             },
@@ -13045,21 +13056,21 @@ Color vizStateAccent(BuildContext c, AppState app) {
   if (notice != null && notice.$1.isNotEmpty) {
     switch (notice.$2) {
       case 'ok':
-        return const Color(0xFF54E0B0);
+        return _success(c);
       case 'err':
-        return const Color(0xFFF0685E);
+        return _danger(c);
       default:
         return base;
     }
   }
-  if (VoiceAssistant.instance.wakeActive.value) return const Color(0xFF54E0B0);
+  if (VoiceAssistant.instance.wakeActive.value) return _success(c);
   switch (VoiceAssistant.instance.state.value) {
     case VaState.armed:
-      return const Color(0xFF4FC3F7);
+      return _info(c);
     case VaState.thinking:
-      return const Color(0xFFB09CFF);
+      return Color.lerp(_accent(c), _success(c), 0.45)!;
     case VaState.running:
-      return const Color(0xFFE0C07A);
+      return _warn(c);
     default:
       return base; // idle / listening / speaking → the user's accent
   }
@@ -17722,7 +17733,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               '${SidecarClient.instance.sttAvailable ? ' · ${app.sttSidecarEngine == 'gigaam' ? app.t('engGigaamName') : app.t('engWhisperName')}' : ''}',
           _success(context)
         ),
-      SidecarStatus.starting => (app.t('sidecarStarting'), const Color(0xFFE0C07A)),
+      SidecarStatus.starting => (app.t('sidecarStarting'), _warn(context)),
       SidecarStatus.stopped => (app.t('sidecarStopped'), _danger(context)),
     };
     return Container(
@@ -17803,8 +17814,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 ]),
               );
             case ComponentState.verifying:
-              return _compBadge(app.t('componentVerifying'),
-                  const Color(0xFFE0C07A));
+              return _compBadge(app.t('componentVerifying'), _warn(context));
             case ComponentState.ready:
               return _compBadge(
                   app.t('componentReady'), _success(context));
@@ -18272,14 +18282,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   Widget _cmdTypeChip(AppState app, VoiceCommandType t) {
     final (label, color) = switch (t) {
-      VoiceCommandType.app => (app.t('typeApp'), const Color(0xFF7BE0D8)),
-      VoiceCommandType.file => (app.t('typeFile'), const Color(0xFF7BE0D8)),
-      VoiceCommandType.url => (app.t('typeWeb'), const Color(0xFF8BE8B0)),
-      VoiceCommandType.shell => ('Shell', const Color(0xFFE0C07A)),
-      VoiceCommandType.system => (app.t('typeSystem'), const Color(0xFFDD8AA8)),
-      VoiceCommandType.media => (app.t('typeMedia'), const Color(0xFFE0A07A)),
-      VoiceCommandType.appVolume =>
-        (app.t('typeAppVolume'), const Color(0xFF7BA0E0)),
+      VoiceCommandType.app => (app.t('typeApp'), _accent(context)),
+      VoiceCommandType.file => (app.t('typeFile'), _info(context)),
+      VoiceCommandType.url => (app.t('typeWeb'), _success(context)),
+      VoiceCommandType.shell => ('Shell', _warn(context)),
+      VoiceCommandType.system => (app.t('typeSystem'), _danger(context)),
+      VoiceCommandType.media => (app.t('typeMedia'), _warn(context)),
+      VoiceCommandType.appVolume => (app.t('typeAppVolume'), _info(context)),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
@@ -19366,13 +19375,13 @@ class _ConnCheckRow extends StatelessWidget {
     final err = app.modelsError;
 
     final (String text, Color color) = !hasUrl
-        ? (app.t('connBadUrl'), const Color(0xFF6E7280))
+        ? (app.t('connBadUrl'), _faint(context))
         : busy
-            ? (app.t('connChecking'), const Color(0xFFE0C07A))
+            ? (app.t('connChecking'), _warn(context))
             : err != null
                 ? (err, _danger(context))
                 : app.models.isEmpty
-                    ? ('', const Color(0xFF6E7280))
+                    ? ('', _faint(context))
                     : (
                         '${app.t('connOnline')} · ${app.models.length} ${app.t('connModelsCount')}',
                         _success(context)
@@ -19697,7 +19706,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
             child: Text(app.t('ttsCosyUnavailable'),
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFFE0A07A))),
+                style: TextStyle(fontSize: 11.5, color: _warn(context))),
           ),
         // Endpoint + check.
         evsRow(context, 
@@ -19895,7 +19904,7 @@ class _ModelModeCard extends StatelessWidget {
           PopupMenuItem<String>(
             value: current,
             child: Text('$current  ⚠',
-                style: const TextStyle(color: Color(0xFFE0C07A), fontSize: 13)),
+                style: TextStyle(color: _warn(context), fontSize: 13)),
           ),
         for (final m in app.models)
           PopupMenuItem<String>(
@@ -21230,9 +21239,9 @@ class _ChatScreenState extends State<ChatScreen> {
           valueListenable: VoiceAssistant.instance.state,
           builder: (_, s, __) {
             final (label, color) = switch (s) {
-              VaState.armed => (app.t('vaArmed'), const Color(0xFF4FC3F7)),
+              VaState.armed => (app.t('vaArmed'), _info(context)),
               VaState.thinking => (app.t('vaThinking'), _success(context)),
-              VaState.running => (app.t('vaRunning'), const Color(0xFFE0C07A)),
+              VaState.running => (app.t('vaRunning'), _warn(context)),
               _ => (app.t('vaListening'), _accent(context)),
             };
             if (s == VaState.listening || s == VaState.idle) {
@@ -21293,12 +21302,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // Colour for a connection status (dot + tint + border).
-  static Color _statusColor(ConnectionStatus s) => switch (s) {
-        ConnectionStatus.connected => const Color(0xFF54E08A),
-        ConnectionStatus.connecting => const Color(0xFF5B9DF0),
-        ConnectionStatus.noModel => const Color(0xFFE0B454),
-        ConnectionStatus.disconnected => const Color(0xFF8A90A0),
-        ConnectionStatus.error => const Color(0xFFE05A6A),
+  Color _statusColor(BuildContext context, ConnectionStatus s) => switch (s) {
+        ConnectionStatus.connected => _success(context),
+        ConnectionStatus.connecting => _info(context),
+        ConnectionStatus.noModel => _warn(context),
+        ConnectionStatus.disconnected => _faint(context),
+        ConnectionStatus.error => _danger(context),
       };
 
   String _statusText(AppState app, ConnectionStatus s) => switch (s) {
@@ -21311,7 +21320,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _desktopStatusBadge(AppState app, bool isLocal) {
     final status = app.connectionStatus;
-    final color = _statusColor(status);
+    final color = _statusColor(context, status);
     final label = status == ConnectionStatus.connected
         ? '${isLocal ? app.t('statusLocalModel') : app.t('statusRemoteModel')} · ${app.t('statusConnected')}'
         : _statusText(app, status);
@@ -21395,7 +21404,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   width: 9,
                   height: 9,
                   decoration: BoxDecoration(
-                      shape: BoxShape.circle, color: _statusColor(status))),
+                      shape: BoxShape.circle, color: _statusColor(context, status))),
               const SizedBox(width: 8),
               Text(_statusText(app, status),
                   style: TextStyle(
