@@ -1,13 +1,23 @@
 {
   "components": {
+    "clone": {
+      "file": "evs_clone.zip",
+      "exe": "evs_clone.exe",
+      "archive": true,
+      "version": "1",
+      "url": "https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_clone.zip",
+      "sha256": "38796364d5fa1d04051d495774baddaa95152c6a48c9796d43dd1812b4e466af",
+      "size": 2864855916,
+      "parts": 2
+    },
     "sidecar": {
       "file": "evs_sidecar.zip",
       "exe": "evs_sidecar.exe",
       "archive": true,
-      "version": "12",
+      "version": "13",
       "url": "https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_sidecar.zip",
-      "sha256": "42d555e3dd0957fa6a8856655f52984ac02b77c721c435aac963814b5b0696d7",
-      "size": 112606176
+      "sha256": "663422b21f0651a9df1b52c5e514f18b38f8bf15b396cc8fd0be2a96603a6d81",
+      "size": 112615730
     }
   }
 }

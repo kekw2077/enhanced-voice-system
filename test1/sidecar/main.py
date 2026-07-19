@@ -207,11 +207,32 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                 if vdir is not None or voice is not None:
                     tts.set_voice(str(vdir) if vdir else "",
                                   str(voice) if voice else "")
+                # Cloning config (set BEFORE engine so a switch to xtts/cosyvoice
+                # loads with the sample/exe already in place). Cache is shared.
+                if "cache_dir" in data or "voice_fp" in data:
+                    tts.set_cache(cache_dir=data.get("cache_dir"),
+                                  voice_fp=data.get("voice_fp"))
+                clone = data.get("clone")
+                if isinstance(clone, dict):
+                    tts.set_clone_config(exe=clone.get("exe"),
+                                         ref=clone.get("ref"),
+                                         lang=clone.get("lang"))
+                cosy = data.get("cosy")
+                if isinstance(cosy, dict):
+                    tts.set_cosy_config(endpoint=cosy.get("endpoint"),
+                                        ref=cosy.get("ref"),
+                                        prompt_text=cosy.get("prompt"),
+                                        speed=cosy.get("speed"))
                 eng = data.get("engine")
                 if eng:
                     tts.set_engine(str(eng))
                 if "fx" in data:
                     tts.set_fx(data.get("fx"))
+            elif t == "tts.prerender":
+                # Pre-render a batch of fixed phrases into the clone cache so
+                # they later play instantly (system notifications, command
+                # speak-phrases, the acknowledgement library).
+                tts.prerender(list(data.get("phrases", [])))
             elif t == "tts.preview":
                 tts.preview(str(data.get("voice_dir", "")),
                             str(data.get("voice", "")),

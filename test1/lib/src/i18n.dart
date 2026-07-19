@@ -291,6 +291,25 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineCosy': 'CosyVoice',
     'ttsEngineCosyHint': 'качество, GPU',
     'ttsCosyUnavailable': 'CosyVoice недоступен — сервер не отвечает',
+    'cloneTitle': 'Клон голоса (XTTS · CPU)',
+    'cloneHint':
+        'Временный локальный клонировщик: отвечает голосом из образца WAV. '
+            'Работает на процессоре без видеокарты (~2× синтеза на новый текст).',
+    'cloneComponent': 'Компонент клонировщика',
+    'cloneComponentDesc': 'Тяжёлый (~3 ГБ, torch + модель) — качается один раз.',
+    'cloneSample': 'Образец голоса',
+    'cloneSamplePick': 'Выбрать WAV',
+    'cloneSampleNone': 'Образец не выбран (6–10 с чистой речи)',
+    'clonePrerender': 'Готовлю фразы…',
+    'clonePhraseLib': 'Свои фразы для заготовки',
+    'clonePhraseLibHint':
+        'Пред-рендерятся заранее и звучат мгновенно (плюс системные фразы и '
+            'озвучка команд).',
+    'clonePhraseAdd': 'Добавить',
+    'cloneCpuNote':
+        'Системные фразы и озвучка команд готовятся заранее и звучат мгновенно; '
+            'новый длинный текст синтезируется на ходу. Сверху можно наложить '
+            'Voice FX (например, пресет EDI).',
     'ttsCosyEndpoint': 'Endpoint CosyVoice',
     'ttsCosyCheck': 'Проверить соединение',
     'ttsCosyOnline': 'На связи',
@@ -1244,6 +1263,25 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineCosy': 'CosyVoice',
     'ttsEngineCosyHint': 'quality, GPU',
     'ttsCosyUnavailable': 'CosyVoice unavailable — server not responding',
+    'cloneTitle': 'Voice clone (XTTS · CPU)',
+    'cloneHint':
+        'Temporary local cloner: replies in the voice from a WAV sample. Runs '
+            'on the CPU with no GPU (~2× synthesis on novel text).',
+    'cloneComponent': 'Cloner component',
+    'cloneComponentDesc': 'Heavy (~3 GB, torch + model) — downloaded once.',
+    'cloneSample': 'Voice sample',
+    'cloneSamplePick': 'Pick WAV',
+    'cloneSampleNone': 'No sample selected (6–10 s of clean speech)',
+    'clonePrerender': 'Preparing phrases…',
+    'clonePhraseLib': 'Your phrases to pre-render',
+    'clonePhraseLibHint':
+        'Pre-rendered ahead of time and play instantly (plus system phrases and '
+            'command speech).',
+    'clonePhraseAdd': 'Add',
+    'cloneCpuNote':
+        'System phrases and command speech are pre-rendered and instant; novel '
+            'long text is synthesized on the fly. You can layer Voice FX on top '
+            '(e.g. the EDI preset).',
     'ttsCosyEndpoint': 'CosyVoice endpoint',
     'ttsCosyCheck': 'Check connection',
     'ttsCosyOnline': 'Online',

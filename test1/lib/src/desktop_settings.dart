@@ -4141,6 +4141,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
       TextEditingController(text: widget.app.cosyvoiceClonePromptText);
   late final TextEditingController _instruct =
       TextEditingController(text: widget.app.cosyvoiceInstruct);
+  final TextEditingController _phrase = TextEditingController();
   bool _checking = false;
 
   // Emotion presets → i18n label keys (map to instruct phrases once wired).
@@ -4167,7 +4168,209 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
     _voice.dispose();
     _clonePrompt.dispose();
     _instruct.dispose();
+    _phrase.dispose();
     super.dispose();
+  }
+
+  // ---- Voice clone (XTTS · CPU) — a temporary local cloner while a GPU for
+  // CosyVoice is awaited. Its cache is engine-agnostic (shared with CosyVoice).
+  Future<void> _pickCloneWav() async {
+    final res = await FilePicker.pickFiles();
+    final p = res?.files.single.path;
+    if (p != null && p.isNotEmpty) app.setCloneSamplePath(p);
+  }
+
+  Widget _compBadge(String text, Color color) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: color.withValues(alpha: 0.12),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 12.5, fontWeight: FontWeight.w700, color: color)),
+      );
+
+  Widget _cloneComponentControl() {
+    return ValueListenableBuilder<ComponentStatus>(
+      valueListenable: ComponentManager.instance.statusOf('clone'),
+      builder: (_, cs, __) {
+        switch (cs.state) {
+          case ComponentState.downloading:
+            return SizedBox(
+              width: 180,
+              child: Row(children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.all(Radius.circular(3)),
+                    child: LinearProgressIndicator(
+                      value: cs.progress > 0 ? cs.progress : null,
+                      minHeight: 6,
+                      backgroundColor: _stroke(context),
+                      valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('${(cs.progress * 100).round()}%',
+                    style: TextStyle(fontSize: 12, color: _faint(context))),
+              ]),
+            );
+          case ComponentState.verifying:
+            return _compBadge(app.t('componentVerifying'), _warn(context));
+          case ComponentState.ready:
+            return _compBadge(app.t('componentReady'), _success(context));
+          case ComponentState.error:
+            return evsGhostButton(context, app.t('retry'), Icons.refresh,
+                onTap: () => ComponentManager.instance.ensure('clone'));
+          case ComponentState.absent:
+            final info = ComponentManager.instance.infoOf('clone');
+            final gb = info != null && info.size > 0
+                ? ' (${(info.size / 1073741824).toStringAsFixed(1)} GB)'
+                : '';
+            return evsGhostButton(context, '${app.t('download')}$gb',
+                Icons.download,
+                onTap: () => ComponentManager.instance.ensure('clone'));
+        }
+      },
+    );
+  }
+
+  Widget _prerenderStatus() {
+    return ValueListenableBuilder<(int, int, String)>(
+      valueListenable: SidecarClient.instance.prerenderProgress,
+      builder: (_, pr, __) {
+        final done = pr.$1, total = pr.$2, state = pr.$3;
+        if (total == 0 || state == 'done' || state == 'skip') {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
+          child: Text('${app.t('clonePrerender')} $done/$total',
+              style: TextStyle(fontSize: 11, color: _accent(context))),
+        );
+      },
+    );
+  }
+
+  // Editable extra phrases pre-rendered into the cloned voice (on top of the
+  // built-in system + command speak-phrases).
+  Widget _clonePhraseLib() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (app.clonePhraseLib.isNotEmpty)
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final p in app.clonePhraseLib)
+                Chip(
+                  label: Text(p, style: TextStyle(fontSize: 11.5, color: _body(context))),
+                  backgroundColor: _overlayFill(context, 0.05),
+                  side: BorderSide(color: _stroke(context)),
+                  deleteIconColor: _faint(context),
+                  onDeleted: () => app.removeClonePhrase(p),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+            ],
+          ),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: _RemoteField(controller: _phrase, onChanged: (_) {})),
+          const SizedBox(width: 8),
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () {
+              app.addClonePhrase(_phrase.text);
+              _phrase.clear();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _stroke(context)),
+                color: _stroke(context),
+              ),
+              child: Text(app.t('clonePhraseAdd'),
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _body(context))),
+            ),
+          ),
+        ]),
+      ],
+    );
+  }
+
+  List<Widget> _xttsCloneControls() {
+    return [
+      const SizedBox(height: 4),
+      evsRow(context,
+        label: app.t('cloneTitle'),
+        desc: app.t('cloneHint'),
+        control: evsToggle(context, app.cloneEnabled, app.setCloneEnabled),
+      ),
+      if (app.cloneEnabled) ...[
+        evsRow(context,
+          stacked: true,
+          label: app.t('cloneComponent'),
+          desc: app.t('cloneComponentDesc'),
+          control: _cloneComponentControl(),
+        ),
+        evsRow(context,
+          stacked: true,
+          label: app.t('cloneSample'),
+          control: Row(children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: _pickCloneWav,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _stroke(context)),
+                  color: _stroke(context),
+                ),
+                child: Text(app.t('cloneSamplePick'),
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _body(context))),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                app.cloneSamplePath.isEmpty
+                    ? app.t('cloneSampleNone')
+                    : app.cloneSamplePath
+                        .split(io.Platform.pathSeparator)
+                        .last,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11.5, color: _sub(context)),
+              ),
+            ),
+          ]),
+        ),
+        _prerenderStatus(),
+        evsRow(context,
+          stacked: true,
+          label: app.t('clonePhraseLib'),
+          desc: app.t('clonePhraseLibHint'),
+          control: _clonePhraseLib(),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 2, 18, 8),
+          child: Text(app.t('cloneCpuNote'),
+              style: TextStyle(fontSize: 11, color: _faint(context))),
+        ),
+      ],
+    ];
   }
 
   Widget _engineChip(String id, String nameKey, String hintKey,
@@ -4375,6 +4578,9 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                 enabled: cosyOnline),
           ]),
         ),
+        // Voice clone (XTTS · CPU) — the working local cloner. Its phrase cache
+        // is engine-agnostic, so CosyVoice reuses it once its server is up.
+        ..._xttsCloneControls(),
         if (!cosyOnline)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),

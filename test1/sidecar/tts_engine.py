@@ -18,6 +18,8 @@ enqueues; `stop()` clears the queue and interrupts the current one.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import queue
 import threading
@@ -264,18 +266,262 @@ class PiperEngine(BaseTtsEngine):
             return None
 
 
+class CloneWorkerEngine(BaseTtsEngine):
+    """Voice-clone engine backed by an external worker process (evs_clone.exe,
+    XTTS-v2 on CPU — a separate downloaded component so torch never bloats the
+    base sidecar). The worker loads the model once and caches the speaker
+    "fingerprint" from the reference sample; each utterance is a JSON request on
+    stdin and a temp WAV path on stdout, read back here for shared playback
+    (levels + FX applied by the manager). Reference re-encode is cheap; the model
+    load (~15 s) happens once on first use."""
+
+    name = "xtts"
+
+    def __init__(self, exe: str = "", ref: str = "", lang: str = "ru") -> None:
+        super().__init__()
+        self._exe = exe or ""
+        self._ref = ref or ""
+        self._lang = lang or "ru"
+        self._proc = None
+        self._sr = 24000
+        self._ref_set = False
+        self._io_lock = threading.Lock()
+
+    @property
+    def available(self) -> bool:
+        return bool(self._exe and os.path.isfile(self._exe)
+                    and self._ref and os.path.isfile(self._ref))
+
+    def unavailable_reason(self) -> str:
+        if not self._exe or not os.path.isfile(self._exe):
+            return "voice-clone component not installed"
+        if not self._ref or not os.path.isfile(self._ref):
+            return "no voice sample selected"
+        return ""
+
+    def set_config(self, exe=None, ref=None, lang=None) -> None:
+        restart = False
+        if exe is not None and exe != self._exe:
+            self._exe = exe
+            restart = True
+        if ref is not None and ref != self._ref:
+            self._ref = ref
+            self._ref_set = False
+        if lang:
+            self._lang = lang
+        if restart:
+            self._stop_proc()
+
+    def _send(self, obj) -> None:
+        self._proc.stdin.write(json.dumps(obj, ensure_ascii=False) + "\n")
+        self._proc.stdin.flush()
+
+    def _readline(self):
+        line = self._proc.stdout.readline()
+        if not line:
+            raise RuntimeError("clone worker closed")
+        return json.loads(line)
+
+    def load(self) -> None:
+        import subprocess
+        if self._proc is not None and self._proc.poll() is None:
+            return
+        if not self.available:
+            raise FileNotFoundError(self.unavailable_reason())
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        self._proc = subprocess.Popen(
+            [self._exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            bufsize=1, creationflags=flags)
+        while True:  # drain until the model is loaded
+            r = self._readline()
+            if r.get("event") == "ready":
+                if not r.get("ok"):
+                    raise RuntimeError(r.get("err", "clone worker load failed"))
+                self._sr = int(r.get("sr", 24000))
+                break
+        self._ensure_ref()
+        self._loaded = True
+
+    def _ensure_ref(self) -> None:
+        if self._ref_set:
+            return
+        self._send({"cmd": "setref", "ref": self._ref})
+        r = self._readline()
+        if not r.get("ok"):
+            raise RuntimeError(r.get("err", "setref failed"))
+        self._ref_set = True
+
+    def _stop_proc(self) -> None:
+        p, self._proc = self._proc, None
+        self._loaded = False
+        self._ref_set = False
+        if p is not None:
+            try:
+                if p.poll() is None:
+                    p.stdin.write('{"cmd":"quit"}\n')
+                    p.stdin.flush()
+            except Exception:
+                pass
+            try:
+                p.terminate()
+            except Exception:
+                pass
+
+    def unload(self) -> None:
+        self._stop_proc()
+
+    def synthesize(self, text: str, rate: float = 1.0, volume: float = 1.0):
+        import tempfile
+        import time
+
+        import numpy as np
+        import soundfile as sf
+        with self._io_lock:
+            try:
+                if self._proc is None or self._proc.poll() is not None:
+                    self.load()
+                self._ensure_ref()
+                out = os.path.join(
+                    tempfile.gettempdir(),
+                    "evs_clone_%d.wav" % (int(time.time() * 1000) % 1000000))
+                self._send({"cmd": "synth", "text": text, "out": out,
+                            "lang": self._lang,
+                            "speed": max(0.5, min(2.0, rate))})
+                r = self._readline()
+                if not r.get("ok") or not os.path.exists(out):
+                    return None
+                data, sr = sf.read(out, dtype="float32")
+                try:
+                    os.remove(out)
+                except Exception:
+                    pass
+                if getattr(data, "ndim", 1) > 1:
+                    data = data.mean(axis=1)
+                vol = max(0.0, min(1.0, volume))
+                if vol != 1.0:
+                    data = np.clip(data * vol, -1.0, 1.0)
+                return data, sr
+            except Exception:
+                self._stop_proc()  # force a clean respawn next time
+                return None
+
+
+class CosyVoiceEngine(BaseTtsEngine):
+    """Voice clone via an external CosyVoice HTTP server (GPU workstation). No
+    local model — synthesis is a POST to `endpoint` returning WAV bytes. Shares
+    the manager's phrase cache exactly like the XTTS engine, so pre-rendered
+    phrases play instantly regardless of which cloning engine is active.
+
+    Expected zero-shot contract (official CosyVoice FastAPI, adjust per server):
+      POST {endpoint}/inference_zero_shot
+      form: tts_text, prompt_text, prompt_wav=@sample.wav  -> audio/wav stream.
+    Best-effort: any failure returns None so the manager falls back."""
+
+    name = "cosyvoice"
+
+    def __init__(self, endpoint: str = "", ref: str = "",
+                 prompt_text: str = "", speed: float = 1.0) -> None:
+        super().__init__()
+        self._endpoint = (endpoint or "").rstrip("/")
+        self._ref = ref or ""
+        self._prompt = prompt_text or ""
+        self._speed = speed or 1.0
+
+    @property
+    def available(self) -> bool:
+        return bool(self._endpoint and self._ref and os.path.isfile(self._ref))
+
+    def unavailable_reason(self) -> str:
+        if not self._endpoint:
+            return "CosyVoice server endpoint not set"
+        if not self._ref or not os.path.isfile(self._ref):
+            return "no voice sample selected"
+        return ""
+
+    def set_config(self, endpoint=None, ref=None, prompt_text=None,
+                   speed=None) -> None:
+        if endpoint is not None:
+            self._endpoint = endpoint.rstrip("/")
+        if ref is not None:
+            self._ref = ref
+        if prompt_text is not None:
+            self._prompt = prompt_text
+        if speed is not None:
+            self._speed = speed
+
+    def load(self) -> None:
+        if not self.available:
+            raise RuntimeError(self.unavailable_reason())
+        self._loaded = True
+
+    def synthesize(self, text: str, rate: float = 1.0, volume: float = 1.0):
+        import io as _io
+        import urllib.request
+
+        import numpy as np
+        import soundfile as sf
+        try:
+            with open(self._ref, "rb") as f:
+                wav_bytes = f.read()
+            boundary = "----evsCosy%d" % (threading.get_ident() & 0xffffff)
+            parts = []
+
+            def field(name, value):
+                parts.append(("--" + boundary).encode())
+                parts.append(
+                    ('Content-Disposition: form-data; name="%s"\r\n' % name)
+                    .encode())
+                parts.append(str(value).encode("utf-8"))
+
+            field("tts_text", text)
+            field("prompt_text", self._prompt)
+            field("speed", self._speed)
+            parts.append(("--" + boundary).encode())
+            parts.append(
+                b'Content-Disposition: form-data; name="prompt_wav"; '
+                b'filename="ref.wav"\r\nContent-Type: audio/wav\r\n')
+            parts.append(wav_bytes)
+            parts.append(("--" + boundary + "--").encode())
+            body = b"\r\n".join(parts) + b"\r\n"
+            req = urllib.request.Request(
+                self._endpoint + "/inference_zero_shot", data=body,
+                headers={"Content-Type":
+                         "multipart/form-data; boundary=" + boundary})
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                audio = resp.read()
+            data, sr = sf.read(_io.BytesIO(audio), dtype="float32")
+            if getattr(data, "ndim", 1) > 1:
+                data = data.mean(axis=1)
+            vol = max(0.0, min(1.0, volume))
+            if vol != 1.0:
+                data = np.clip(data * vol, -1.0, 1.0)
+            return data, sr
+        except Exception:
+            return None
+
+
 class TtsEngine:
-    """Manager: queued playback + pluggable synthesis (Piper | pyttsx3).
+    """Manager: queued playback + pluggable synthesis (Piper | pyttsx3 | clone).
 
     Keeps the original public API (`available`, `speak`, `stop`) so main.py is
-    unchanged; adds engine/voice selection with hot-swap and pyttsx3 fallback."""
+    unchanged; adds engine/voice selection with hot-swap and pyttsx3 fallback.
+    Cloning engines (xtts, cosyvoice) share an engine-agnostic phrase cache:
+    pre-rendered / previously-spoken phrases play instantly from disk."""
 
     def __init__(self, engine: str = "piper", voice: str = "",
                  voice_dir: str = "") -> None:
         self._pyttsx3 = Pyttsx3Engine()
         self._piper = PiperEngine(voice_dir, voice)
-        self._desired = engine if engine in ("piper", "pyttsx3") else "piper"
+        self._clone = CloneWorkerEngine()      # xtts (external worker)
+        self._cosy = CosyVoiceEngine()         # cosyvoice (external HTTP server)
+        self._engines = {"piper": self._piper, "pyttsx3": self._pyttsx3,
+                         "xtts": self._clone, "cosyvoice": self._cosy}
+        self._desired = engine if engine in self._engines else "piper"
         self._voice = voice or ""
+        # Engine-agnostic phrase cache (shared by xtts + cosyvoice).
+        self._cache_dir = ""
+        self._voice_fp = ""
         # Resolve the real starting engine: Piper only when a voice is present,
         # otherwise the always-available system voice.
         self._active: BaseTtsEngine = self._pyttsx3
@@ -295,7 +541,8 @@ class TtsEngine:
         return self._pyttsx3.available or self._piper.available
 
     def capabilities(self) -> dict:
-        return {"pyttsx3": self._pyttsx3.available, "piper": self._piper.deps}
+        return {"pyttsx3": self._pyttsx3.available, "piper": self._piper.deps,
+                "xtts": self._clone.available, "cosyvoice": self._cosy.available}
 
     @property
     def engine_name(self) -> str:
@@ -325,8 +572,28 @@ class TtsEngine:
     # ---- engine / voice selection -------------------------------------
 
     def set_engine(self, name: str) -> None:
-        self._desired = name if name in ("piper", "pyttsx3") else "piper"
+        self._desired = name if name in self._engines else "piper"
         threading.Thread(target=self._apply_blocking, daemon=True).start()
+
+    def set_clone_config(self, exe=None, ref=None, lang=None) -> None:
+        self._clone.set_config(exe=exe, ref=ref, lang=lang)
+        if self._desired == "xtts":
+            threading.Thread(target=self._apply_blocking, daemon=True).start()
+
+    def set_cosy_config(self, endpoint=None, ref=None, prompt_text=None,
+                        speed=None) -> None:
+        self._cosy.set_config(endpoint=endpoint, ref=ref,
+                              prompt_text=prompt_text, speed=speed)
+        if self._desired == "cosyvoice":
+            threading.Thread(target=self._apply_blocking, daemon=True).start()
+
+    def set_cache(self, cache_dir=None, voice_fp=None) -> None:
+        """Phrase-cache location + the active voice's fingerprint (so different
+        samples / engines never share cached audio)."""
+        if cache_dir is not None:
+            self._cache_dir = cache_dir or ""
+        if voice_fp is not None:
+            self._voice_fp = voice_fp or ""
 
     def set_voice(self, voice_dir: str | None, voice_id: str | None) -> None:
         self._voice = voice_id or ""
@@ -337,14 +604,40 @@ class TtsEngine:
 
     def _apply_blocking(self) -> None:
         want = self._desired
-        # Piper requested but no usable voice -> fall back to pyttsx3 quietly
-        # (this is the normal "no voice downloaded yet" state).
-        if want == "piper" and not self._piper.available:
+        if want == "pyttsx3":
             self._active = self._pyttsx3
             self._active_name = "pyttsx3"
             self._emit_status("pyttsx3", "", "ready")
             return
-        if want == "pyttsx3":
+        # Cloning engines (xtts worker / cosyvoice HTTP): load with fallback to
+        # the system voice, same shape as Piper below.
+        if want in ("xtts", "cosyvoice"):
+            eng = self._engines[want]
+            if not eng.available:
+                self._active = self._pyttsx3
+                self._active_name = "pyttsx3"
+                self._emit_status(want, "", "error", eng.unavailable_reason())
+                self._emit_status("pyttsx3", "", "ready")
+                return
+            self._switching = True
+            self._emit_status(want, self._voice, "loading")
+            try:
+                if not eng.is_loaded:
+                    eng.load()
+                self._active = eng
+                self._active_name = want
+                self._switching = False
+                self._emit_status(want, self._voice, "ready")
+            except Exception as e:
+                self._switching = False
+                self._active = self._pyttsx3
+                self._active_name = "pyttsx3"
+                self._emit_status(want, self._voice, "error", str(e))
+                self._emit_status("pyttsx3", "", "ready")
+            return
+        # Piper requested but no usable voice -> fall back to pyttsx3 quietly
+        # (this is the normal "no voice downloaded yet" state).
+        if want == "piper" and not self._piper.available:
             self._active = self._pyttsx3
             self._active_name = "pyttsx3"
             self._emit_status("pyttsx3", "", "ready")
@@ -445,17 +738,127 @@ class TtsEngine:
                 except Exception:
                     pass
 
+    # ---- shared phrase cache (xtts / cosyvoice) -----------------------
+
+    def _is_clone(self, engine) -> bool:
+        return engine is self._clone or engine is self._cosy
+
+    def _cache_ok(self, rate: float) -> bool:
+        # Cache only at natural speed — rate bakes into synthesis, so a changed
+        # rate needs its own render; the common case (rate≈1.0) stays instant.
+        return bool(self._cache_dir and self._voice_fp) and abs(rate - 1.0) < 0.02
+
+    def _cache_file(self, text: str):
+        lang = getattr(self._active, "_lang", "ru")
+        key = "%s|%s|%s|%s" % (self._active_name, self._voice_fp, lang,
+                               text.strip())
+        h = hashlib.sha1(key.encode("utf-8")).hexdigest()
+        folder = os.path.join(self._cache_dir, self._active_name, self._voice_fp)
+        return folder, os.path.join(folder, h + ".wav")
+
+    @staticmethod
+    def _scale(data, volume: float):
+        v = max(0.0, min(1.0, volume))
+        if v == 1.0:
+            return data
+        import numpy as np
+        return np.clip(np.asarray(data, dtype=np.float32) * v, -1.0, 1.0)
+
+    @staticmethod
+    def _read_wav(path):
+        try:
+            import numpy as np
+            import soundfile as sf
+            data, sr = sf.read(path, dtype="float32")
+            if getattr(data, "ndim", 1) > 1:
+                data = data.mean(axis=1)
+            return np.asarray(data, dtype=np.float32), sr
+        except Exception:
+            return None
+
+    @staticmethod
+    def _store_wav(path: str, folder: str, data, sr) -> None:
+        try:
+            import numpy as np
+            import soundfile as sf
+            os.makedirs(folder, exist_ok=True)
+            tmp = path + ".part"
+            sf.write(tmp, np.asarray(data, dtype=np.float32), int(sr))
+            os.replace(tmp, path)
+        except Exception:
+            pass
+
+    def prerender(self, phrases) -> None:
+        """Render a batch of fixed phrases into the cache with the active cloning
+        engine so they later play instantly. Skips parametric phrases ({N}) and
+        ones already cached; emits `tts.prerender` progress."""
+        def _run() -> None:
+            eng = self._active
+            if not self._is_clone(eng) or not (self._cache_dir and self._voice_fp):
+                self._emit({"type": "tts.prerender", "state": "skip",
+                            "done": 0, "total": 0})
+                return
+            try:
+                if not eng.is_loaded:
+                    eng.load()
+            except Exception as e:
+                self._emit({"type": "tts.prerender", "state": "error",
+                            "message": str(e)})
+                return
+            seen, uniq = set(), []
+            for p in (phrases or []):
+                p = (p or "").strip()
+                if p and "{" not in p and p not in seen:
+                    seen.add(p)
+                    uniq.append(p)
+            total = len(uniq)
+            self._emit({"type": "tts.prerender", "state": "start",
+                        "done": 0, "total": total})
+            done = 0
+            for p in uniq:
+                if self._stop.is_set():
+                    break
+                folder, cf = self._cache_file(p)
+                if not os.path.isfile(cf):
+                    try:
+                        res = eng.synthesize(p, 1.0, 1.0)
+                        if res is not None:
+                            self._store_wav(cf, folder, res[0], res[1])
+                    except Exception:
+                        pass
+                done += 1
+                self._emit({"type": "tts.prerender", "done": done,
+                            "total": total})
+            self._emit({"type": "tts.prerender", "state": "done",
+                        "done": done, "total": total})
+        threading.Thread(target=_run, daemon=True).start()
+
     def _play_one(self, text: str, rate: float, volume: float, on_level) -> None:
         engine = self._active
         res = None
-        try:
-            res = engine.synthesize(text, rate, volume)
-        except Exception:
-            res = None
-        # Piper failed at runtime -> drop to the system voice for this utterance
-        # (and stay there) with a UI event.
-        if res is None and engine is self._piper:
-            self._emit_status("piper", self._voice, "error",
+        # Cloning engines: serve from / populate the shared phrase cache.
+        if self._is_clone(engine) and self._cache_ok(rate):
+            folder, cf = self._cache_file(text)
+            if os.path.isfile(cf):
+                res = self._read_wav(cf)
+            if res is None:
+                try:
+                    res = engine.synthesize(text, 1.0, 1.0)  # natural, cacheable
+                except Exception:
+                    res = None
+                if res is not None:
+                    self._store_wav(cf, folder, res[0], res[1])
+            if res is not None:
+                res = (self._scale(res[0], volume), res[1])
+        else:
+            try:
+                res = engine.synthesize(text, rate, volume)
+            except Exception:
+                res = None
+        # Piper / clone failed at runtime -> drop to the system voice for this
+        # utterance (and stay there) with a UI event.
+        if res is None and (engine is self._piper or self._is_clone(engine)):
+            self._emit_status(self._active_name, self._voice, "error",
                               "synthesis failed; using system voice")
             self._fallback_to_pyttsx3()
             try:

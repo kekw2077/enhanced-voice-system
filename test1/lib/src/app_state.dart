@@ -350,6 +350,27 @@ class AppState extends ChangeNotifier {
   String cosyvoiceInstruct = '';
   String cosyvoiceDevice = 'cuda'; // 'cpu' | 'cuda'
 
+  // Voice clone (XTTS-v2 on CPU) — a temporary local stand-in for GPU CosyVoice
+  // while a graphics card is awaited. The engine ships as a separate downloaded
+  // component (`clone`); `cloneSamplePath` is any WAV 6–10 s of the target
+  // voice. Fixed phrases (system notifications, command speak-phrases, the
+  // acknowledgement library) are pre-rendered into a cache so they play
+  // instantly; novel text is synthesized on the fly (~2× on CPU). The cache is
+  // engine-agnostic, so it serves CosyVoice too once its server is up.
+  bool cloneEnabled = false;
+  String cloneSamplePath = '';
+  // User-editable extra phrases to pre-render (on top of the built-ins).
+  List<String> clonePhraseLib = [];
+
+  // Built-in acknowledgement phrases pre-rendered for a cloned voice so short
+  // interjections are instant. Fixed system phrases + command speak-phrases are
+  // added on top in clonePhrasesToRender().
+  static const List<String> kCloneAckPhrases = [
+    'Готово.', 'Слушаю.', 'Секунду.', 'Минуту.', 'Выполняю.',
+    'Не расслышал, повтори.', 'Готово, что-нибудь ещё?', 'Хорошо.',
+    'Уже делаю.', 'Один момент.',
+  ];
+
   // STT language resolved against the UI language when set to 'auto'.
   String get effectiveSttLanguage =>
       sttLanguage == 'auto' ? lang : sttLanguage;
@@ -553,6 +574,9 @@ class AppState extends ChangeNotifier {
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
+    cloneEnabled = prefs.getBool('cloneEnabled') ?? false;
+    cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
+    clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -746,6 +770,9 @@ class AppState extends ChangeNotifier {
     await prefs.setString('cosyvoiceEmotion', cosyvoiceEmotion);
     await prefs.setString('cosyvoiceInstruct', cosyvoiceInstruct);
     await prefs.setString('cosyvoiceDevice', cosyvoiceDevice);
+    await prefs.setBool('cloneEnabled', cloneEnabled);
+    await prefs.setString('cloneSamplePath', cloneSamplePath);
+    await prefs.setStringList('clonePhraseLib', clonePhraseLib);
     await prefs.setString(
       'voiceCommands',
       jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
@@ -842,6 +869,9 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     try {
       unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
+    } catch (_) {}
+    try {
+      unawaited(applyCloneConfig());
     } catch (_) {}
     try {
       SidecarClient.instance.setSttDevice(sttDevice);
@@ -956,6 +986,9 @@ class AppState extends ChangeNotifier {
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
+    cloneEnabled = prefs.getBool('cloneEnabled') ?? false;
+    cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
+    clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
     final vcRaw = prefs.getString('voiceCommands');
     if (vcRaw != null) {
       try {
@@ -1106,6 +1139,84 @@ class AppState extends ChangeNotifier {
     cosyvoiceClonePromptText = v;
     _save();
     notifyListeners();
+  }
+
+  // ---- Voice clone (XTTS, CPU) ---------------------------------------
+
+  void setCloneEnabled(bool v) {
+    cloneEnabled = v;
+    _save();
+    notifyListeners();
+    unawaited(applyCloneConfig());
+  }
+
+  void setCloneSamplePath(String v) {
+    cloneSamplePath = v;
+    _save();
+    notifyListeners();
+    if (cloneEnabled) unawaited(applyCloneConfig());
+  }
+
+  void addClonePhrase(String p) {
+    p = p.trim();
+    if (p.isEmpty || clonePhraseLib.contains(p)) return;
+    clonePhraseLib = [...clonePhraseLib, p];
+    _save();
+    notifyListeners();
+    if (cloneEnabled) unawaited(applyCloneConfig());
+  }
+
+  void removeClonePhrase(String p) {
+    clonePhraseLib = clonePhraseLib.where((e) => e != p).toList();
+    _save();
+    notifyListeners();
+  }
+
+  // Fixed phrases pre-rendered into the clone cache: the system-spoken lines +
+  // every command's speak-phrase (parametric {N} ones skipped) + the built-in
+  // acknowledgements + the user's own library. Deduplicated.
+  List<String> clonePhrasesToRender() {
+    final out = <String>{};
+    void add(String? s) {
+      final v = (s ?? '').trim();
+      if (v.isNotEmpty && !v.contains('{')) out.add(v);
+    }
+
+    add(t('readyGreeting'));
+    add(t('gmNotifyFullscreen'));
+    add(t('gmNotifyVram'));
+    add(t('gmNotifyExit'));
+    add(t('vaDone'));
+    for (final c in voiceCommands) {
+      add(c.speakPhrase);
+    }
+    for (final p in kCloneAckPhrases) {
+      add(p);
+    }
+    for (final p in clonePhraseLib) {
+      add(p);
+    }
+    return out.toList();
+  }
+
+  // Push clone config to the sidecar (or hand the engine back to Piper/system
+  // when disabled), and pre-render the fixed phrases. The clone component is a
+  // heavy on-demand download; ensure() pulls it on first enable.
+  Future<void> applyCloneConfig() async {
+    final sc = SidecarClient.instance;
+    if (cloneEnabled && cloneSamplePath.isNotEmpty) {
+      unawaited(ComponentManager.instance.ensure('clone'));
+      await sc.applyClone(
+        enabled: true,
+        ref: cloneSamplePath,
+        lang: lang == 'en' ? 'en' : 'ru',
+        phrases: clonePhrasesToRender(),
+      );
+    } else {
+      await sc.applyClone(enabled: false);
+      final modelId = _voiceModelId(ttsPiperVoice);
+      unawaited(sc.setTtsVoice(ttsPiperVoice, modelId: modelId));
+    }
   }
 
   void setCosyvoiceSpeed(double v) {

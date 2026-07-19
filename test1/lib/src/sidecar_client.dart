@@ -202,6 +202,7 @@ class SidecarClient {
     // transcription / model change).
     _send({'type': 'stt.config', 'model': _sttModel, 'vad': _vadAggr});
     if (_ttsFx != null) _send({'type': 'tts.config', 'fx': _ttsFx});
+    if (_cloneEnabled) unawaited(_pushClone());
     _ws!.listen((data) {
       try {
         final m = jsonDecode(data as String) as Map<String, dynamic>;
@@ -237,6 +238,8 @@ class SidecarClient {
               ttsEngines.value = {
                 'pyttsx3': te['pyttsx3'] == true,
                 'piper': te['piper'] == true,
+                'xtts': te['xtts'] == true,
+                'cosyvoice': te['cosyvoice'] == true,
               };
             }
             break;
@@ -292,6 +295,14 @@ class SidecarClient {
             break;
           case 'tts.done':
             VoiceLevels.instance.tts.value = 0;
+            break;
+          // Clone phrase-cache pre-render progress (done/total + phase).
+          case 'tts.prerender':
+            prerenderProgress.value = (
+              (m['done'] as num?)?.toInt() ?? 0,
+              (m['total'] as num?)?.toInt() ?? 0,
+              m['state'] as String? ?? '',
+            );
             break;
           case 'audio.sessions.result':
             final list = (m['sessions'] as List?)
@@ -430,6 +441,104 @@ class SidecarClient {
   Future<void> setTtsFx(Map<String, dynamic> fx) async {
     _ttsFx = fx;
     _send({'type': 'tts.config', 'fx': fx});
+  }
+
+  // ---- Voice clone (XTTS) — engine-agnostic phrase cache, shared with
+  // CosyVoice. State is retained so a reconnect re-applies it. -------------
+  bool _cloneEnabled = false;
+  String _cloneRef = '';
+  String _cloneLang = 'ru';
+  List<String> _clonePhrases = const [];
+  // (done, total, state) where state is 'start' | '' | 'done' | 'skip' | 'error'.
+  final ValueNotifier<(int, int, String)> prerenderProgress =
+      ValueNotifier((0, 0, ''));
+
+  Future<String> _cloneCacheDir() async {
+    final sep = io.Platform.pathSeparator;
+    final models = await modelsDirPath();
+    final parent = io.Directory(models).parent.path;
+    final dir = '$parent${sep}clone_cache';
+    try {
+      await io.Directory(dir).create(recursive: true);
+    } catch (_) {}
+    return dir;
+  }
+
+  Future<String> _voiceFingerprint(String path) async {
+    try {
+      final st = await io.File(path).stat();
+      final base = path.split(io.Platform.pathSeparator).last;
+      return '${base}_${st.size}_${st.modified.millisecondsSinceEpoch}'
+          .hashCode
+          .toRadixString(16);
+    } catch (_) {
+      return 'na';
+    }
+  }
+
+  // Configure the voice-clone engine (or hand back to Piper when disabled) and
+  // pre-render the fixed phrases into the shared cache. `ref` is a WAV sample.
+  Future<void> applyClone({
+    required bool enabled,
+    String ref = '',
+    String lang = 'ru',
+    List<String> phrases = const [],
+  }) async {
+    _cloneEnabled = enabled;
+    _cloneRef = ref;
+    _cloneLang = lang;
+    _clonePhrases = phrases;
+    await _pushClone();
+  }
+
+  Future<void> _pushClone() async {
+    if (_cloneEnabled && _cloneRef.isNotEmpty) {
+      final exe = await ComponentManager.instance.installedPath('clone') ?? '';
+      final cacheDir = await _cloneCacheDir();
+      final fp = await _voiceFingerprint(_cloneRef);
+      _send({
+        'type': 'tts.config',
+        'cache_dir': cacheDir,
+        'voice_fp': fp,
+        'clone': {'exe': exe, 'ref': _cloneRef, 'lang': _cloneLang},
+        'engine': 'xtts',
+      });
+      if (_clonePhrases.isNotEmpty) {
+        _send({'type': 'tts.prerender', 'phrases': _clonePhrases});
+      }
+    } else {
+      // Hand the active engine back to Piper (which itself falls back to the
+      // system voice when no Piper voice is installed).
+      _send({'type': 'tts.config', 'engine': 'piper'});
+    }
+  }
+
+  // Configure a CosyVoice HTTP server as a cloning engine sharing the SAME
+  // phrase cache. Untested until a GPU server is up; a no-op without an
+  // endpoint, so it's safe to call unconditionally.
+  Future<void> applyCosy({
+    required bool enabled,
+    String endpoint = '',
+    String ref = '',
+    String promptText = '',
+    double speed = 1.0,
+  }) async {
+    if (enabled && endpoint.isNotEmpty && ref.isNotEmpty) {
+      final cacheDir = await _cloneCacheDir();
+      final fp = await _voiceFingerprint(ref);
+      _send({
+        'type': 'tts.config',
+        'cache_dir': cacheDir,
+        'voice_fp': fp,
+        'cosy': {
+          'endpoint': endpoint,
+          'ref': ref,
+          'prompt': promptText,
+          'speed': speed,
+        },
+        'engine': 'cosyvoice',
+      });
+    }
   }
 
   Future<void> setDenoise(String mode) async {

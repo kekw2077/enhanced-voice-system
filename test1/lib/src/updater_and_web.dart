@@ -747,6 +747,9 @@ class ComponentInfo {
   final int size;
   final bool archive; // fileName is a zip to extract into <dir>/<id>/
   final String exe; // for archives: path to the launchable exe inside the dir
+  // >1 = split asset: fetch `<url>.001`..`<url>.00N` and concatenate (GitHub
+  // caps release assets at 2 GiB; the clone component is far bigger).
+  final int parts;
   const ComponentInfo(
       {required this.id,
       required this.fileName,
@@ -755,7 +758,8 @@ class ComponentInfo {
       required this.sha256,
       required this.size,
       this.archive = false,
-      this.exe = ''});
+      this.exe = '',
+      this.parts = 1});
 
   factory ComponentInfo.fromJson(String id, Map<String, dynamic> j) =>
       ComponentInfo(
@@ -767,6 +771,7 @@ class ComponentInfo {
         size: (j['size'] ?? 0) as int,
         archive: j['archive'] == true,
         exe: (j['exe'] ?? '') as String,
+        parts: (j['parts'] ?? 1) as int,
       );
 }
 
@@ -955,10 +960,32 @@ class ComponentManager {
         '${await _componentsDir()}${io.Platform.pathSeparator}${info.fileName}';
     st.value = const ComponentStatus(ComponentState.downloading);
     try {
-      await downloadFileWithProgress(info.url, dest, (r, t) {
-        st.value = ComponentStatus(ComponentState.downloading,
-            progress: t > 0 ? r / t : 0);
-      }, () => false);
+      if (info.parts > 1) {
+        // Split asset: fetch each `<url>.00i` and concatenate into `dest`.
+        final sink = io.File(dest).openWrite();
+        try {
+          for (var i = 1; i <= info.parts; i++) {
+            final partUrl = '${info.url}.${i.toString().padLeft(3, '0')}';
+            final partFile = '$dest.p$i';
+            await downloadFileWithProgress(partUrl, partFile, (r, t) {
+              final frac = t > 0 ? r / t : 0.0;
+              st.value = ComponentStatus(ComponentState.downloading,
+                  progress: (i - 1 + frac) / info.parts);
+            }, () => false);
+            await sink.addStream(io.File(partFile).openRead());
+            try {
+              await io.File(partFile).delete();
+            } catch (_) {}
+          }
+        } finally {
+          await sink.close();
+        }
+      } else {
+        await downloadFileWithProgress(info.url, dest, (r, t) {
+          st.value = ComponentStatus(ComponentState.downloading,
+              progress: t > 0 ? r / t : 0);
+        }, () => false);
+      }
       st.value = const ComponentStatus(ComponentState.verifying);
       if (!await _verify(dest, info.sha256)) {
         try {
