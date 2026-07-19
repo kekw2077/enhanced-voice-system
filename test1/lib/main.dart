@@ -160,28 +160,7 @@ void main(List<String> args) async {
   runApp(ChangeNotifierProvider.value(value: app, child: const MiraiApp()));
 }
 
-// The floating widget owns its own position, persisted to a DEDICATED file
-// (userdata/widget_pos.json) written ONLY by the widget process — never through
-// the shared prefs. Rationale (TZ3.3): main + widget share one prefs.json, each
-// with its own in-memory cache, so a full-file _persist() from one process
-// clobbers fresh values written by the other; and routing the position through
-// the main app lost the last drag before shutdown when the widget was killed. A
-// private file removes both problems (single writer, survives the main app
-// dying). Stores absolute coords plus a best-effort monitor anchor (stable
-// display id + work-area-relative offset + DPI) so a widget parked on a second
-// monitor returns there after a disconnect/reconnect.
-
-
+// Transient notice shown on the floating widget (command executed/failed): (text,
+// kind 'ok'|'err'|'info', timestamp-ms). Kept in main.dart because both the main
+// app and the widget process reference it.
 final ValueNotifier<(String, String, int)?> vizNotice = ValueNotifier(null);
-
-
-/* ----------------------- EVS DESKTOP SETTINGS ----------------------------
-   Left-nav settings with 7 sections (evs_s1..s7.html). Controls bind to the
-   existing AppState/Personalization; genuinely-new areas are shown as UI with
-   stub state until their native phase lands. */
-
-// A user-defined voice command (Voice Commands catalog). Execution comes in
-// the native phase; the type maps to how `value` is interpreted.
-// A phone authorized to send remote commands (TZ §14). The token is a secret —
-// shown masked in the UI, matched verbatim by the server. lastSeen is ISO-8601
-// or '' if never seen.
