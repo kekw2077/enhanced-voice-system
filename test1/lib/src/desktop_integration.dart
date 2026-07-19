@@ -547,7 +547,7 @@ class DesktopIntegration with WindowListener, TrayListener {
   // NB: the Flutter project lives in the repo's test1/ subdir, so the raw path
   // includes test1/. Branch is `desktop`.
   static const String updateFeedUrl =
-      'https://raw.githubusercontent.com/kekw2077/mirai/desktop/test1/dist/appcast.xml';
+      'https://raw.githubusercontent.com/kekw2077/enhanced-voice-system/main/test1/dist/appcast.xml';
 
   // Effective feed: an EVS_UPDATE_FEED env var overrides the baked-in URL. Lets
   // you point a build at a staging/local appcast (e.g. http://localhost:8000/

@@ -5,7 +5,7 @@
       "exe": "evs_sidecar.exe",
       "archive": true,
       "version": "10",
-      "url": "https://github.com/kekw2077/mirai/releases/download/desktop-components/evs_sidecar.zip",
+      "url": "https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_sidecar.zip",
       "sha256": "41abdc74124cb86a4732f82f8ce8dc143c545fcde7b108d9305afa2f4cc5e855",
       "size": 112598600
     }

@@ -2297,7 +2297,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  static const _updateRepo = 'kekw2077/mirai';
+  static const _updateRepo = 'kekw2077/enhanced-voice-system';
 
   bool _isNewerVersion(String remote, String local) {
     List<int> parse(String v) =>

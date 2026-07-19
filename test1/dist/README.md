@@ -16,7 +16,7 @@ updater. EVS ships **full installers**, so updates can include native changes
    to the installed build, and if newer, downloads the signed installer,
    **verifies its DSA signature** against the embedded public key, and runs it.
 
-Feed URL: `https://raw.githubusercontent.com/kekw2077/mirai/desktop/test1/dist/appcast.xml`
+Feed URL: `https://raw.githubusercontent.com/kekw2077/enhanced-voice-system/main/test1/dist/appcast.xml`
 (defined in `DesktopIntegration.updateFeedUrl`). Override at runtime with the
 `EVS_UPDATE_FEED` environment variable — used by the local staging test below
 and handy for a self-hosted feed.

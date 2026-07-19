@@ -389,7 +389,7 @@ class AppUpdater {
   // via the default handler — no url_launcher dependency needed.
   Future<void> _openReleasePage(String version) async {
     final url =
-        'https://github.com/kekw2077/mirai/releases/tag/desktop-v$version';
+        'https://github.com/kekw2077/enhanced-voice-system/releases/tag/desktop-v$version';
     try {
       await io.Process.start('explorer.exe', [url],
           mode: io.ProcessStartMode.detached);
@@ -776,7 +776,7 @@ class ComponentManager {
   static final ComponentManager instance = ComponentManager._();
 
   static const String manifestUrl =
-      'https://raw.githubusercontent.com/kekw2077/mirai/desktop/test1/dist/components.json';
+      'https://raw.githubusercontent.com/kekw2077/enhanced-voice-system/main/test1/dist/components.json';
 
   Map<String, ComponentInfo> _manifest = {};
   final Map<String, ValueNotifier<ComponentStatus>> _status = {};

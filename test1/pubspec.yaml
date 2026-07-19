@@ -1,7 +1,7 @@
-name: mirai
-description: EVS — local & remote AI chat client
+name: evs
+description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 2.3.0+31
+version: 2.3.1+32
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
