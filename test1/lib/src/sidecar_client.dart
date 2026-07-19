@@ -36,6 +36,7 @@ class SidecarClient {
       ValueNotifier(const {'whisper': false, 'gigaam': false});
   String _denoise = 'off'; // off | light | strong
   int _vadAggr = 3; // webrtcvad aggressiveness 0..3 (higher = stricter / less sensitive)
+  Map<String, dynamic>? _ttsFx; // voice post-FX config
   String _denoiseDir = ''; // <userdata>/models (holds denoise-gtcrn/, denoise-df/)
   final ValueNotifier<(String mode, String state, String? message)?>
       denoiseStatus = ValueNotifier(null);
@@ -200,6 +201,7 @@ class SidecarClient {
     // Tell the sidecar which Whisper model to use (it lazy-loads on first
     // transcription / model change).
     _send({'type': 'stt.config', 'model': _sttModel, 'vad': _vadAggr});
+    if (_ttsFx != null) _send({'type': 'tts.config', 'fx': _ttsFx});
     _ws!.listen((data) {
       try {
         final m = jsonDecode(data as String) as Map<String, dynamic>;
@@ -423,6 +425,11 @@ class SidecarClient {
   Future<void> setVadAggressiveness(int n) async {
     _vadAggr = n.clamp(0, 3);
     _send({'type': 'stt.config', 'vad': _vadAggr});
+  }
+
+  Future<void> setTtsFx(Map<String, dynamic> fx) async {
+    _ttsFx = fx;
+    _send({'type': 'tts.config', 'fx': fx});
   }
 
   Future<void> setDenoise(String mode) async {

@@ -234,6 +234,12 @@ class AppState extends ChangeNotifier {
   // needs the GTCRN model; the sidecar fail-safes to off until it's present.
   String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
   int micVadAggr = 3; // webrtcvad aggressiveness 0..3 (higher = stricter / less sensitive)
+  // Voice post-FX (applied to synthesized/cloned speech in the sidecar).
+  bool ttsFxEnabled = false;
+  double ttsFxDetune = 0.35;   // chorus/detune double 0..1
+  double ttsFxMetallic = 0.22; // flanger+ring 0..1
+  double ttsFxReverb = 0.15;   // reverb mix 0..1
+  int ttsFxLowpass = 2200;     // low-pass Hz (brightness)
   // Compute device for GPU-capable engines (TZ2 block 6). Only Whisper has a
   // CUDA path here; the selector is hidden entirely when no GPU is detected.
   String sttDevice = 'cpu'; // 'cpu' | 'cuda'
@@ -494,6 +500,11 @@ class AppState extends ChangeNotifier {
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
+    ttsFxEnabled = prefs.getBool('ttsFxEnabled') ?? false;
+    ttsFxDetune = prefs.getDouble('ttsFxDetune') ?? 0.35;
+    ttsFxMetallic = prefs.getDouble('ttsFxMetallic') ?? 0.22;
+    ttsFxReverb = prefs.getDouble('ttsFxReverb') ?? 0.15;
+    ttsFxLowpass = prefs.getInt('ttsFxLowpass') ?? 2200;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
     gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
     gameModeVram = prefs.getBool('gameModeVram') ?? true;
@@ -686,6 +697,11 @@ class AppState extends ChangeNotifier {
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
     await prefs.setString('denoiseMode', denoiseMode);
     await prefs.setInt('micVadAggr', micVadAggr);
+    await prefs.setBool('ttsFxEnabled', ttsFxEnabled);
+    await prefs.setDouble('ttsFxDetune', ttsFxDetune);
+    await prefs.setDouble('ttsFxMetallic', ttsFxMetallic);
+    await prefs.setDouble('ttsFxReverb', ttsFxReverb);
+    await prefs.setInt('ttsFxLowpass', ttsFxLowpass);
     await prefs.setString('sttDevice', sttDevice);
     await prefs.setBool('gameModeFullscreen', gameModeFullscreen);
     await prefs.setBool('gameModeVram', gameModeVram);
@@ -825,6 +841,9 @@ class AppState extends ChangeNotifier {
       unawaited(SidecarClient.instance.setVadAggressiveness(micVadAggr));
     } catch (_) {}
     try {
+      unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
+    } catch (_) {}
+    try {
       SidecarClient.instance.setSttDevice(sttDevice);
     } catch (_) {}
     try {
@@ -884,6 +903,11 @@ class AppState extends ChangeNotifier {
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
+    ttsFxEnabled = prefs.getBool('ttsFxEnabled') ?? false;
+    ttsFxDetune = prefs.getDouble('ttsFxDetune') ?? 0.35;
+    ttsFxMetallic = prefs.getDouble('ttsFxMetallic') ?? 0.22;
+    ttsFxReverb = prefs.getDouble('ttsFxReverb') ?? 0.15;
+    ttsFxLowpass = prefs.getInt('ttsFxLowpass') ?? 2200;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
     gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
     gameModeVram = prefs.getBool('gameModeVram') ?? true;
@@ -1367,6 +1391,38 @@ class AppState extends ChangeNotifier {
 
   // Switch noise suppression (off | light | strong). Applies live for preview;
   // persists on Save, resynced on Save/Cancel via _applySettingsSideEffects.
+  Map<String, dynamic> ttsFxConfig() => {
+        'enabled': ttsFxEnabled,
+        'highpass': 110,
+        'lowpass': ttsFxLowpass,
+        'detune': ttsFxDetune,
+        'metallic': ttsFxMetallic,
+        'reverb': ttsFxReverb,
+        'ringHz': 80,
+      };
+
+  void setTtsFx({bool? enabled, double? detune, double? metallic, double? reverb, int? lowpass}) {
+    if (enabled != null) ttsFxEnabled = enabled;
+    if (detune != null) ttsFxDetune = detune;
+    if (metallic != null) ttsFxMetallic = metallic;
+    if (reverb != null) ttsFxReverb = reverb;
+    if (lowpass != null) ttsFxLowpass = lowpass;
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
+  }
+
+  void applyEdiPreset() {
+    ttsFxEnabled = true;
+    ttsFxDetune = 0.35;
+    ttsFxMetallic = 0.22;
+    ttsFxReverb = 0.15;
+    ttsFxLowpass = 2200;
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
+  }
+
   void setMicVadAggr(int n) {
     micVadAggr = n.clamp(0, 3);
     _save();

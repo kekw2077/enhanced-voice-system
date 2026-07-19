@@ -210,6 +210,8 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                 eng = data.get("engine")
                 if eng:
                     tts.set_engine(str(eng))
+                if "fx" in data:
+                    tts.set_fx(data.get("fx"))
             elif t == "tts.preview":
                 tts.preview(str(data.get("voice_dir", "")),
                             str(data.get("voice", "")),

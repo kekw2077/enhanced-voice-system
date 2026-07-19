@@ -469,6 +469,19 @@ class TtsEngine:
             # Last resort: direct SAPI (no levels, but speech still works).
             self._pyttsx3.speak_direct(text, rate, volume, self._stop)
 
+    def set_fx(self, cfg) -> None:
+        """Voice post-FX config (dict) applied to synth audio before playback."""
+        self._fx = dict(cfg) if isinstance(cfg, dict) else None
+
+    def _apply_fx(self, data, sr):
+        fx = getattr(self, "_fx", None)
+        if not fx or not fx.get("enabled"):
+            return data
+        try:
+            return _voice_fx(data, int(sr), fx)
+        except Exception:
+            return data
+
     def _play_samples(self, data, sr: int, on_level) -> bool:
         """Play mono float32 samples through sounddevice, emitting live RMS
         levels (~30/s). Returns True if playback ran, False on device error."""
@@ -477,6 +490,7 @@ class TtsEngine:
             import sounddevice as sd
 
             data = np.asarray(data, dtype=np.float32)
+            data = self._apply_fx(data, int(sr))
             chunk = max(1, int(sr) // 30)
             stream = sd.OutputStream(samplerate=int(sr), channels=1,
                                      dtype="float32")
@@ -506,3 +520,99 @@ class TtsEngine:
                 self._queue.task_done()
         except queue.Empty:
             pass
+
+
+# ---- Voice post-FX (numpy-only, vectorized; applied before playback) -------
+# A configurable chain for stylised voices (e.g. an "EDI"-style synthetic AI):
+# high-pass -> detuned chorus double -> flanger/ring "metallic" -> low-pass ->
+# short reverb. All params come from the app via {"type":"tts.config","fx":{...}}.
+def _fx_fir_lp(x, sr, fc, taps=257):
+    import numpy as np
+    if fc <= 0 or fc >= sr / 2:
+        return x
+    n = np.arange(taps) - (taps - 1) / 2.0
+    h = np.sinc(2 * fc / sr * n) * np.hamming(taps)
+    h = (h / np.sum(h)).astype(np.float32)
+    return np.convolve(x, h, mode="same").astype(np.float32)
+
+
+def _fx_fir_hp(x, sr, fc, taps=257):
+    import numpy as np
+    if fc <= 20:
+        return x
+    n = np.arange(taps) - (taps - 1) / 2.0
+    lp = np.sinc(2 * fc / sr * n) * np.hamming(taps)
+    lp = lp / np.sum(lp)
+    h = -lp
+    h[(taps - 1) // 2] += 1.0
+    return np.convolve(x, h.astype(np.float32), mode="same").astype(np.float32)
+
+
+def _fx_delay_wet(x, sr, base_ms, depth_ms, rate_hz):
+    """Time-varying fractional delay (single read tap) -> chorus/flanger wet."""
+    import numpy as np
+    n = len(x)
+    t = np.arange(n) / sr
+    d = (base_ms + depth_ms * np.sin(2 * np.pi * rate_hz * t)) * sr / 1000.0
+    idx = np.arange(n) - d
+    i0 = np.floor(idx).astype(np.int64)
+    frac = (idx - i0).astype(np.float32)
+    i0c = np.clip(i0, 0, n - 1)
+    i1c = np.clip(i0 + 1, 0, n - 1)
+    wet = x[i0c] * (1 - frac) + x[i1c] * frac
+    wet[idx < 0] = 0.0
+    return wet.astype(np.float32)
+
+
+def _fx_reverb(x, sr, decay=0.6):
+    """FIR reverb: convolve with a synthetic exponentially-decaying-noise IR."""
+    import numpy as np
+    L = max(1, int(sr * decay))
+    rng = np.random.default_rng(1234)
+    env = np.exp(-np.arange(L) / (sr * decay * 0.33)).astype(np.float32)
+    ir = rng.standard_normal(L).astype(np.float32) * env
+    ir[0] = 1.0
+    ir /= (np.sqrt(np.sum(ir * ir)) + 1e-9)
+    N = 1
+    while N < len(x) + L:
+        N <<= 1
+    y = np.fft.irfft(np.fft.rfft(x, N) * np.fft.rfft(ir, N), N)[:len(x)]
+    return y.astype(np.float32)
+
+
+def _voice_fx(data, sr, fx):
+    """Apply the configured voice FX to a mono float32 buffer. Best-effort:
+    returns the input unchanged on any error."""
+    import numpy as np
+    x = np.asarray(data, dtype=np.float32).copy()
+    if x.size == 0:
+        return data
+    hp = float(fx.get("highpass", 110.0))
+    lp = float(fx.get("lowpass", 3000.0))
+    detune = max(0.0, min(1.0, float(fx.get("detune", 0.0))))
+    metallic = max(0.0, min(1.0, float(fx.get("metallic", 0.0))))
+    rev = max(0.0, min(1.0, float(fx.get("reverb", 0.0))))
+    ring_hz = float(fx.get("ringHz", 80.0))
+    if hp > 20:
+        x = _fx_fir_hp(x, sr, hp)
+    if detune > 0.001:
+        # two slightly different detuned "voices" -> synthetic AI doubling
+        a = _fx_delay_wet(x, sr, 18.0, 6.0, 0.7)
+        b = _fx_delay_wet(x, sr, 25.0, 9.0, 1.1)
+        x = ((1.0 - 0.5 * detune) * x + 0.5 * detune * (a + b)).astype(np.float32)
+    if metallic > 0.001:
+        f = _fx_delay_wet(x, sr, 2.5, 2.0, 0.35)  # short flanger
+        x = ((1.0 - 0.5 * metallic) * x + 0.5 * metallic * f).astype(np.float32)
+        t = np.arange(len(x)) / sr
+        car = np.sin(2 * np.pi * ring_hz * t).astype(np.float32)
+        x = (x * (1.0 - 0.25 * metallic) + (x * car) * (0.25 * metallic)).astype(np.float32)
+    if lp < sr / 2:
+        x = _fx_fir_lp(x, sr, lp)
+    if rev > 0.001:
+        w = _fx_reverb(x, sr, 0.6)
+        sc = (np.sqrt(np.mean(x * x)) + 1e-9) / (np.sqrt(np.mean(w * w)) + 1e-9)
+        x = (x * (1.0 - 0.5 * rev) + w * sc * (0.5 * rev)).astype(np.float32)
+    pk = float(np.max(np.abs(x))) + 1e-9
+    if pk > 0.99:
+        x = (x * (0.99 / pk)).astype(np.float32)
+    return x
