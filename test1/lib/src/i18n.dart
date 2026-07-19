@@ -310,6 +310,13 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineCosy': 'CosyVoice',
     'ttsEngineCosyHint': 'качество, GPU',
     'ttsCosyUnavailable': 'CosyVoice недоступен — сервер не отвечает',
+    'motionMode': 'Анимации интерфейса',
+    'motionModeDesc':
+        'Декоративные анимации (сфера, рамки, идл-волны) нагружают процессор. '
+            '«Умные» крутятся только когда ассистент активен.',
+    'motionFull': 'Всегда',
+    'motionBalanced': 'Умные',
+    'motionSaver': 'Экономия',
     'cloneSectionTitle': 'Клон голоса — локальный (CPU)',
     'cloneSectionHint':
         'Свой клонировщик, работает на этом компьютере без видеокарты. '
@@ -1308,6 +1315,13 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineCosy': 'CosyVoice',
     'ttsEngineCosyHint': 'quality, GPU',
     'ttsCosyUnavailable': 'CosyVoice unavailable — server not responding',
+    'motionMode': 'Interface animations',
+    'motionModeDesc':
+        'Decorative animations (sphere, borders, idle waves) cost CPU. '
+            '"Smart" only runs them while the assistant is active.',
+    'motionFull': 'Always',
+    'motionBalanced': 'Smart',
+    'motionSaver': 'Saver',
     'cloneSectionTitle': 'Voice clone — local (CPU)',
     'cloneSectionHint':
         'Your own cloner, running on this computer with no GPU. Unrelated to '

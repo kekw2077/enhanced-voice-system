@@ -28,6 +28,7 @@ class _VoiceScreenState extends State<VoiceScreen>
   int _listenRetries = 0;
   static const _maxListenRetries = 5;
   late final AnimationController _borderCtrl;
+  late final AmbientMotion _borderAmbient;
   // Smoothed 0..1 microphone level driving the sphere's reaction. A
   // ValueNotifier instead of setState so updates (which can fire several
   // times a second) only repaint the sphere, not the whole screen.
@@ -39,7 +40,8 @@ class _VoiceScreenState extends State<VoiceScreen>
     _borderCtrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
-    )..repeat();
+    );
+    _borderAmbient = AmbientMotion(_borderCtrl);
     _init();
   }
 
@@ -315,6 +317,7 @@ class _VoiceScreenState extends State<VoiceScreen>
     _autoSendTimer?.cancel();
     _autoSendIdleTimer?.cancel();
     _listenWatchdog?.cancel();
+    _borderAmbient.dispose();
     _borderCtrl.dispose();
     _soundLevel.dispose();
     _speech.stop();

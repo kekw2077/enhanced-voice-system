@@ -29,6 +29,8 @@ class AppState extends ChangeNotifier {
   bool showKeyboardOnLaunch = false;
   bool showPromptChips = true;
   double fontSize = 1.0;
+  // Ambient-animation policy: 'full' | 'balanced' | 'saver' (see MotionPolicy).
+  String motionMode = 'balanced';
   bool micAutoSend = true;
   int micPauseSeconds = 3;
 
@@ -434,6 +436,10 @@ class AppState extends ChangeNotifier {
     showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
     showPromptChips = prefs.getBool('showPromptChips') ?? true;
     fontSize = prefs.getDouble('fontSize') ?? 1.0;
+    motionMode = prefs.getString('motionMode') ?? 'balanced';
+    MotionPolicy.setMode(motionMode);
+    // Let the splash/first frame animate briefly even in balanced mode.
+    MotionPolicy.poke();
     micAutoSend = prefs.getBool('micAutoSend') ?? true;
     micPauseSeconds = prefs.getInt('micPauseSeconds') ?? 3;
     serverUrl = prefs.getString('serverUrl') ?? '';
@@ -684,6 +690,7 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('showKeyboardOnLaunch', showKeyboardOnLaunch);
     await prefs.setBool('showPromptChips', showPromptChips);
     await prefs.setDouble('fontSize', fontSize);
+    await prefs.setString('motionMode', motionMode);
     await prefs.setBool('micAutoSend', micAutoSend);
     await prefs.setInt('micPauseSeconds', micPauseSeconds);
     await prefs.setString('serverUrl', serverUrl);
@@ -913,6 +920,10 @@ class AppState extends ChangeNotifier {
     showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
     showPromptChips = prefs.getBool('showPromptChips') ?? true;
     fontSize = prefs.getDouble('fontSize') ?? 1.0;
+    motionMode = prefs.getString('motionMode') ?? 'balanced';
+    MotionPolicy.setMode(motionMode);
+    // Let the splash/first frame animate briefly even in balanced mode.
+    MotionPolicy.poke();
     micAutoSend = prefs.getBool('micAutoSend') ?? true;
     micPauseSeconds = prefs.getInt('micPauseSeconds') ?? 3;
     serverUrl = prefs.getString('serverUrl') ?? '';
@@ -2209,6 +2220,13 @@ class AppState extends ChangeNotifier {
 
   void setFontSize(double v) {
     fontSize = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setMotionMode(String v) {
+    motionMode = (v == 'full' || v == 'saver') ? v : 'balanced';
+    MotionPolicy.setMode(motionMode);
     _save();
     notifyListeners();
   }

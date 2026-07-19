@@ -567,6 +567,9 @@ class DesktopIntegration with WindowListener, TrayListener {
   Future<void> init(AppState app) async {
     if (defaultTargetPlatform != TargetPlatform.windows) return;
     _app = app;
+    // Ambient-animation gating: subscribe the policy to the activity signals
+    // (assistant speech/thinking, wake hits, loud mic) once per launch.
+    MotionPolicy.bindSignals();
     try {
       launchAtStartup.setup(
         appName: 'EVS',
@@ -698,6 +701,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       await windowManager.show();
       await windowManager.focus();
     } catch (_) {}
+    MotionPolicy.setWindowVisible(true);
   }
 
   Future<void> _quit() async {
@@ -767,6 +771,9 @@ class DesktopIntegration with WindowListener, TrayListener {
     unawaited(saveWindowNow());
     if (_app?.closeToTray ?? false) {
       windowManager.hide();
+      // Hidden in the tray: freeze all ambient animation so the idle app stops
+      // burning a core repainting frames nobody can see.
+      MotionPolicy.setWindowVisible(false);
     } else {
       _quit();
     }
@@ -775,10 +782,15 @@ class DesktopIntegration with WindowListener, TrayListener {
   @override
   void onWindowMinimize() {
     if (_app?.minimizeToTray ?? false) windowManager.hide();
+    MotionPolicy.setWindowVisible(false);
   }
 
   @override
+  void onWindowRestore() => MotionPolicy.setWindowVisible(true);
+
+  @override
   void onWindowFocus() {
+    MotionPolicy.setWindowVisible(true);
     // A deferred "update ready" prompt waits for the chat window to actually
     // be on screen (it may start hidden behind the floating widget).
     AppUpdater.instance.promptIfPending();

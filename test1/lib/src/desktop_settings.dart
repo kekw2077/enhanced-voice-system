@@ -2301,6 +2301,23 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ),
             ),
           ),
+          // Ambient-animation policy (CPU load regulation): the decorative
+          // loops used to run 60 fps forever (~a full core idle); this row lets
+          // the user pick always / only-when-active / never.
+          evsRow(context,
+            stacked: true,
+            label: app.t('motionMode'),
+            desc: app.t('motionModeDesc'),
+            control: evsSegmentedWide<String>(context,
+              [
+                ('full', app.t('motionFull')),
+                ('balanced', app.t('motionBalanced')),
+                ('saver', app.t('motionSaver')),
+              ],
+              app.motionMode,
+              (v) => app.setMotionMode(v),
+            ),
+          ),
         ],
       )),
       _CardSpec(

@@ -1070,15 +1070,19 @@ class _ParticleSphereState extends State<ParticleSphere>
     with TickerProviderStateMixin {
   late final AnimationController _ctrl;
   late final AnimationController _disperseCtrl;
+  late final AmbientMotion _ambient;
   late final List<_P> _points;
 
   @override
   void initState() {
     super.initState();
+    // Hundreds of particles repainted every frame — by far the heaviest ambient
+    // loop, so it only spins while MotionPolicy allows it.
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat();
+    );
+    _ambient = AmbientMotion(_ctrl);
     _disperseCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -1115,6 +1119,7 @@ class _ParticleSphereState extends State<ParticleSphere>
 
   @override
   void dispose() {
+    _ambient.dispose();
     _ctrl.dispose();
     _disperseCtrl.dispose();
     super.dispose();
@@ -1185,8 +1190,12 @@ class _SpherePainter extends CustomPainter {
     // instead of scattering randomly.
     final R = baseR * (1 + imm * imm * 6);
     final rotY = t * 2 * math.pi;
-    final reactive = active ? level.clamp(0.0, 1.0) : 0.0;
-    final pulse = active
+    // React to sound whenever a level is present — previously this was gated on
+    // `active` (the voice screen's listening flag), which only that screen set,
+    // so every other sphere ignored its soundLevel and sat static during
+    // speech. `active` still enables the idle breathing pulse on its own.
+    final reactive = level.clamp(0.0, 1.0);
+    final pulse = (active || reactive > 0.01)
         ? (0.92 + 0.08 * math.sin(t * 2 * math.pi * 3) + reactive * 0.22)
         : 1.0;
     // Louder input makes particles jitter faster around their resting spot.
@@ -1432,6 +1441,7 @@ class AnimatedBorder extends StatefulWidget {
 class _AnimatedBorderState extends State<AnimatedBorder>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
+  late final AmbientMotion _ambient;
 
   @override
   void initState() {
@@ -1439,11 +1449,13 @@ class _AnimatedBorderState extends State<AnimatedBorder>
     _ctrl = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
-    )..repeat();
+    );
+    _ambient = AmbientMotion(_ctrl);
   }
 
   @override
   void dispose() {
+    _ambient.dispose();
     _ctrl.dispose();
     super.dispose();
   }
@@ -1491,6 +1503,118 @@ class _AnimatedBorderState extends State<AnimatedBorder>
 
 // Mockup palette: violet accent + blue→purple→pink gradient on near-black.
 const Color _evsGMid = Color(0xFF8855CC);
+// ---- Ambient-motion policy -------------------------------------------------
+// The always-looping decorative animations (particle sphere, animated borders,
+// idle visualizer sweeps) were the app's single biggest idle cost: several 60fps
+// CustomPainter repaints running whether or not anything was happening —
+// measured at ~1.3 cores with the app sitting idle. They are now gated centrally
+// so they only run when they actually convey something.
+//
+//   full     — always animate (the old behaviour)
+//   balanced — animate only while the assistant is active AND the window is
+//              visible; otherwise hold a static frame (default)
+//   saver    — never run ambient loops
+//
+// Activity-driven visuals (levels reacting to speech) keep updating regardless;
+// this only governs the decorative loops.
+class MotionPolicy {
+  MotionPolicy._();
+
+  /// Whether ambient loops may run right now.
+  static final ValueNotifier<bool> ambient = ValueNotifier<bool>(true);
+
+  static String _mode = 'balanced';
+  static bool _visible = true;
+  static bool _active = false;
+
+  static String get mode => _mode;
+
+  static void setMode(String m) {
+    _mode = (m == 'full' || m == 'saver') ? m : 'balanced';
+    _recompute();
+  }
+
+  static void setWindowVisible(bool v) {
+    if (_visible == v) return;
+    _visible = v;
+    _recompute();
+  }
+
+  /// The assistant is listening / thinking / speaking.
+  static void setActive(bool a) {
+    if (_active == a) return;
+    _active = a;
+    _recompute();
+  }
+
+  // Any activity signal marks the app active and schedules a decay back to
+  // idle; the grace period keeps animations from flickering off between
+  // consecutive spoken sentences.
+  static Timer? _decay;
+  static void poke() {
+    _decay?.cancel();
+    _decay = Timer(const Duration(seconds: 4), () => setActive(false));
+    setActive(true);
+  }
+
+  /// Wire the activity sources once at startup: assistant speech level, the
+  /// voice-assistant state machine, wake-word hits and a loud microphone.
+  /// Plain continuous wake-word listening does NOT count as activity — that is
+  /// exactly the idle state the balanced mode is meant to quiet down.
+  static void bindSignals() {
+    VoiceLevels.instance.tts.addListener(() {
+      if (VoiceLevels.instance.tts.value > 0.001) poke();
+    });
+    VoiceAssistant.instance.state.addListener(() {
+      switch (VoiceAssistant.instance.state.value) {
+        case VaState.armed:
+        case VaState.thinking:
+        case VaState.running:
+          poke();
+        case VaState.idle:
+        case VaState.listening:
+          break;
+      }
+    });
+    VoiceAssistant.instance.wakeActive.addListener(() {
+      if (VoiceAssistant.instance.wakeActive.value) poke();
+    });
+    MicMeter.instance.level.addListener(() {
+      if (MicMeter.instance.level.value > 0.06) poke();
+    });
+  }
+
+  static void _recompute() {
+    // Never animate an invisible window, whatever the mode.
+    final v = switch (_mode) {
+      'full' => _visible,
+      'saver' => false,
+      _ => _visible && _active,
+    };
+    if (ambient.value != v) ambient.value = v;
+  }
+}
+
+/// Binds an [AnimationController] to [MotionPolicy]: repeats while ambient
+/// motion is allowed, holds the current frame otherwise. Dispose with the State.
+class AmbientMotion {
+  AmbientMotion(this._c) {
+    MotionPolicy.ambient.addListener(_sync);
+    _sync();
+  }
+  final AnimationController _c;
+
+  void _sync() {
+    if (MotionPolicy.ambient.value) {
+      if (!_c.isAnimating) _c.repeat();
+    } else if (_c.isAnimating) {
+      _c.stop();
+    }
+  }
+
+  void dispose() => MotionPolicy.ambient.removeListener(_sync);
+}
+
 // Tint a colour toward white (positive) or black (negative) by `amount`.
 // The shell/rail gradients are DERIVED from the theme background with this, so
 // every dark theme keeps the same "radial highlight, darker edges" character in

@@ -154,10 +154,12 @@ class EvsBarsViz extends StatefulWidget {
 class _EvsBarsVizState extends State<EvsBarsViz>
     with SingleTickerProviderStateMixin {
   static const int _n = 33;
+  // Driven by MotionPolicy: the idle shimmer costs a full 60 fps repaint even
+  // when the assistant is silent, so it only spins while motion is allowed.
   late final AnimationController _c =
       AnimationController(vsync: this, duration: const Duration(seconds: 1))
-        ..repeat()
         ..addListener(_tick);
+  late final AmbientMotion _ambient = AmbientMotion(_c);
   final List<double> _cur = List<double>.filled(_n, 0);
   double _t = 0;
 
@@ -181,6 +183,7 @@ class _EvsBarsVizState extends State<EvsBarsViz>
 
   @override
   void dispose() {
+    _ambient.dispose();
     _c
       ..removeListener(_tick)
       ..dispose();
@@ -264,8 +267,8 @@ class _EvsRingVizState extends State<EvsRingViz>
   static const int _spikes = 90;
   late final AnimationController _rot =
       AnimationController(vsync: this, duration: const Duration(seconds: 24))
-        ..repeat()
         ..addListener(_tick);
+  late final AmbientMotion _ambient = AmbientMotion(_rot);
   final List<double> _cur = List<double>.filled(_spikes, 0);
   double _t = 0;
 
@@ -284,6 +287,7 @@ class _EvsRingVizState extends State<EvsRingViz>
 
   @override
   void dispose() {
+    _ambient.dispose();
     _rot
       ..removeListener(_tick)
       ..dispose();
@@ -776,14 +780,48 @@ class _DesktopMicWidget extends StatefulWidget {
 class _DesktopMicWidgetState extends State<_DesktopMicWidget>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(seconds: 2))
-        ..repeat();
+      AnimationController(vsync: this, duration: const Duration(seconds: 2));
+  late final AmbientMotion _cAmbient = AmbientMotion(_c);
   static const _n = 22;
   // Scrolling history of recent levels → a real moving waveform. Must be
   // growable: the tick does removeAt(0)+add, which throws on a fixed-length
   // list (that's why the waveform used to sit frozen).
   final List<double> _hist = List<double>.filled(_n, 0.0, growable: true);
   Timer? _tick;
+  // Consecutive ticks with a silent mic + a fully-flat history. Once the
+  // waveform has visibly drained to zero the 16 Hz setState is pure waste, so
+  // the timer parks itself and a real mic level (or MotionPolicy re-allowing
+  // ambient motion) restarts it.
+  int _quiet = 0;
+
+  void _startTicker() {
+    _tick ??= Timer.periodic(const Duration(milliseconds: 60), (_) {
+      if (!mounted) return;
+      final lvl = MicMeter.instance.level.value;
+      if (lvl < 0.004 && !MotionPolicy.ambient.value) {
+        _quiet++;
+        if (_quiet > _n && _hist.every((v) => v < 0.004)) {
+          _tick?.cancel();
+          _tick = null; // parked; _wake() restarts on the next real level
+          return;
+        }
+      } else {
+        _quiet = 0;
+      }
+      setState(() {
+        _hist.removeAt(0);
+        // Pure microphone level — this widget is the mic monitor (the
+        // visualizations elsewhere react to the assistant's speech instead).
+        _hist.add(lvl);
+      });
+    });
+  }
+
+  void _wake() {
+    if (!mounted) return;
+    _quiet = 0;
+    if (_tick == null) _startTicker();
+  }
 
   @override
   void initState() {
@@ -794,20 +832,17 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
       if (!mounted) return;
       setState(() {});
     });
-    _tick = Timer.periodic(const Duration(milliseconds: 60), (_) {
-      if (!mounted) return;
-      setState(() {
-        _hist.removeAt(0);
-        // Pure microphone level — this widget is the mic monitor (the
-        // visualizations elsewhere react to the assistant's speech instead).
-        _hist.add(MicMeter.instance.level.value);
-      });
-    });
+    _startTicker();
+    MicMeter.instance.level.addListener(_wake);
+    MotionPolicy.ambient.addListener(_wake);
   }
 
   @override
   void dispose() {
+    MicMeter.instance.level.removeListener(_wake);
+    MotionPolicy.ambient.removeListener(_wake);
     _tick?.cancel();
+    _cAmbient.dispose();
     _c.dispose();
     super.dispose();
   }
