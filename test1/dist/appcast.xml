@@ -14,19 +14,45 @@
     3. Sign it:  dist/sign_update.ps1 EVS-Setup-X.Y.Z.exe  -> prints signature.
     4. Upload the .exe to a GitHub Release and add a new <item> below with the
        real url, length (file size in bytes) and sparkle:dsaSignature.
-    5. Commit this file on the `desktop` branch (the feed is raw.githubusercontent).
+    5. Commit this file on the `main` branch (the feed is raw.githubusercontent).
 -->
 <rss version="2.0"
      xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
-     xmlns:evs="https://github.com/kekw2077/mirai"
+     xmlns:evs="https://github.com/kekw2077/enhanced-voice-system"
      xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>EVS</title>
-    <link>https://raw.githubusercontent.com/kekw2077/mirai/desktop/test1/dist/appcast.xml</link>
+    <link>https://raw.githubusercontent.com/kekw2077/enhanced-voice-system/main/test1/dist/appcast.xml</link>
     <description>EVS desktop (Windows) updates</description>
     <language>ru</language>
 
     <!-- Newest release first. Duplicate this block for each new version. -->
+    <item>
+      <title>EVS 2.3.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li>EVS переведён в собственный репозиторий проекта — автообновления теперь приходят из нового репозитория. Для вас ничего не меняется: обновление скачается и применится как обычно.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 19 Jul 2026 14:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.3.1/EVS-Setup-2.3.1.exe"
+        sparkle:version="2.3.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHGoP9qeco/wwfMTDDMdmPh6yrmKYpNOMQJpjby0CHBX50I45ppMBQrlGiSLHx/8NS7JPtFSNeWedfOM="
+        evs:sha256="c72999359d0627898f2168f4cba6b72ec4c23176349e75ea3bfaaf62ba11ef18"
+        length="16554165"
+        type="application/octet-stream" />
+    </item>
+
     <item>
       <title>EVS 2.3.0</title>
       <description><![CDATA[
@@ -45,7 +71,7 @@
       ]]></description>
       <pubDate>Sun, 19 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.3.0/EVS-Setup-2.3.0.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.3.0/EVS-Setup-2.3.0.exe"
         sparkle:version="2.3.0"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHBJqAFCY2IdQc/yWae4ovDfisXs48qOilzhq3nkCHBvGKdUJ0NQYKBYEse1xXQ9ZaQbcTwhPwL6hch4="
@@ -72,7 +98,7 @@
       ]]></description>
       <pubDate>Sat, 18 Jul 2026 21:30:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.2.1/EVS-Setup-2.2.1.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.2.1/EVS-Setup-2.2.1.exe"
         sparkle:version="2.2.1"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHBiZ8TyxOooWhvXlSFDm+yk23TgSF+m2uA1ajU4CHHu1e2mxpwou9ntyz/kqUtKo6WiFxA2JB1BLhrs="
@@ -102,7 +128,7 @@
       ]]></description>
       <pubDate>Sat, 18 Jul 2026 20:30:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.2.0/EVS-Setup-2.2.0.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.2.0/EVS-Setup-2.2.0.exe"
         sparkle:version="2.2.0"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHDHhqbJSHexfVK/gi8dSLhgjKoHBdQCCtF9RtWsCHD9WkSFfAvYg/mRAqrCm4XW1ZBEl0smRUnTEJE8="
@@ -130,7 +156,7 @@
       ]]></description>
       <pubDate>Fri, 18 Jul 2026 18:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.1.5/EVS-Setup-2.1.5.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.1.5/EVS-Setup-2.1.5.exe"
         sparkle:version="2.1.5"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHFI09ZiYjVLRtRNHtE2NNKxXl5+XKaAt3LXUK2sCHGK+QsfFHHgbI2/lv4p3ESJlEBWf7+omN0pzXGg="
@@ -158,7 +184,7 @@
       ]]></description>
       <pubDate>Fri, 18 Jul 2026 17:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.1.4/EVS-Setup-2.1.4.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.1.4/EVS-Setup-2.1.4.exe"
         sparkle:version="2.1.4"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHD39FJIQc1xV4tAKPxfLdgIJ1+OAvJcaQW+vJywCHCVJV8vh4EXuEOM8bC8u4l/I9mYdnnVfl2Vi31Q="
@@ -184,7 +210,7 @@
       ]]></description>
       <pubDate>Fri, 18 Jul 2026 16:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.1.3/EVS-Setup-2.1.3.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.1.3/EVS-Setup-2.1.3.exe"
         sparkle:version="2.1.3"
         sparkle:os="windows"
         sparkle:dsaSignature="MD0CHFPpKdMITfTomGHgH1dliO3n9g2K7HWecXFy0vUCHQCR6PAPfETRl4G3sT2VMDuDOEEYokaksKDOAY79"
@@ -211,7 +237,7 @@
       ]]></description>
       <pubDate>Fri, 18 Jul 2026 15:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.1.2/EVS-Setup-2.1.2.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.1.2/EVS-Setup-2.1.2.exe"
         sparkle:version="2.1.2"
         sparkle:os="windows"
         sparkle:dsaSignature="MDsCHDtddn/MTjuFZHgXKM/s45s8gAnzgaToOfAGiUkCG3lAkAyUlQJG5Q6ORFBtYxn+NKlnTwAybE3zmQ=="
@@ -240,7 +266,7 @@
       ]]></description>
       <pubDate>Fri, 18 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.1.1/EVS-Setup-2.1.1.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.1.1/EVS-Setup-2.1.1.exe"
         sparkle:version="2.1.1"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHDYgvOda0i9KEVRL76R4rL+scD68dAh7GM8uZUsCHAzkwxBd1GtyyKr8gm2dMs4tKDpXfNnMxaU+4d0="
@@ -267,7 +293,7 @@
       ]]></description>
       <pubDate>Thu, 16 Jul 2026 20:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.0.3/EVS-Setup-2.0.3.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.0.3/EVS-Setup-2.0.3.exe"
         sparkle:version="2.0.3"
         sparkle:os="windows"
         sparkle:dsaSignature="MD4CHQCryFgnuoU34zVaS6fhxtbd3JlaOoIsnjUAjgsCAh0AoLnQpguEQgH1EnGP0zPlshuxLlDdMTkks4hfRA=="
@@ -298,7 +324,7 @@
       ]]></description>
       <pubDate>Thu, 16 Jul 2026 18:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.0.2/EVS-Setup-2.0.2.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.0.2/EVS-Setup-2.0.2.exe"
         sparkle:version="2.0.2"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHHCPnMZENEhyAMzEKIUbeiDfQSKLMHdMTce62j8CHEitVAJ/HZE+gQDy6GtIqP9+atug6FsTRahr+Bc="
@@ -329,7 +355,7 @@
       ]]></description>
       <pubDate>Thu, 16 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.0.1/EVS-Setup-2.0.1.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.0.1/EVS-Setup-2.0.1.exe"
         sparkle:version="2.0.1"
         sparkle:os="windows"
         sparkle:dsaSignature="MD4CHQCCfpR/6dSBSw770bI9gxC9OLP2hyQkfq4K2pQsAh0AqE8OXZdHY2AN5j01KdO3lttcrlNaCQ9sk9wp2w=="
@@ -363,7 +389,7 @@
       ]]></description>
       <pubDate>Wed, 08 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v2.0.0/EVS-Setup-2.0.0.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.0.0/EVS-Setup-2.0.0.exe"
         sparkle:version="2.0.0"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHD7IWqsKtqzGPl1yp/x/TGTaUcpv77h0j+QPjvYCHFjfNOK0gYW+7ymwUBcSZl6cKZQEA81o7+wsc3U="
@@ -392,7 +418,7 @@
       ]]></description>
       <pubDate>Sun, 05 Jul 2026 21:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.1.2/EVS-Setup-1.1.2.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.1.2/EVS-Setup-1.1.2.exe"
         sparkle:version="1.1.2"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHE/t6nHV04I649UbLIgGC3IkoBDsfWPspEcksKQCHAnPq9n2DynRRcBnVQSsH0/onOqNAC0Ku0Oiu3o="
@@ -418,7 +444,7 @@
       ]]></description>
       <pubDate>Sun, 05 Jul 2026 20:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.1.1/EVS-Setup-1.1.1.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.1.1/EVS-Setup-1.1.1.exe"
         sparkle:version="1.1.1"
         sparkle:os="windows"
         sparkle:dsaSignature="MD4CHQCq6EB2gOd61OKd5UyeWVPgwTijDCCbE55ewisKAh0Aq/AkLXnW6y/i4HZiEqsj2ruv27S+h/eadw7Q8w=="
@@ -448,7 +474,7 @@
       ]]></description>
       <pubDate>Sun, 05 Jul 2026 18:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.1.0/EVS-Setup-1.1.0.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.1.0/EVS-Setup-1.1.0.exe"
         sparkle:version="1.1.0"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHBSNt7Pr9df9zH8q9QvqE92NuymU1jeDPMk7FjoCHBjajOUFwt2CoDAimrokkL0sDNh4EKOYg2pBea8="
@@ -478,7 +504,7 @@
       ]]></description>
       <pubDate>Sun, 05 Jul 2026 16:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.13/EVS-Setup-1.0.13.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.13/EVS-Setup-1.0.13.exe"
         sparkle:version="1.0.13"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHH7ATt1D4fi+Tr2slVdUx/w/PM6hCjjeEIwcc58CHHCHBCckDEsv4O8+cgtKDTZHEwvtAqakNJdtvo4="
@@ -507,7 +533,7 @@
       ]]></description>
       <pubDate>Sun, 05 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.12/EVS-Setup-1.0.12.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.12/EVS-Setup-1.0.12.exe"
         sparkle:version="1.0.12"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHHKn9k5xN0C4naX2HgD5OpR/j8GFvqIWf6Jfm74CHFNa7rBA/smw2T+UfYWWYUYgKs/tzQWkclFYaQg="
@@ -536,7 +562,7 @@
       ]]></description>
       <pubDate>Sat, 04 Jul 2026 20:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.11/EVS-Setup-1.0.11.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.11/EVS-Setup-1.0.11.exe"
         sparkle:version="1.0.11"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHF7fxjTE9buFba4HQ4DqkIlOdKHM8rKdER8TCZECHAavmXdyi8Q00N8g6jT8d7oJVifP37Gv7O5CnQ4="
@@ -565,7 +591,7 @@
       ]]></description>
       <pubDate>Sat, 04 Jul 2026 18:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.10/EVS-Setup-1.0.10.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.10/EVS-Setup-1.0.10.exe"
         sparkle:version="1.0.10"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHDGJM2UZJxiL7AGlPLM/rVFGfPXSeaRQNs2vIFwCHBV0Ye/vMxPV4zS+MHSHjS307ueffx3RBUw1d6U="
@@ -592,7 +618,7 @@
       ]]></description>
       <pubDate>Sat, 04 Jul 2026 16:30:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.9/EVS-Setup-1.0.9.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.9/EVS-Setup-1.0.9.exe"
         sparkle:version="1.0.9"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHHH1U7GZek/zoKDdXE1OeKQ6vyu0l4GWsT0EIooCHD1KpSNEvD967nTh3090UfpMov+MAv5doQ32cd0="
@@ -622,7 +648,7 @@
       ]]></description>
       <pubDate>Sat, 04 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.8/EVS-Setup-1.0.8.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.8/EVS-Setup-1.0.8.exe"
         sparkle:version="1.0.8"
         sparkle:os="windows"
         sparkle:dsaSignature="MD0CHH54hTLZN2GIgrzb1bGQ8cVEai3zN1TxpRB5qzkCHQCPeNaxUizq6ntq+v0SNN0jfVn2ZaKGvyWgUieV"
@@ -652,7 +678,7 @@
       ]]></description>
       <pubDate>Fri, 04 Jul 2026 04:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.7/EVS-Setup-1.0.7.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.7/EVS-Setup-1.0.7.exe"
         sparkle:version="1.0.7"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHFzDu4SazWlYOaQP/mFbXPrZ1+i864KxAMh6ad0CHB5vOyrAp84zSsQCCymnsi7gO8cPE7NwtS3hEts="
@@ -682,7 +708,7 @@
       ]]></description>
       <pubDate>Fri, 03 Jul 2026 16:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.6/EVS-Setup-1.0.6.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.6/EVS-Setup-1.0.6.exe"
         sparkle:version="1.0.6"
         sparkle:os="windows"
         sparkle:dsaSignature="MD0CHQCpRppvzehaq+tnUnzvZ3eQvIe26V5zJBhc/cIoAhwCWvvMDLwimNoAor4iasYeHuYglIlSixdEYwxz"
@@ -711,7 +737,7 @@
       ]]></description>
       <pubDate>Wed, 01 Jul 2026 16:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.5/EVS-Setup-1.0.5.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.5/EVS-Setup-1.0.5.exe"
         sparkle:version="1.0.5"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHGEkjSTuHikKoACLXSyJnwMvG7vjWf0Lxr6vZyECHFRe9GiOjdBgTTFbkg3m9v2EHdRwjPTEzcXli1M="
@@ -739,7 +765,7 @@
       ]]></description>
       <pubDate>Wed, 01 Jul 2026 14:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.4/EVS-Setup-1.0.4.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.4/EVS-Setup-1.0.4.exe"
         sparkle:version="1.0.4"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHCCivs8IAbWv6VhTcoGtsPFkmxknXfplrtbeCCoCHCB3X4RTYlHf3ALyqB+8NlyZdGx32JIyWGJzUi0="
@@ -768,7 +794,7 @@
       ]]></description>
       <pubDate>Wed, 01 Jul 2026 12:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.3/EVS-Setup-1.0.3.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.3/EVS-Setup-1.0.3.exe"
         sparkle:version="1.0.3"
         sparkle:os="windows"
         sparkle:dsaSignature="MD0CHFaYso5dZCBewsntmFRbjibJfKJVp16oKtqnvXACHQCkSDCZDZNWbnLnBHdtb5300/KdkDBsAMWILTHC"
@@ -796,7 +822,7 @@
       ]]></description>
       <pubDate>Wed, 01 Jul 2026 00:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.2/EVS-Setup-1.0.2.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.2/EVS-Setup-1.0.2.exe"
         sparkle:version="1.0.2"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHEcE9wBqgkVOnhqOhqOI+aBd3QXOHyRHo8+bOiACHG2obh3RjlW7S7NWwcRi1ydbsaYXpDfBlkrJ8wg="
@@ -822,7 +848,7 @@
       ]]></description>
       <pubDate>Tue, 30 Jun 2026 13:00:00 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.1/EVS-Setup-1.0.1.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.1/EVS-Setup-1.0.1.exe"
         sparkle:version="1.0.1"
         sparkle:os="windows"
         sparkle:dsaSignature="MD0CHQC1m1sR45YaEodPHkS8VKpQHSa3aXYSMyLimD/rAhwmcgGDWILjt5jl2AtfWQ5kfe0XVX7x05CXDgQ6"
@@ -849,7 +875,7 @@
       ]]></description>
       <pubDate>Tue, 30 Jun 2026 12:05:07 +0000</pubDate>
       <enclosure
-        url="https://github.com/kekw2077/mirai/releases/download/desktop-v1.0.0/EVS-Setup-1.0.0.exe"
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v1.0.0/EVS-Setup-1.0.0.exe"
         sparkle:version="1.0.0"
         sparkle:os="windows"
         sparkle:dsaSignature="MDwCHCIioSPEIDVTPTT3HvwWr8Y+nDaZiqY8tJR9J1UCHAeP39y/JQ+upZsbiOyhVaPICKoexfgL3hHLA4A="
