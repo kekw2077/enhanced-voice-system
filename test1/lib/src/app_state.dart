@@ -326,7 +326,9 @@ class AppState extends ChangeNotifier {
   // to rules if that model is unreachable.
   bool ttsInterpEnabled = true;
   String ttsInterpMode = 'rules'; // 'rules' | 'model'
-  String ttsInterpModel = 'qwen3-interp';
+  // '' = follow the global default (the chat model / selected model) — see
+  // effectiveTtsInterpModel. A concrete name pins the interpreter to it.
+  String ttsInterpModel = '';
   bool _ttsInterpFellBack = false; // one-shot "fell back to rules" notice guard
   // TTS engine choice (settings TZ §3.2). Piper is the built-in offline engine;
   // CosyVoice is a separate HTTP server (GPU) — selectable only once its
@@ -569,7 +571,7 @@ class AppState extends ChangeNotifier {
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
     ttsInterpEnabled = prefs.getBool('ttsInterpEnabled') ?? true;
     ttsInterpMode = prefs.getString('ttsInterpMode') ?? 'rules';
-    ttsInterpModel = prefs.getString('ttsInterpModel') ?? 'qwen3-interp';
+    ttsInterpModel = prefs.getString('ttsInterpModel') ?? '';
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
     cosyvoiceEndpoint = prefs.getString('cosyvoiceEndpoint') ?? '';
     cosyvoiceVoice = prefs.getString('cosyvoiceVoice') ?? '';
@@ -999,7 +1001,7 @@ class AppState extends ChangeNotifier {
     ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
     ttsInterpEnabled = prefs.getBool('ttsInterpEnabled') ?? true;
     ttsInterpMode = prefs.getString('ttsInterpMode') ?? 'rules';
-    ttsInterpModel = prefs.getString('ttsInterpModel') ?? 'qwen3-interp';
+    ttsInterpModel = prefs.getString('ttsInterpModel') ?? '';
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
     cosyvoiceEndpoint = prefs.getString('cosyvoiceEndpoint') ?? '';
     cosyvoiceVoice = prefs.getString('cosyvoiceVoice') ?? '';
@@ -1385,8 +1387,21 @@ class AppState extends ChangeNotifier {
     ttsInterpModel = v.trim();
     _ttsInterpFellBack = false; // give the new model a fresh chance to notify
     _save();
-    // No notifyListeners(): the field is edited live via its own controller and
-    // a rebuild here would fight the cursor.
+    notifyListeners(); // dropdown selection now (no live text cursor to fight)
+  }
+
+  /// The interpreter model actually used: an explicit pick wins, otherwise the
+  /// global default — the chat model, then the selected model (skipping local
+  /// ones: the interpreter path talks to the HTTP server).
+  String get effectiveTtsInterpModel {
+    if (ttsInterpModel.trim().isNotEmpty) return ttsInterpModel.trim();
+    if (chatModel.trim().isNotEmpty && !isLocalModel(chatModel)) {
+      return chatModel.trim();
+    }
+    if (selectedModel.trim().isNotEmpty && !isLocalModel(selectedModel)) {
+      return selectedModel.trim();
+    }
+    return '';
   }
 
   /// Normalize [text] for TTS per the interpreter settings. Always safe: any
@@ -1415,7 +1430,8 @@ class AppState extends ChangeNotifier {
   // speak path.
   Future<String?> _ttsInterpViaModel(String text) async {
     final base = baseUrl;
-    if (serverUrl.trim().isEmpty || ttsInterpModel.trim().isEmpty) return null;
+    final model = effectiveTtsInterpModel;
+    if (serverUrl.trim().isEmpty || model.isEmpty) return null;
     try {
       final headers = <String, String>{'Content-Type': 'application/json'};
       if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
@@ -1423,7 +1439,7 @@ class AppState extends ChangeNotifier {
           .post(Uri.parse('$base/api/chat'),
               headers: headers,
               body: jsonEncode({
-                'model': ttsInterpModel.trim(),
+                'model': model,
                 'stream': false,
                 'messages': [
                   {'role': 'system', 'content': VoiceInterpreter.modelSystemPrompt},
@@ -2167,6 +2183,11 @@ class AppState extends ChangeNotifier {
 
   void removeVoiceCommand(VoiceCommand c) {
     voiceCommands.remove(c);
+    // Best-effort scheduler-task cleanup (a leftover disabled task is harmless
+    // and not worth a surprise UAC prompt — see tryDeleteElevatedTask).
+    if (c.elevated) {
+      unawaited(CommandExecutor.instance.tryDeleteElevatedTask(c.value));
+    }
     _save();
     notifyListeners();
   }

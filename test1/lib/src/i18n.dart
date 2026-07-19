@@ -375,7 +375,12 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsInterpRulesHint': 'Быстро, офлайн',
     'ttsInterpModel': 'Через модель',
     'ttsInterpModelHint': 'Точнее, но медленнее и нужен сервер',
+    'ttsInterpMode': 'Режим интерпретации',
     'ttsInterpModelField': 'Модель интерпретатора',
+    'ttsInterpModelPickDesc':
+        'Модель, приводящая текст к произносимому виду. «По умолчанию» — '
+            'глобальная модель чата.',
+    'ttsInterpModelDefault': 'По умолчанию — {model}',
     'ttsInterpFellBack':
         'Модель интерпретатора недоступна — озвучиваю по правилам.',
     'readyGreeting': 'Готова слушать',
@@ -456,6 +461,13 @@ const Map<String, Map<String, String>> _i18n = {
     'cardCatalog': 'Каталог команд',
     'cmdEmpty': 'Пока нет команд — добавьте первую.',
     'cmdAdd': 'Добавить команду',
+    'cmdElevated': 'Запускать от администратора',
+    'cmdElevatedDesc':
+        'Без окна подтверждения UAC — через задачу Планировщика. Права '
+            'запросятся один раз при сохранении.',
+    'cmdElevatedFailed':
+        'Не удалось создать задачу (подтверждение отклонено?) — команда '
+            'сохранена с обычным запуском.',
     'cmdWizVolHint':
         '{N} — место для числа: скажите «громкость на 30», и применится 30. '
             'Уберите {N} (например «громкость музыки») — применится значение из '
@@ -1380,7 +1392,12 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsInterpRulesHint': 'Fast, offline',
     'ttsInterpModel': 'Via model',
     'ttsInterpModelHint': 'More accurate but slower, needs a server',
+    'ttsInterpMode': 'Interpretation mode',
     'ttsInterpModelField': 'Interpreter model',
+    'ttsInterpModelPickDesc':
+        'The model that rewrites text into a speakable form. "Default" follows '
+            'the global chat model.',
+    'ttsInterpModelDefault': 'Default — {model}',
     'ttsInterpFellBack':
         'Interpreter model unavailable — speaking with rules.',
     'readyGreeting': 'Ready to listen',
@@ -1461,6 +1478,13 @@ const Map<String, Map<String, String>> _i18n = {
     'cardCatalog': 'Command catalog',
     'cmdEmpty': 'No commands yet — add the first one.',
     'cmdAdd': 'Add command',
+    'cmdElevated': 'Run as administrator',
+    'cmdElevatedDesc':
+        'No UAC confirmation window — via a Task Scheduler task. Rights are '
+            'requested once, when saving.',
+    'cmdElevatedFailed':
+        'Could not create the task (consent declined?) — the command was saved '
+            'with a normal launch.',
     'cmdWizVolHint':
         '{N} is a number slot: say "volume to 30" and 30 is applied. Drop {N} '
             '(e.g. "music volume") and the value from the previous step is used.',

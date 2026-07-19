@@ -37,8 +37,97 @@ class CommandExecutor {
     return t;
   }
 
+  // ---- Elevated launches (bypass the per-launch UAC prompt) ---------------
+  // The UAC dialog cannot be auto-confirmed (it lives on the secure desktop by
+  // design). Instead, a Task Scheduler task with "run with highest privileges"
+  // is created ONCE with a single UAC consent; `schtasks /run` then starts it
+  // silently. Only the specific pinned commands are pre-authorized — UAC stays
+  // fully enabled for everything else.
+
+  // Stable task name for a launch target (djb2 — String.hashCode is not
+  // guaranteed stable across Dart versions, task names must survive updates).
+  static String elevatedTaskName(String value) {
+    var h = 5381;
+    for (final u in value.toLowerCase().codeUnits) {
+      h = ((h << 5) + h + u) & 0x7fffffff;
+    }
+    return 'EVS\\cmd_${h.toRadixString(16)}';
+  }
+
+  // The action the task runs — mirrors the normal launch paths below.
+  static String _taskAction(VoiceCommand c) {
+    if (c.type == VoiceCommandType.shell) return 'cmd /c ${c.value}';
+    final target = _unquote(c.value);
+    return 'cmd /c start \\"\\" \\"$target\\"';
+  }
+
+  Future<bool> _taskExists(String tn) async {
+    try {
+      final r = await io.Process.run('schtasks', ['/query', '/tn', tn],
+          runInShell: false);
+      return r.exitCode == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Create (or overwrite) the pre-authorized task for [c]. Pops ONE UAC
+  /// prompt; returns true when the task verifiably exists afterwards.
+  Future<bool> ensureElevatedTask(VoiceCommand c) async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return false;
+    final tn = elevatedTaskName(c.value);
+    try {
+      // A batch script dodges the nested-quoting maze of RunAs; /sc onlogon +
+      // /disable = the task never fires on its own, it only exists to be /run.
+      final dir = await io.Directory.systemTemp.createTemp('evs_task');
+      final script = io.File('${dir.path}\\create_task.cmd');
+      await script.writeAsString('@echo off\r\n'
+          'schtasks /create /tn "$tn" /tr "${_taskAction(c)}" '
+          '/sc onlogon /rl highest /f\r\n'
+          'if errorlevel 1 exit /b 1\r\n'
+          'schtasks /change /tn "$tn" /disable\r\n');
+      final r = await io.Process.run('powershell', [
+        '-NoProfile',
+        '-Command',
+        'try { \$p = Start-Process -Verb RunAs -Wait -PassThru '
+            '-WindowStyle Hidden -FilePath cmd.exe '
+            "-ArgumentList '/c','\"${script.path}\"'; exit \$p.ExitCode } "
+            'catch { exit 1 }',
+      ]);
+      try {
+        await dir.delete(recursive: true);
+      } catch (_) {}
+      if (r.exitCode != 0) return false;
+      return _taskExists(tn);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Best-effort cleanup when an elevated command is removed/downgraded. An
+  /// unelevated delete of a highest-privilege task usually fails — that's fine,
+  /// a leftover disabled manual-run task is harmless, and popping a surprise
+  /// UAC prompt for cleanup would be worse.
+  Future<void> tryDeleteElevatedTask(String value) async {
+    try {
+      await io.Process.run(
+          'schtasks', ['/delete', '/tn', elevatedTaskName(value), '/f'],
+          runInShell: false);
+    } catch (_) {}
+  }
+
   Future<bool> execute(VoiceCommand c) async {
     if (defaultTargetPlatform != TargetPlatform.windows) return false;
+    // Pre-authorized elevated launch (no UAC prompt). Falls through to the
+    // normal path if the task has gone missing (e.g. deleted by hand).
+    if (c.elevated) {
+      try {
+        final r = await io.Process.run(
+            'schtasks', ['/run', '/tn', elevatedTaskName(c.value)],
+            runInShell: false);
+        if (r.exitCode == 0) return true;
+      } catch (_) {}
+    }
     try {
       switch (c.type) {
         case VoiceCommandType.app:

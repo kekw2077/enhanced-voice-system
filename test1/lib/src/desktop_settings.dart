@@ -4928,13 +4928,46 @@ class _TtsInterpCard extends StatefulWidget {
 }
 
 class _TtsInterpCardState extends State<_TtsInterpCard> {
-  late final TextEditingController _model =
-      TextEditingController(text: widget.app.ttsInterpModel);
-
-  @override
-  void dispose() {
-    _model.dispose();
-    super.dispose();
+  // Interpreter model picker: the server's model list plus a "default" first
+  // entry ('') that follows the global chat/selected model
+  // (AppState.effectiveTtsInterpModel). A stored model the server no longer
+  // advertises is kept as an extra entry rather than silently reset.
+  Widget _interpModelDropdown(AppState app) {
+    final remote =
+        app.models.where((m) => !app.isLocalModel(m)).toList();
+    final current = app.ttsInterpModel.trim();
+    if (current.isNotEmpty && !remote.contains(current)) remote.add(current);
+    final def = app.effectiveTtsInterpModel;
+    final defLabel = app
+        .t('ttsInterpModelDefault')
+        .replaceAll('{model}', def.isEmpty ? '—' : def);
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.symmetric(horizontal: 11),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: _overlayFill(context, 0.04),
+        border: Border.all(color: _stroke(context)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: current,
+          isExpanded: true,
+          isDense: true,
+          dropdownColor: _card2(context),
+          style: TextStyle(fontSize: 12.5, color: _body(context)),
+          icon: Icon(Icons.expand_more, size: 18, color: _sub(context)),
+          items: [
+            DropdownMenuItem(value: '', child: Text(defLabel)),
+            for (final m in remote)
+              DropdownMenuItem(value: m, child: Text(m)),
+          ],
+          onChanged: (v) {
+            if (v != null) app.setTtsInterpModel(v);
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -4971,35 +5004,11 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
             ),
           ),
           if (app.ttsInterpMode == 'model')
-            evsRow(context, 
+            evsRow(context,
+              stacked: true,
               label: app.t('ttsInterpModelField'),
-              control: SizedBox(
-                width: 160,
-                child: Container(
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 13),
-                  alignment: Alignment.centerLeft,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: _overlayFill(context, 0.04),
-                    border: Border.all(color: _stroke(context)),
-                  ),
-                  child: TextField(
-                    controller: _model,
-                    onChanged: app.setTtsInterpModel,
-                    style: TextStyle(
-                        fontSize: 12.5, color: _body(context)),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                      hintText: 'qwen3-interp',
-                      hintStyle:
-                          TextStyle(fontSize: 12.5, color: _faint(context)),
-                    ),
-                  ),
-                ),
-              ),
+              desc: app.t('ttsInterpModelPickDesc'),
+              control: _interpModelDropdown(app),
             ),
         ],
       ],

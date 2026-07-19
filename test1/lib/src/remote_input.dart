@@ -295,6 +295,10 @@ class VoiceCommand {
   int? defaultValue;
   int argMin;
   int argMax;
+  // Launch through a pre-authorized Task Scheduler task (created once with a
+  // single UAC consent) so admin-only apps start without the confirmation
+  // window. See CommandExecutor.ensureElevatedTask.
+  bool elevated;
   VoiceCommand({
     required this.phrase,
     required this.type,
@@ -305,6 +309,7 @@ class VoiceCommand {
     this.defaultValue,
     this.argMin = 0,
     this.argMax = 100,
+    this.elevated = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -312,6 +317,7 @@ class VoiceCommand {
         'type': type.name,
         'value': value,
         if (speakPhrase.isNotEmpty) 'speak': speakPhrase,
+        if (elevated) 'elevated': true,
         if (type == VoiceCommandType.appVolume) ...{
           'process': process,
           'action': action,
@@ -329,6 +335,7 @@ class VoiceCommand {
         ),
         value: j['value'] as String? ?? '',
         speakPhrase: j['speak'] as String? ?? '',
+        elevated: j['elevated'] == true,
         process: j['process'] as String? ?? '',
         action: j['action'] as String? ?? 'set',
         defaultValue: (j['default'] as num?)?.toInt(),
@@ -1219,6 +1226,9 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
   String _avProcess = '';
   String _avAction = 'set';
   final _avDefaultCtrl = TextEditingController();
+  // Elevated launch (no UAC prompt) via a pre-authorized scheduler task.
+  bool _elevated = false;
+  bool _creatingTask = false;
 
   bool get _isEdit => widget.initial != null;
   AppState get app => widget.app;
@@ -1236,6 +1246,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
       _avProcess = it.process;
       _avAction = it.action;
       _avDefaultCtrl.text = it.defaultValue?.toString() ?? '';
+      _elevated = it.elevated;
       _step = 2; // straight to the phrase step; user can go Back to re-pick
     }
   }
@@ -1317,7 +1328,14 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     });
   }
 
-  void _finish() {
+  // Elevation only makes sense for things that actually launch a process.
+  bool get _canElevate =>
+      _type == VoiceCommandType.app ||
+      _type == VoiceCommandType.file ||
+      _type == VoiceCommandType.shell;
+
+  Future<void> _finish() async {
+    if (_creatingTask) return;
     final phrase = _phraseCtrl.text.trim();
     if (phrase.isEmpty || _type == null || _value.trim().isEmpty) return;
     if (_type == VoiceCommandType.appVolume) {
@@ -1336,14 +1354,34 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           ));
       return;
     }
-    Navigator.pop(
-        context,
-        VoiceCommand(
-          phrase: phrase,
-          type: _type!,
-          value: _value.trim(),
-          speakPhrase: _speakCtrl.text.trim(),
-        ));
+    final cmd = VoiceCommand(
+      phrase: phrase,
+      type: _type!,
+      value: _value.trim(),
+      speakPhrase: _speakCtrl.text.trim(),
+      elevated: _elevated && _canElevate,
+    );
+    // The old task is stale once elevation is turned off or the target changed.
+    final old = widget.initial;
+    if (old != null &&
+        old.elevated &&
+        (!cmd.elevated || old.value.trim() != cmd.value)) {
+      unawaited(CommandExecutor.instance.tryDeleteElevatedTask(old.value));
+    }
+    if (cmd.elevated) {
+      // One UAC consent while the wizard shows a spinner; on refusal/failure
+      // the command is still saved, just with the normal (prompting) launch.
+      setState(() => _creatingTask = true);
+      final ok = await CommandExecutor.instance.ensureElevatedTask(cmd);
+      if (!mounted) return;
+      setState(() => _creatingTask = false);
+      if (!ok) {
+        cmd.elevated = false;
+        showAppSnackBar(context, app.t('cmdElevatedFailed'));
+      }
+    }
+    if (!mounted) return;
+    Navigator.pop(context, cmd);
   }
 
   @override
@@ -1796,6 +1834,39 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           ),
           onSubmitted: (_) => _finish(),
         ),
+        // Elevated launch (skip the per-launch UAC prompt) — only for command
+        // types that actually start a process.
+        if (_canElevate) ...[
+          const SizedBox(height: 12),
+          Row(children: [
+            Icon(Icons.shield_outlined, size: 16, color: _sub(context)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(app.t('cmdElevated'),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _body(context))),
+                  Text(app.t('cmdElevatedDesc'),
+                      style:
+                          TextStyle(fontSize: 11, color: _faint(context))),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (_creatingTask)
+              const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              evsToggle(context, _elevated,
+                  (v) => setState(() => _elevated = v)),
+          ]),
+        ],
       ],
     );
   }
