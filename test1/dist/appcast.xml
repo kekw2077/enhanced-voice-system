@@ -28,6 +28,34 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.4.3</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Клон голоса — исправлено главное:</b> голос не включался, если компонент ещё докачивался (движок переключался до готовности и молча оставался на старом голосе). Теперь приложение дожидается загрузки, затем активирует клон; двойная закачка исключена.</li>
+          <li><b>Таблица «Фразы в заготовке»</b> в разделе клона — собирается автоматически (система + озвучка команд + базовые + свои) и обновляется при добавлении команд. Плюс строка статуса движка: активен / загрузка / не активен.</li>
+          <li>Выбранный образец WAV теперь сразу отображается в настройках.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 20 Jul 2026 05:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.4.3/EVS-Setup-2.4.3.exe"
+        sparkle:version="2.4.3"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHH/UlYZ1O4DPahzi6OnINWoDXSXlrozE/P4VEmcCHFFTSzQZPMScK5OHEFrbhW24KTAzpuMXWhou8ps="
+        evs:sha256="d96396f7e79c4fafd4789e1bf2a2fcfeb35619c55f2b03d02947f4788dd38911"
+        length="16592851"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.4.2</title>
       <description><![CDATA[
         <style>
