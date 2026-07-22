@@ -1303,16 +1303,46 @@ class AppState extends ChangeNotifier {
   // Push clone config to the sidecar (or hand the engine back to Piper/system
   // when disabled), and pre-render the fixed phrases. The clone component is a
   // heavy on-demand download; ensure() pulls it on first enable.
+  bool _cloneApplying = false;
+  bool _clonePending = false;
+
   Future<void> applyCloneConfig() async {
+    // Serialize + coalesce: enabling, picking a sample and adding phrases can
+    // all fire in quick succession; without this each would kick off its own
+    // ~3 GB download. Concurrent calls collapse into one re-apply at the end.
+    if (_cloneApplying) {
+      _clonePending = true;
+      return;
+    }
+    _cloneApplying = true;
+    try {
+      await _applyCloneConfigInner();
+    } finally {
+      _cloneApplying = false;
+      if (_clonePending) {
+        _clonePending = false;
+        unawaited(applyCloneConfig());
+      }
+    }
+  }
+
+  Future<void> _applyCloneConfigInner() async {
     final sc = SidecarClient.instance;
     if (cloneEnabled && cloneSamplePath.isNotEmpty) {
-      unawaited(ComponentManager.instance.ensure('clone'));
+      // AWAIT the component so the clone exe path is valid before we tell the
+      // sidecar to switch engine. ensure() returns instantly if it's already
+      // present, or resolves only after the ~3 GB download finishes — without
+      // awaiting, applyClone ran with an empty exe path, the sidecar fell back
+      // to the system voice, and nothing re-applied once the download landed
+      // ("выбираю образец — голос старый").
+      await ComponentManager.instance.ensure('clone');
       await sc.applyClone(
         enabled: true,
         ref: cloneSamplePath,
         lang: lang == 'en' ? 'en' : 'ru',
         phrases: clonePhrasesToRender(),
       );
+      notifyListeners(); // engine status / readiness may have changed
     } else {
       await sc.applyClone(enabled: false);
       final modelId = _voiceModelId(ttsPiperVoice);

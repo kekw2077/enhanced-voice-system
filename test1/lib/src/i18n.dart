@@ -332,6 +332,20 @@ const Map<String, Map<String, String>> _i18n = {
     'cloneSamplePick': 'Выбрать WAV',
     'cloneSampleNone': 'Образец не выбран (6–10 с чистой речи)',
     'clonePrerender': 'Готовлю фразы…',
+    'clonePhrasesTitle': 'Фразы в заготовке',
+    'clonePhrasesDesc':
+        'Собираются автоматически и обновляются при добавлении команд. '
+            'Эти фразы озвучиваются мгновенно из кэша.',
+    'clonePhrasesCount': 'Всего фраз: {n}',
+    'cloneSrcSystem': 'система',
+    'cloneSrcCommand': 'команда',
+    'cloneSrcAck': 'базовая',
+    'cloneSrcCustom': 'своя',
+    'cloneEngineReady': 'Клон-голос активен',
+    'cloneEngineLoading': 'Загрузка клон-голоса…',
+    'cloneEngineError': 'Ошибка клон-голоса',
+    'cloneEngineInactive':
+        'Клон не активен — обычно компонент ещё качается (см. статус выше).',
     'clonePhraseLib': 'Свои фразы для заготовки',
     'clonePhraseLibHint':
         'Пред-рендерятся заранее и звучат мгновенно (плюс системные фразы и '
@@ -1349,6 +1363,21 @@ const Map<String, Map<String, String>> _i18n = {
     'cloneSamplePick': 'Pick WAV',
     'cloneSampleNone': 'No sample selected (6–10 s of clean speech)',
     'clonePrerender': 'Preparing phrases…',
+    'clonePhrasesTitle': 'Phrases in the cache',
+    'clonePhrasesDesc':
+        'Collected automatically and updated whenever commands are added. '
+            'These play instantly from the cache.',
+    'clonePhrasesCount': 'Total phrases: {n}',
+    'cloneSrcSystem': 'system',
+    'cloneSrcCommand': 'command',
+    'cloneSrcAck': 'built-in',
+    'cloneSrcCustom': 'custom',
+    'cloneEngineReady': 'Clone voice active',
+    'cloneEngineLoading': 'Loading clone voice…',
+    'cloneEngineError': 'Clone voice error',
+    'cloneEngineInactive':
+        'Clone not active — usually the component is still downloading (see '
+            'status above).',
     'clonePhraseLib': 'Your phrases to pre-render',
     'clonePhraseLibHint':
         'Pre-rendered ahead of time and play instantly (plus system phrases and '

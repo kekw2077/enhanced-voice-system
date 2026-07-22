@@ -4441,6 +4441,9 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch directly (this card sits inside a LayoutBuilder) so the CosyVoice
+    // clone-sample label and online status refresh on every change.
+    context.watch<AppState>();
     final cosyOnline = app.cosyvoiceOnline == true;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4757,6 +4760,139 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
     );
   }
 
+  // Live engine status — makes "it doesn't work" diagnosable: shows whether the
+  // clone engine actually became active, is still loading, or fell back (e.g.
+  // the ~3 GB component hasn't finished downloading yet).
+  Widget _engineStatus() {
+    return ValueListenableBuilder<(String, String, String, String?)?>(
+      valueListenable: SidecarClient.instance.ttsStatus,
+      builder: (_, st, __) {
+        String label;
+        Color color;
+        if (st != null && st.$1 == 'xtts' && st.$3 == 'ready') {
+          label = app.t('cloneEngineReady');
+          color = _success(context);
+        } else if (st != null && st.$1 == 'xtts' && st.$3 == 'loading') {
+          label = app.t('cloneEngineLoading');
+          color = _warn(context);
+        } else if (st != null && st.$1 == 'xtts' && st.$3 == 'error') {
+          label = '${app.t('cloneEngineError')}: ${st.$4 ?? ''}';
+          color = _danger(context);
+        } else {
+          // Not active yet — most often the component is still downloading.
+          label = app.t('cloneEngineInactive');
+          color = _faint(context);
+        }
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
+          child: Row(children: [
+            Container(
+                width: 7,
+                height: 7,
+                decoration:
+                    BoxDecoration(shape: BoxShape.circle, color: color)),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(fontSize: 11.5, color: color)),
+            ),
+          ]),
+        );
+      },
+    );
+  }
+
+  // Read-only preview of the full phrase set that gets pre-rendered into the
+  // cloned voice, grouped by source. It is derived live from AppState
+  // (clonePhrasesToRender), so it updates itself the moment a voice command or
+  // a library phrase is added/removed — no manual sync.
+  Widget _phrasesTable() {
+    final rows = <(String, String)>[]; // (source label, phrase)
+    void add(String src, String? s) {
+      final v = (s ?? '').trim();
+      if (v.isNotEmpty && !v.contains('{')) rows.add((src, v));
+    }
+
+    add(app.t('cloneSrcSystem'), app.t('readyGreeting'));
+    add(app.t('cloneSrcSystem'), app.t('gmNotifyFullscreen'));
+    add(app.t('cloneSrcSystem'), app.t('gmNotifyVram'));
+    add(app.t('cloneSrcSystem'), app.t('gmNotifyExit'));
+    add(app.t('cloneSrcSystem'), app.t('vaDone'));
+    for (final c in app.voiceCommands) {
+      add(app.t('cloneSrcCommand'), c.speakPhrase);
+    }
+    for (final p in AppState.kCloneAckPhrases) {
+      add(app.t('cloneSrcAck'), p);
+    }
+    for (final p in app.clonePhraseLib) {
+      add(app.t('cloneSrcCustom'), p);
+    }
+    // Deduplicate on the phrase text (first source wins) — matches the cache,
+    // which keys on the phrase.
+    final seen = <String>{};
+    final uniq = [
+      for (final r in rows)
+        if (seen.add(r.$2)) r
+    ];
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _stroke(context)),
+        color: _overlayFill(context, 0.03),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Text(
+                app.t('clonePhrasesCount').replaceAll('{n}', '${uniq.length}'),
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _sub(context))),
+          ),
+          Divider(height: 1, color: _stroke(context)),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              itemCount: uniq.length,
+              itemBuilder: (_, i) {
+                final r = uniq[i];
+                return Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  child: Row(children: [
+                    Expanded(
+                      child: Text(r.$2,
+                          style: TextStyle(
+                              fontSize: 12, color: _body(context))),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: _overlayFill(context, 0.06),
+                      ),
+                      child: Text(r.$1,
+                          style: TextStyle(
+                              fontSize: 9.5, color: _faint(context))),
+                    ),
+                  ]),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _prerenderStatus() {
     return ValueListenableBuilder<(int, int, String)>(
       valueListenable: SidecarClient.instance.prerenderProgress,
@@ -4831,6 +4967,11 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Subscribe directly to AppState: this card lives inside a LayoutBuilder,
+    // whose builder does not always re-run on a bare notifyListeners, so relying
+    // on the parent rebuild left the picked-sample label (and phrase list)
+    // stale. Watching here guarantees the card refreshes on every change.
+    context.watch<AppState>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -4899,7 +5040,14 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
               ),
             ]),
           ),
+          _engineStatus(),
           _prerenderStatus(),
+          evsRow(context,
+            stacked: true,
+            label: app.t('clonePhrasesTitle'),
+            desc: app.t('clonePhrasesDesc'),
+            control: _phrasesTable(),
+          ),
           evsRow(context,
             stacked: true,
             label: app.t('clonePhraseLib'),
