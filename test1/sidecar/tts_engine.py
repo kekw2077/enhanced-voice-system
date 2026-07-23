@@ -341,14 +341,28 @@ class CloneWorkerEngine(BaseTtsEngine):
         if not self.available:
             raise FileNotFoundError(self.unavailable_reason())
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        _log(f"clone: launching worker {self._exe}")
-        # stderr=None INHERITS the sidecar's stderr, which the app pipes into
-        # logs/sidecar.log — so a crashing worker leaves a readable traceback
-        # instead of dying into DEVNULL with a bare "clone worker closed".
-        self._proc = subprocess.Popen(
-            [self._exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=None, text=True, encoding="utf-8",
-            bufsize=1, creationflags=flags)
+        # The worker's stderr goes to its own log FILE next to the exe. NOT
+        # stderr=None: inheriting the sidecar's stderr fails with WinError 50
+        # ("request is not supported") because the app gives the sidecar an
+        # asynchronous (overlapped) pipe, which Windows can't hand to a child
+        # as a std handle. And NOT DEVNULL: that swallowed every worker crash.
+        err_path = os.path.join(os.path.dirname(self._exe), "evs_clone.log")
+        try:
+            err = open(err_path, "ab")
+        except Exception:
+            err = subprocess.DEVNULL
+        _log(f"clone: launching worker {self._exe} (stderr -> {err_path})")
+        try:
+            self._proc = subprocess.Popen(
+                [self._exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=err, text=True, encoding="utf-8",
+                bufsize=1, creationflags=flags)
+        finally:
+            try:
+                if err is not subprocess.DEVNULL:
+                    err.close()  # the child holds its own duplicated handle
+            except Exception:
+                pass
         while True:  # drain until the model is loaded
             r = self._readline()
             if r.get("event") == "ready":
