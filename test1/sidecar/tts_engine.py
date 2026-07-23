@@ -22,7 +22,18 @@ import hashlib
 import json
 import os
 import queue
+import sys
 import threading
+
+
+def _log(msg: str) -> None:
+    """Diagnostics to stderr — the app pipes the sidecar's stderr into
+    logs/sidecar.log, so engine switches / clone failures become visible there
+    (they used to vanish silently)."""
+    try:
+        print(f"[evs-tts] {msg}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
 
 
 class BaseTtsEngine:
@@ -319,7 +330,8 @@ class CloneWorkerEngine(BaseTtsEngine):
     def _readline(self):
         line = self._proc.stdout.readline()
         if not line:
-            raise RuntimeError("clone worker closed")
+            code = self._proc.poll()
+            raise RuntimeError(f"clone worker closed (exit={code})")
         return json.loads(line)
 
     def load(self) -> None:
@@ -329,18 +341,25 @@ class CloneWorkerEngine(BaseTtsEngine):
         if not self.available:
             raise FileNotFoundError(self.unavailable_reason())
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        _log(f"clone: launching worker {self._exe}")
+        # stderr=None INHERITS the sidecar's stderr, which the app pipes into
+        # logs/sidecar.log — so a crashing worker leaves a readable traceback
+        # instead of dying into DEVNULL with a bare "clone worker closed".
         self._proc = subprocess.Popen(
             [self._exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
+            stderr=None, text=True, encoding="utf-8",
             bufsize=1, creationflags=flags)
         while True:  # drain until the model is loaded
             r = self._readline()
             if r.get("event") == "ready":
                 if not r.get("ok"):
+                    _log(f"clone: worker load FAILED: {r.get('err')}")
                     raise RuntimeError(r.get("err", "clone worker load failed"))
                 self._sr = int(r.get("sr", 24000))
                 break
+        _log(f"clone: worker ready (sr={self._sr})")
         self._ensure_ref()
+        _log(f"clone: reference set ({os.path.basename(self._ref)})")
         self._loaded = True
 
     def _ensure_ref(self) -> None:
@@ -573,9 +592,12 @@ class TtsEngine:
 
     def set_engine(self, name: str) -> None:
         self._desired = name if name in self._engines else "piper"
+        _log(f"set_engine: requested '{name}' -> desired '{self._desired}'")
         threading.Thread(target=self._apply_blocking, daemon=True).start()
 
     def set_clone_config(self, exe=None, ref=None, lang=None) -> None:
+        _log(f"set_clone_config: exe={'set' if exe else 'empty'} "
+             f"ref={'set' if ref else 'empty'} lang={lang}")
         self._clone.set_config(exe=exe, ref=ref, lang=lang)
         if self._desired == "xtts":
             threading.Thread(target=self._apply_blocking, daemon=True).start()
@@ -614,6 +636,8 @@ class TtsEngine:
         if want in ("xtts", "cosyvoice"):
             eng = self._engines[want]
             if not eng.available:
+                _log(f"apply: '{want}' unavailable "
+                     f"({eng.unavailable_reason()}) -> pyttsx3 fallback")
                 self._active = self._pyttsx3
                 self._active_name = "pyttsx3"
                 self._emit_status(want, "", "error", eng.unavailable_reason())
@@ -627,11 +651,13 @@ class TtsEngine:
                 self._active = eng
                 self._active_name = want
                 self._switching = False
+                _log(f"apply: '{want}' ACTIVE")
                 self._emit_status(want, self._voice, "ready")
             except Exception as e:
                 self._switching = False
                 self._active = self._pyttsx3
                 self._active_name = "pyttsx3"
+                _log(f"apply: '{want}' load failed ({e}) -> pyttsx3 fallback")
                 self._emit_status(want, self._voice, "error", str(e))
                 self._emit_status("pyttsx3", "", "ready")
             return

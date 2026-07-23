@@ -752,6 +752,8 @@ class DesktopIntegration with WindowListener, TrayListener {
       } else {
         unawaited(ComponentManager.instance.stageUpdate('sidecar'));
       }
+      // The clone worker updates the same way (staged zip, applied next run).
+      unawaited(ComponentManager.instance.stageUpdate('clone'));
       await SidecarClient.instance.start();
       // Push game-mode config (thresholds, exclusions, localized phrases) now
       // that the socket is up; the sidecar started the monitor with defaults.

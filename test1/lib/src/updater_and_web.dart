@@ -901,10 +901,14 @@ class ComponentManager {
   // it to a staged "<file>.new" beside the current one. Non-blocking and safe
   // while the component is running (the live exe isn't touched). Applied on the
   // next launch by applyStagedUpdates(), before the component starts.
+  //
+  // Archives stage too: the zip is downloaded to "<file>.new" and extracted at
+  // the next launch. (They used to be skipped entirely — once the sidecar became
+  // an archive component that silently KILLED its update path, leaving installs
+  // stuck on an old sidecar forever: the "clone never works" bug.)
   Future<void> stageUpdate(String id) async {
     final info = _manifest[id];
     if (info == null || info.url.isEmpty) return;
-    if (info.archive) return; // archives update via re-download, not staging
     if (await installedPath(id) == null) return; // nothing installed to update
     if (await _readVersion(id) == info.version) return; // already current
     final sep = io.Platform.pathSeparator;
@@ -913,7 +917,7 @@ class ComponentManager {
       return; // already staged
     }
     try {
-      await downloadFileWithProgress(info.url, staged, (_, __) {}, () => false);
+      await _fetchAsset(info, staged, null);
       if (!await _verify(staged, info.sha256)) {
         try {
           await io.File(staged).delete();
@@ -927,16 +931,35 @@ class ComponentManager {
   }
 
   // Swap in any staged "<file>.new" updates. Call before launching components
-  // (so the target exe isn't locked).
+  // (so the target exe isn't locked). Archive components re-extract into
+  // components/<id>/ — safe here for the same reason: nothing is running yet.
   Future<void> applyStagedUpdates() async {
     try {
       final dir = await _componentsDir();
       final sep = io.Platform.pathSeparator;
       for (final entry in _manifest.entries) {
-        if (entry.value.archive) continue; // archives aren't staged
         final name = entry.value.fileName;
         final staged = io.File('$dir$sep$name.new');
         if (!await staged.exists()) continue;
+        if (entry.value.archive) {
+          if (!await _verify(staged.path, entry.value.sha256)) {
+            try {
+              await staged.delete(); // corrupt stage — re-download next run
+            } catch (_) {}
+            continue;
+          }
+          final exe = await _extract(entry.key, staged.path);
+          try {
+            await staged.delete();
+          } catch (_) {}
+          if (exe != null) {
+            try {
+              await io.File(await _versionMarkerPath(entry.key))
+                  .writeAsString(entry.value.version);
+            } catch (_) {}
+          }
+          continue;
+        }
         final target = '$dir$sep$name';
         try {
           if (await io.File(target).exists()) await io.File(target).delete();
@@ -946,6 +969,34 @@ class ComponentManager {
         } catch (_) {}
       }
     } catch (_) {}
+  }
+
+  // Download a component's asset (single file, or split .001/.002… parts
+  // concatenated) into [dest]. Shared by download() and stageUpdate().
+  Future<void> _fetchAsset(ComponentInfo info, String dest,
+      void Function(double frac)? onProgress) async {
+    if (info.parts > 1) {
+      final sink = io.File(dest).openWrite();
+      try {
+        for (var i = 1; i <= info.parts; i++) {
+          final partUrl = '${info.url}.${i.toString().padLeft(3, '0')}';
+          final partFile = '$dest.p$i';
+          await downloadFileWithProgress(partUrl, partFile, (r, t) {
+            final frac = t > 0 ? r / t : 0.0;
+            onProgress?.call((i - 1 + frac) / info.parts);
+          }, () => false);
+          await sink.addStream(io.File(partFile).openRead());
+          try {
+            await io.File(partFile).delete();
+          } catch (_) {}
+        }
+      } finally {
+        await sink.close();
+      }
+    } else {
+      await downloadFileWithProgress(info.url, dest,
+          (r, t) => onProgress?.call(t > 0 ? r / t : 0), () => false);
+    }
   }
 
   Future<String?> download(String id) async {
@@ -960,32 +1011,10 @@ class ComponentManager {
         '${await _componentsDir()}${io.Platform.pathSeparator}${info.fileName}';
     st.value = const ComponentStatus(ComponentState.downloading);
     try {
-      if (info.parts > 1) {
-        // Split asset: fetch each `<url>.00i` and concatenate into `dest`.
-        final sink = io.File(dest).openWrite();
-        try {
-          for (var i = 1; i <= info.parts; i++) {
-            final partUrl = '${info.url}.${i.toString().padLeft(3, '0')}';
-            final partFile = '$dest.p$i';
-            await downloadFileWithProgress(partUrl, partFile, (r, t) {
-              final frac = t > 0 ? r / t : 0.0;
-              st.value = ComponentStatus(ComponentState.downloading,
-                  progress: (i - 1 + frac) / info.parts);
-            }, () => false);
-            await sink.addStream(io.File(partFile).openRead());
-            try {
-              await io.File(partFile).delete();
-            } catch (_) {}
-          }
-        } finally {
-          await sink.close();
-        }
-      } else {
-        await downloadFileWithProgress(info.url, dest, (r, t) {
-          st.value = ComponentStatus(ComponentState.downloading,
-              progress: t > 0 ? r / t : 0);
-        }, () => false);
-      }
+      await _fetchAsset(info, dest, (frac) {
+        st.value =
+            ComponentStatus(ComponentState.downloading, progress: frac);
+      });
       st.value = const ComponentStatus(ComponentState.verifying);
       if (!await _verify(dest, info.sha256)) {
         try {
