@@ -14,10 +14,10 @@
       "file": "evs_sidecar.zip",
       "exe": "evs_sidecar.exe",
       "archive": true,
-      "version": "15",
+      "version": "16",
       "url": "https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_sidecar.zip",
-      "sha256": "561ca110512f074567ee34707b73c04fcdddd20121217fb9f084ebc1ce76b06f",
-      "size": 112617411
+      "sha256": "946a7e92b19515bb19931a8405c297b81ee2e6bd2336c2d6dfef749ffed76a69",
+      "size": 112617497
     }
   }
 }

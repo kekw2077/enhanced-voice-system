@@ -823,10 +823,15 @@ class TtsEngine:
             import soundfile as sf
             os.makedirs(folder, exist_ok=True)
             tmp = path + ".part"
-            sf.write(tmp, np.asarray(data, dtype=np.float32), int(sr))
+            # format="WAV" is REQUIRED: soundfile>=0.13 infers the container from
+            # the file extension, and the ".part" temp name has none it knows —
+            # without it every write raised TypeError and nothing was ever cached
+            # (each phrase re-synthesized on every play / re-render).
+            sf.write(tmp, np.asarray(data, dtype=np.float32), int(sr),
+                     format="WAV")
             os.replace(tmp, path)
-        except Exception:
-            pass
+        except Exception as e:
+            _log(f"cache: store failed for {os.path.basename(path)}: {e}")
 
     def prerender(self, phrases) -> None:
         """Render a batch of fixed phrases into the cache with the active cloning
