@@ -1581,13 +1581,16 @@ class _GameModeCard extends StatelessWidget {
 }
 
 class DesktopSettings extends StatefulWidget {
-  const DesktopSettings({super.key});
+  // Which section to open on (index into _sections). Lets the Nexus rail jump
+  // straight to Commands / Models / About instead of always landing on General.
+  final int initialSection;
+  const DesktopSettings({super.key, this.initialSection = 0});
   @override
   State<DesktopSettings> createState() => _DesktopSettingsState();
 }
 
 class _DesktopSettingsState extends State<DesktopSettings> {
-  int _section = 0;
+  late int _section = widget.initialSection;
   // Held so dispose() can end draft mode without a BuildContext (TZ2.2).
   AppState? _appRef;
   // Phase-1 placeholders for not-yet-wired desktop toggles (autostart, tray…).
@@ -1769,6 +1772,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // Sticky "unsaved changes" bar (TZ2.2): shown whenever the draft is dirty or a
   // save is in flight; collapses with an animation otherwise.
   Widget _saveBar(AppState app) {
+    // Nexus style shows no floating "unsaved changes" bar (TZ §6.3): the exit
+    // dialog (PopScope → _handleExit) stays the single confirmation point. The
+    // settingsDirty / settingsApplying state itself is left untouched.
+    if (app.appStyle == AppStyle.nexus) {
+      return const SizedBox(width: double.infinity);
+    }
     final show = app.settingsDirty || app.settingsApplying;
     return AnimatedSize(
       duration: const Duration(milliseconds: 180),
@@ -1954,8 +1963,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   // -------- left nav rail --------
   Widget _nav(AppState app) {
+    // Nexus widens the rail slightly and adds a per-section subtitle + a version
+    // chip at the bottom (TZ §6.3). Classic keeps its exact current look.
+    final nexus = app.appStyle == AppStyle.nexus;
     return Container(
-      width: 244,
+      width: nexus ? 252 : 244,
       decoration: _evsRailBg(context),
       child: SafeArea(
         child: Column(
@@ -2048,13 +2060,34 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                               ),
                               const SizedBox(width: 11),
                               Expanded(
-                                child: Text(app.t(s.$2),
-                                    style: TextStyle(
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: active
-                                            ? _txt(context)
-                                            : _sub(context))),
+                                child: nexus
+                                    ? Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(app.t(s.$2),
+                                              style: TextStyle(
+                                                  fontSize: 13.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: active
+                                                      ? _txt(context)
+                                                      : _sub(context))),
+                                          const SizedBox(height: 1),
+                                          Text(app.t(s.$3),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                  fontSize: 11,
+                                                  color: _faint(context))),
+                                        ],
+                                      )
+                                    : Text(app.t(s.$2),
+                                        style: TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: active
+                                                ? _txt(context)
+                                                : _sub(context))),
                               ),
                             ],
                           ),
@@ -2065,6 +2098,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 },
               ),
             ),
+            if (nexus)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 6, 16, 12),
+                child: Row(
+                  children: [
+                    _VersionText(),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -2259,7 +2301,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         icon: Icons.light_mode_outlined,
         title: app.t('cardAppearance'),
         rows: [
-          evsRow(context, 
+          evsRow(context,
+            stacked: true,
+            label: app.t('uiStyle'),
+            desc: app.t('uiStyleDesc'),
+            control: const _StylePicker(),
+          ),
+          evsRow(context,
             stacked: true,
             label: app.t('themeMode'),
             control: evsSegmentedWide<AppThemeMode>(context, 
@@ -5425,7 +5473,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
               child: _field(_temp, _onTemp, error: _tempErr),
             ),
           ),
-          evsRow(context, 
+          evsRow(context,
             label: app.t('llmKeepAlive'),
             desc: app.t('llmKeepAliveDesc'),
             control: SizedBox(
@@ -5437,4 +5485,154 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
       ],
     );
   }
+}
+
+// "Стиль интерфейса" control (Nexus TZ §7): two schematic preview tiles
+// (Classic · Nexus). Tapping applies immediately via setAppStyle — outside the
+// settings dirty mechanism. Each tile paints itself with ITS OWN style's skin
+// (for the current theme) so you preview both looks side by side.
+class _StylePicker extends StatelessWidget {
+  const _StylePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    Widget tile(AppStyle style, String label) {
+      final selected = app.appStyle == style;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => app.setAppStyle(style),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: 132,
+              height: 78,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? _accent(context) : _stroke(context),
+                  width: selected ? 2 : 1,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: CustomPaint(
+                painter: _StylePreviewPainter(
+                    style, skinFor(style, app.themeMode)),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_unchecked,
+                  size: 14,
+                  color: selected ? _accent(context) : _faint(context),
+                ),
+                const SizedBox(width: 4),
+                Text(label,
+                    style: EvsType.control.copyWith(
+                        color: selected ? _txt(context) : _sub(context))),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 14,
+      runSpacing: 12,
+      children: [
+        tile(AppStyle.standard, app.t('uiStyleClassic')),
+        tile(AppStyle.nexus, app.t('uiStyleNexus')),
+      ],
+    );
+  }
+}
+
+// Schematic thumbnail of a UI style, painted in that style's skin colours.
+// Classic = left sidebar + content; Nexus = thin rail + central stage (sphere +
+// status pill/line) + right chat column. Purely decorative — no real data.
+class _StylePreviewPainter extends CustomPainter {
+  final AppStyle style;
+  final EvsSkin skin;
+  _StylePreviewPainter(this.style, this.skin);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = skin.pal;
+    final w = size.width, h = size.height;
+    canvas.drawRect(Offset.zero & size, Paint()..color = p.bg);
+
+    void bar(double x, double y, double bw, double bh, Color col,
+        [double r = 2]) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, y, bw, bh), Radius.circular(r)),
+        Paint()..color = col,
+      );
+    }
+
+    if (style == AppStyle.nexus) {
+      // Soft top glow (dark skins only) for the Nexus mood.
+      if (skin.glow) {
+        canvas.drawCircle(
+          Offset(w * 0.55, -h * 0.1),
+          h * 0.6,
+          Paint()..color = p.accent.withValues(alpha: 0.10),
+        );
+      }
+      final railW = w * 0.14;
+      // Rail.
+      bar(0, 0, railW, h, p.card, 0);
+      for (var i = 0; i < 4; i++) {
+        bar(railW * 0.32, 8.0 + i * 9, railW * 0.36, 4,
+            i == 0 ? p.info : p.faint, 2);
+      }
+      // Chat column on the right.
+      final chatW = w * 0.30;
+      final chatX = w - chatW;
+      bar(chatX, 0, chatW, h, p.card, 0);
+      bar(chatX + 6, 12, chatW - 18, 10, p.accent.withValues(alpha: 0.30), 4);
+      bar(chatX + 6, 30, chatW - 24, 6, p.stroke, 3);
+      bar(chatX + 6, 42, chatW - 14, 6, p.stroke, 3);
+      // Central stage: status pill on top, sphere in the middle, status line.
+      final stageX = railW + 6, stageR = (chatX - 6) - stageX;
+      bar(stageX, 9, stageR * 0.55, 7, p.warn.withValues(alpha: 0.55), 4);
+      final cx = stageX + stageR / 2, cy = h * 0.52;
+      canvas.drawCircle(Offset(cx, cy), h * 0.20,
+          Paint()..color = p.accent.withValues(alpha: 0.22));
+      canvas.drawCircle(
+          Offset(cx, cy),
+          h * 0.20,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4
+            ..color = skin.accent2.withValues(alpha: 0.75));
+      bar(stageX + stageR * 0.15, h - 12, stageR * 0.7, 4, p.faint, 2);
+    } else {
+      // Classic: wide left sidebar + content area with a header + list rows.
+      final sideW = w * 0.30;
+      bar(0, 0, sideW, h, p.card, 0);
+      for (var i = 0; i < 5; i++) {
+        bar(8, 10.0 + i * 12, sideW - 16, 7, i == 0 ? p.accent : p.stroke, 3);
+      }
+      final contentX = sideW + 8;
+      bar(contentX, 10, (w - contentX) * 0.7, 9,
+          p.accent.withValues(alpha: 0.35), 4);
+      for (var i = 0; i < 4; i++) {
+        bar(contentX, 28.0 + i * 11, (w - contentX) - 8, 7, p.stroke, 3);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_StylePreviewPainter old) =>
+      old.style != style || old.skin.pal.bg != skin.pal.bg;
 }

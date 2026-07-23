@@ -2251,6 +2251,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Interface style (Nexus TZ). Applied immediately and outside the settings
+  // dirty mechanism, exactly like setThemeMode — the whole shell re-themes on
+  // the next build because the skin resolves from appStyle.
+  void setAppStyle(AppStyle v) {
+    appStyle = v;
+    _save();
+    notifyListeners();
+  }
+
   void setHaptics(bool v) {
     haptics = v;
     _save();

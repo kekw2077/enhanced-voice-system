@@ -994,6 +994,11 @@ class ChangelogEntry {
 }
 
 const List<ChangelogEntry> kChangelog = [
+  ChangelogEntry('2.4.4', [
+    'Новый «Стиль интерфейса» — Nexus: отдельная ось оформления, независимая от темы (Настройки → Общие → Внешний вид → Стиль интерфейса). Классический стиль остаётся по умолчанию и не меняется ни на пиксель.',
+    'Главный экран Nexus: орб-хаб с «конвейером ответа» — спутники VAD · STT · LLM · TTS загораются по реальным этапам обработки, ядро дышит/пульсирует по состоянию. Ряд живых карточек STT / TTS / LLM / Система (CPU · RAM · VRAM) с реальными данными и переходом в нужный раздел настроек по клику.',
+    'Nexus адаптирован под все три темы (Тёмная, Claude, Claude тёмная); компактная чат-колонка и рейл-навигация. В настройках Nexus — навигация с подписями и версией, без всплывающей плашки сохранения (подтверждение только при выходе).',
+  ]),
   ChangelogEntry('2.4.3', [
     'Клон голоса: исправлено главное — голос не включался, если компонент ещё докачивался (движок переключался до готовности и молча оставался на старом голосе). Теперь ждём загрузку, затем активируем; двойная закачка исключена.',
     'В разделе клона появилась таблица «Фразы в заготовке» — собирается автоматически (системные + озвучка команд + базовые + свои) и обновляется при добавлении команд. Плюс строка статуса движка (активен / загрузка / не активен).',
@@ -1417,9 +1422,13 @@ const List<ChangelogEntry> kChangelog = [
 
 enum AppThemeMode { dark, claude, claudeDark }
 
-// Liquid Glass was removed — only the standard (solid) style remains. Kept as a
-// single-value enum so the appStyle field / prefs migration stay graceful.
-enum AppStyle { standard }
+// Interface-style axis, independent of AppThemeMode (which only carries the
+// palette). `standard` = the classic shipped layout; `nexus` = the alternative
+// skin (rail + stage + chat) from the Nexus TZ. A downgraded build that reads an
+// unknown `nexus` value falls back to `standard` via `orElse` in the prefs
+// loader, so the field stays forward/backward compatible. (Liquid Glass, the old
+// second value, was removed.)
+enum AppStyle { standard, nexus }
 
 // Real connection/readiness state of the selected model, shown by the desktop
 // status badge (and its detail dialog).

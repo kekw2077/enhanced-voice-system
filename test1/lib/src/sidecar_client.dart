@@ -781,6 +781,20 @@ class VoiceAssistant {
 
   bool get isListening => _listening;
 
+  // Manually open a command-capture window (a UI mic button), exactly like a
+  // bare wake word: the next final utterance is handled as a command or chat
+  // message by the existing pipeline. It starts NO second STT session, so it
+  // never conflicts with continuous wake-word listening. No-op (with a hint)
+  // when the mic isn't listening (STT offline, or a button-triggered mode).
+  void promptOnce() {
+    if (!_listening) {
+      _toast(_app?.t('vaSttOffline') ?? 'Microphone is off');
+      return;
+    }
+    _flagWake();
+    _arm();
+  }
+
   void attach(AppState app) {
     _app = app;
     if (_attached) return;

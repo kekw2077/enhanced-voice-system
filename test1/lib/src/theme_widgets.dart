@@ -16,9 +16,10 @@ class MiraiApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: rootNavKey,
       title: 'EVS',
-      theme: _buildTheme(app.themeMode),
-      darkTheme: _buildTheme(app.themeMode),
-      themeMode: _palFor(app.themeMode).brightness == Brightness.light
+      theme: _buildTheme(app.appStyle, app.themeMode),
+      darkTheme: _buildTheme(app.appStyle, app.themeMode),
+      themeMode: skinFor(app.appStyle, app.themeMode).pal.brightness ==
+              Brightness.light
           ? ThemeMode.light
           : ThemeMode.dark,
       builder: (context, child) {
@@ -44,8 +45,8 @@ class MiraiApp extends StatelessWidget {
   String? get _appFontFamily =>
       defaultTargetPlatform == TargetPlatform.iOS ? null : 'Nunito';
 
-  ThemeData _buildTheme(AppThemeMode mode) {
-    final p = _palFor(mode);
+  ThemeData _buildTheme(AppStyle style, AppThemeMode mode) {
+    final p = skinFor(style, mode).pal;
     final scheme = ColorScheme.fromSeed(
       seedColor: p.accent,
       brightness: p.brightness,
@@ -278,7 +279,177 @@ _Palette _palFor(AppThemeMode m) {
   }
 }
 
-_Palette _pal(BuildContext c) => _palFor(c.read<AppState>().themeMode);
+// ---- Interface-style skins (Nexus TZ §3.3) --------------------------------
+// A skin bundles a palette with geometry + flags for one (AppStyle × theme)
+// cell. Classic (`standard`) skins wrap the existing `_palFor` palette and mirror
+// today's metrics, so the classic UI stays pixel-identical; `nexus` skins swap in
+// the Nexus palettes/metrics below. The legacy `_bg/_card/…` helpers keep their
+// signatures and just read `pal` from the active skin; anything genuinely new
+// (accent2, radii, glow, background glows) reads through `_skin(context)`.
+class EvsSkin {
+  // ignore: library_private_types_in_public_api  (single-library project — _Palette never leaves it)
+  final _Palette pal; // the 13 colour slots
+  final Color accent2; // second stop for accent gradients
+  final double radiusCard; // card corner radius
+  final double radiusControl; // control corner radius
+  final double railWidth; // left nav-rail width (0 = no dedicated rail)
+  final bool glow; // soft glows on dots/statuses (dark themes only)
+  final double glowIntensity; // 1.0 = reference (Nexus dark); 0.6 = Claude dark
+  final List<RadialGradient> bgGlows; // decorative window-background spots
+  const EvsSkin({
+    // ignore: library_private_types_in_public_api
+    required this.pal,
+    required this.accent2,
+    required this.radiusCard,
+    required this.radiusControl,
+    required this.railWidth,
+    required this.glow,
+    this.glowIntensity = 1.0,
+    this.bgGlows = const [],
+  });
+}
+
+// Nexus palettes (TZ §4–5). Referenced ONLY from `skinFor(nexus, …)`; the
+// classic palettes above are never modified, so classic stays untouched.
+const _Palette _kNexusDark = _Palette(
+  bg: Color(0xFF0B0F1B),
+  card: Color(0xFF121A2E),
+  card2: Color(0xFF16203A),
+  txt: Color(0xFFE8ECFA),
+  sub: Color(0xFF8A93B4),
+  accent: Color(0xFF5E8BFF),
+  stroke: Color(0x248CA0DC),
+  body: Color(0xFFC4CBE4),
+  faint: Color(0xFF5A6284),
+  success: Color(0xFF4ADE80),
+  danger: Color(0xFFFF7A7A),
+  info: Color(0xFF4FD1FF),
+  warn: Color(0xFFFFB454),
+  brightness: Brightness.dark,
+);
+
+// Nexus · Claude (light): Nexus geometry over the warm Claude palette. glow=false
+// (soft shadows instead of glows), white cards on cream.
+const _Palette _kNexusClaude = _Palette(
+  bg: Color(0xFFFAF9F5),
+  card: Color(0xFFFFFFFF),
+  card2: Color(0xFFEFE9DE),
+  txt: Color(0xFF141413),
+  sub: Color(0xFF6C6A64),
+  accent: Color(0xFFCC785C),
+  stroke: Color(0xFFE6DFD8),
+  body: Color(0xFF3D3D3A),
+  faint: Color(0xFF8E8B82),
+  success: Color(0xFF5DB872),
+  danger: Color(0xFFC64545),
+  info: Color(0xFF2C6FD6),
+  warn: Color(0xFFB8862A),
+  brightness: Brightness.light,
+);
+
+// Nexus · Claude dark: Nexus geometry over the warm charcoal Claude-dark palette.
+const _Palette _kNexusClaudeDark = _Palette(
+  bg: Color(0xFF262624),
+  card: Color(0xFF30302E),
+  card2: Color(0xFF383735),
+  txt: Color(0xFFF2F0E9),
+  sub: Color(0xFFA8A69C),
+  accent: Color(0xFFD97757),
+  stroke: Color(0xFF423F3B),
+  body: Color(0xFFE4E1D8),
+  faint: Color(0xFF8E8C85),
+  success: Color(0xFF5DB872),
+  danger: Color(0xFFE0685E),
+  info: Color(0xFF5B9DF0),
+  warn: Color(0xFFE0B24A),
+  brightness: Brightness.dark,
+);
+
+// Two soft radial spots over the Nexus-dark background (TZ §4): blue at
+// (62%, −10%) and violet at (20%, 110%). Alignment maps 0..1 → −1..1.
+const List<RadialGradient> _kNexusDarkGlows = [
+  RadialGradient(
+    center: Alignment(0.24, -1.2),
+    radius: 1.1,
+    colors: [Color(0x1A5E8BFF), Color(0x005E8BFF)],
+  ),
+  RadialGradient(
+    center: Alignment(-0.6, 1.2),
+    radius: 1.1,
+    colors: [Color(0x148B7CFF), Color(0x008B7CFF)],
+  ),
+];
+
+// Claude-dark: same character, dialled to ~0.6 intensity (TZ §5).
+const List<RadialGradient> _kNexusClaudeDarkGlows = [
+  RadialGradient(
+    center: Alignment(0.24, -1.2),
+    radius: 1.1,
+    colors: [Color(0x14D97757), Color(0x00D97757)],
+  ),
+  RadialGradient(
+    center: Alignment(-0.6, 1.2),
+    radius: 1.1,
+    colors: [Color(0x0EE0B24A), Color(0x00E0B24A)],
+  ),
+];
+
+// Resolve the active (style × theme) skin. Classic wraps `_palFor` unchanged.
+EvsSkin skinFor(AppStyle style, AppThemeMode theme) {
+  if (style == AppStyle.nexus) {
+    switch (theme) {
+      case AppThemeMode.dark:
+        return const EvsSkin(
+          pal: _kNexusDark,
+          accent2: Color(0xFF8B7CFF),
+          radiusCard: 14,
+          radiusControl: 10,
+          railWidth: 66,
+          glow: true,
+          bgGlows: _kNexusDarkGlows,
+        );
+      case AppThemeMode.claude:
+        return const EvsSkin(
+          pal: _kNexusClaude,
+          accent2: Color(0xFFE0956B),
+          radiusCard: 14,
+          radiusControl: 10,
+          railWidth: 66,
+          glow: false,
+        );
+      case AppThemeMode.claudeDark:
+        return const EvsSkin(
+          pal: _kNexusClaudeDark,
+          accent2: Color(0xFFE0B24A),
+          radiusCard: 14,
+          radiusControl: 10,
+          railWidth: 66,
+          glow: true,
+          glowIntensity: 0.6, // ×0.6 of Nexus-dark (TZ §5)
+          bgGlows: _kNexusClaudeDarkGlows,
+        );
+    }
+  }
+  // Classic: wrap the shipped palette; metrics mirror today's defaults so any
+  // future skin-routed radius equals the current value. accent2 is derived so
+  // classic-only gradients (unused for now) stay on-theme.
+  final p = _palFor(theme);
+  return EvsSkin(
+    pal: p,
+    accent2: Color.lerp(p.accent, p.info, 0.45) ?? p.accent,
+    radiusCard: EvsRadius.lg, // 18 — matches evsCard's current corner radius
+    radiusControl: 10,
+    railWidth: 0,
+    glow: false,
+  );
+}
+
+EvsSkin _skin(BuildContext c) {
+  final app = c.read<AppState>();
+  return skinFor(app.appStyle, app.themeMode);
+}
+
+_Palette _pal(BuildContext c) => _skin(c).pal;
 
 // Canonical surface/text tokens — resolve against the active theme. The
 // BuildContext param is kept so the hundreds of call sites stay unchanged.
@@ -289,6 +460,9 @@ Color _sub(BuildContext c) => _pal(c).sub;
 Color _body(BuildContext c) => _pal(c).body;
 Color _faint(BuildContext c) => _pal(c).faint;
 Color _accent(BuildContext c) => _pal(c).accent;
+// Second accent stop (Nexus gradients / "thinking" status). Classic derives it
+// from the palette, so call sites are safe in either style.
+Color _accent2(BuildContext c) => _skin(c).accent2;
 Color _stroke(BuildContext c) => _pal(c).stroke;
 Color _card2(BuildContext c) => _pal(c).card2;
 Color _success(BuildContext c) => _pal(c).success;
@@ -1726,7 +1900,8 @@ Widget evsCard(
 }) {
   return Container(
     decoration: BoxDecoration(
-      borderRadius: EvsRadius.rLg,
+      // Card corner radius comes from the active skin: 18 (classic) / 14 (Nexus).
+      borderRadius: BorderRadius.circular(_skin(context).radiusCard),
       color: _overlayFill(context, 0.033),
       border: Border.all(color: _stroke(context)),
     ),
