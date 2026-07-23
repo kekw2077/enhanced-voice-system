@@ -28,6 +28,34 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.4.6</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Исправлено «настройки не сохраняются»:</b> эффекты голоса, анимации интерфейса, чувствительность микрофона, тумблер и образец клона, быстрые профили не попадали в отслеживание изменений — правки тихо откатывались при выходе из настроек. Теперь помечаются и сохраняются как положено.</li>
+          <li><b>Nexus:</b> статус реагирует на слово-активатор — вспыхивает «услышал, говорите!», затем «Говорите команду…» на время окна захвата.</li>
+          <li>Обновления компонентов: подготовленный архив не удаляется при неудачной распаковке — повторная попытка на следующем запуске.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Thu, 23 Jul 2026 16:30:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.4.6/EVS-Setup-2.4.6.exe"
+        sparkle:version="2.4.6"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD4CHQCaxf1rSwh5xTJJqlP7OOLc9RLpIpDfkc11xBUTAh0AlVDs07FAGprbWsqh2TXzFLBJLj9JK1zn8G0AJg=="
+        evs:sha256="2dc2a37dfef5f9b09d06283f02f8bae28a42f4e2ad8e17da1a9a833cbbd7a2ee"
+        length="16621948"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.4.5</title>
       <description><![CDATA[
         <style>

@@ -1013,10 +1013,31 @@ class _NexusStageState extends State<_NexusStage> {
 
   Widget _statusPill(BuildContext context, AppState app) {
     return AnimatedBuilder(
-      animation: NexusPipeline.instance,
+      animation: Listenable.merge([
+        NexusPipeline.instance,
+        VoiceAssistant.instance.state,
+        VoiceAssistant.instance.wakeActive,
+      ]),
       builder: (context, _) {
-        final (label, color) =
-            _statusFor(context, NexusPipeline.instance.stage, app);
+        // Wake feedback first: a recognized activator flashes "«word» — heard
+        // you!" and the command-capture window shows "say the command…" —
+        // without this the pill sat on «Слушаю…» through the whole wake →
+        // command exchange with no visible reaction.
+        final va = VoiceAssistant.instance.state.value;
+        final woke = VoiceAssistant.instance.wakeActive.value;
+        final String label;
+        final Color color;
+        if (woke) {
+          label = '«${app.wakeWord}» — ${app.t('vaWakeHeard')}';
+          color = _success(context);
+        } else if (va == VaState.armed) {
+          label = app.t('vaArmed');
+          color = _warn(context);
+        } else {
+          final s = _statusFor(context, NexusPipeline.instance.stage, app);
+          label = s.$1;
+          color = s.$2;
+        }
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(

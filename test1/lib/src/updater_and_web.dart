@@ -949,15 +949,17 @@ class ComponentManager {
             continue;
           }
           final exe = await _extract(entry.key, staged.path);
-          try {
-            await staged.delete();
-          } catch (_) {}
           if (exe != null) {
+            try {
+              await staged.delete();
+            } catch (_) {}
             try {
               await io.File(await _versionMarkerPath(entry.key))
                   .writeAsString(entry.value.version);
             } catch (_) {}
           }
+          // Extract failed (e.g. a transient lock): KEEP the verified staged
+          // zip — it retries on the next launch instead of re-downloading.
           continue;
         }
         final target = '$dir$sep$name';

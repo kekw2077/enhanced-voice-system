@@ -672,6 +672,14 @@ class AppState extends ChangeNotifier {
         cosyvoiceEndpoint, cosyvoiceVoice, cosyvoiceClonePath,
         cosyvoiceClonePromptText, cosyvoiceSpeed, cosyvoiceEmotion,
         cosyvoiceInstruct, cosyvoiceDevice,
+        // Every field _restoreSettingsFields() re-reads MUST appear here: a
+        // field that restores but isn't snapshotted never flags the draft
+        // dirty, so its edits silently revert when the screen closes (that was
+        // the "FX sliders don't save" bug — and the clone toggle too).
+        motionMode, micVadAggr,
+        ttsFxEnabled, ttsFxDetune, ttsFxMetallic, ttsFxReverb, ttsFxLowpass,
+        cloneEnabled, cloneSamplePath, clonePhraseLib.join(','),
+        activeVoicePreset, jsonEncode(voicePresets),
         jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
         remoteInputEnabled, remoteInputPort, remoteResponseTarget,
         jsonEncode(persona.toJson()),
