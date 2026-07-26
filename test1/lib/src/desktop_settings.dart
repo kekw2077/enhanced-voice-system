@@ -2020,6 +2020,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 itemBuilder: (_, i) {
                   final s = _sections[i];
                   final active = i == _section;
+                  // Nexus tints the active section with info (§5.1); classic
+                  // keeps the accent highlight.
+                  final actAcc = nexus ? _info(context) : _accent(context);
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 1),
                     child: Material(
@@ -2033,11 +2036,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(13),
                             color: active
-                                ? _accent(context).withValues(alpha: 0.13)
+                                ? actAcc.withValues(alpha: nexus ? 0.09 : 0.13)
                                 : Colors.transparent,
                             border: Border.all(
                               color: active
-                                  ? _accent(context).withValues(alpha: 0.22)
+                                  ? actAcc.withValues(alpha: nexus ? 0.30 : 0.22)
                                   : Colors.transparent,
                             ),
                           ),
@@ -2049,13 +2052,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(9),
                                   color: active
-                                      ? _accent(context).withValues(alpha: 0.2)
+                                      ? actAcc.withValues(alpha: 0.2)
                                       : _overlayFill(context, 0.042),
                                 ),
                                 child: Icon(s.$1,
                                     size: 14,
                                     color: active
-                                        ? _accent(context)
+                                        ? actAcc
                                         : const Color(0xFF9691C0)),
                               ),
                               const SizedBox(width: 11),

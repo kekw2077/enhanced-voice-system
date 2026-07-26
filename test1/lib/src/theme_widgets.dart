@@ -449,6 +449,11 @@ EvsSkin _skin(BuildContext c) {
   return skinFor(app.appStyle, app.themeMode);
 }
 
+// True when the Nexus interface style is active — lets the shared evs* control
+// helpers apply Nexus geometry (surface-lift segments, accent→accent2 toggles,
+// info-tinted actives) while the classic style stays byte-for-byte the same.
+bool _isNexus(BuildContext c) => c.read<AppState>().appStyle == AppStyle.nexus;
+
 _Palette _pal(BuildContext c) => _skin(c).pal;
 
 // Canonical surface/text tokens — resolve against the active theme. The
@@ -1916,15 +1921,20 @@ Widget evsCard(
           ),
           child: Row(
             children: [
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  borderRadius: EvsRadius.rSm,
-                  color: _accent(context).withValues(alpha: 0.15),
-                ),
-                child: Icon(icon, size: 13, color: _accent(context)),
-              ),
+              Builder(builder: (context) {
+                // Nexus card headers use the info (cyan) accent (§5.3); classic
+                // keeps the primary accent.
+                final hc = _isNexus(context) ? _info(context) : _accent(context);
+                return Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    borderRadius: EvsRadius.rSm,
+                    color: hc.withValues(alpha: 0.15),
+                  ),
+                  child: Icon(icon, size: 13, color: hc),
+                );
+              }),
               const SizedBox(width: 9),
               Text(title.toUpperCase(),
                   style:
@@ -1988,12 +1998,39 @@ Widget evsRow(BuildContext context, {
 // Full-width segmented selector: equal-width pills in a single row that fills
 // the available width (used with `evsRow(context, stacked: true)`). Replaces the
 // right-aligned Wrap that folded 3–4 options into a cramped floating block.
+// Active-segment decoration for the segmented controls. Classic: accent-tinted
+// fill + border. Nexus (§5.4): the active pill lifts to the surface colour with
+// a soft shadow (no accent wash), matching the mockup's "raised tab" look.
+BoxDecoration _segActiveDeco(BuildContext context, bool selected, bool nexus) {
+  if (!selected) {
+    return BoxDecoration(borderRadius: BorderRadius.circular(8));
+  }
+  if (nexus) {
+    return BoxDecoration(
+      borderRadius: BorderRadius.circular(8),
+      color: _pal(context).card2,
+      boxShadow: [
+        BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 6,
+            offset: const Offset(0, 1)),
+      ],
+    );
+  }
+  return BoxDecoration(
+    borderRadius: BorderRadius.circular(8),
+    color: _accent(context).withValues(alpha: 0.22),
+    border: Border.all(color: _accent(context).withValues(alpha: 0.45)),
+  );
+}
+
 Widget evsSegmentedWide<T>(
   BuildContext context,
   List<(T, String)> options,
   T value,
   ValueChanged<T> onChanged,
 ) {
+  final nexus = _isNexus(context);
   return Container(
     padding: const EdgeInsets.all(3),
     decoration: BoxDecoration(
@@ -2012,17 +2049,7 @@ Widget evsSegmentedWide<T>(
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 7),
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: options[i].$1 == value
-                      ? _accent(context).withValues(alpha: 0.22)
-                      : Colors.transparent,
-                  border: Border.all(
-                    color: options[i].$1 == value
-                        ? _accent(context).withValues(alpha: 0.45)
-                        : Colors.transparent,
-                  ),
-                ),
+                decoration: _segActiveDeco(context, options[i].$1 == value, nexus),
                 child: Text(options[i].$2,
                     textAlign: TextAlign.center,
                     maxLines: 1,
@@ -2048,6 +2075,7 @@ Widget evsSegmented<T>(
   T value,
   ValueChanged<T> onChanged,
 ) {
+  final nexus = _isNexus(context);
   return Container(
     padding: const EdgeInsets.all(3),
     decoration: BoxDecoration(
@@ -2067,17 +2095,7 @@ Widget evsSegmented<T>(
             onTap: () => onChanged(o.$1),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: o.$1 == value
-                    ? _accent(context).withValues(alpha: 0.22)
-                    : Colors.transparent,
-                border: Border.all(
-                  color: o.$1 == value
-                      ? _accent(context).withValues(alpha: 0.45)
-                      : Colors.transparent,
-                ),
-              ),
+              decoration: _segActiveDeco(context, o.$1 == value, nexus),
               child: Text(o.$2,
                   style: TextStyle(
                       fontSize: 12.5,
@@ -2093,6 +2111,12 @@ Widget evsSegmented<T>(
 }
 
 Widget evsToggle(BuildContext context, bool value, ValueChanged<bool> onChanged) {
+  final skin = _skin(context);
+  // Nexus (§5.4): the "on" fill is an accent→accent2 gradient; classic keeps its
+  // accent→light-accent one.
+  final onGradient = _isNexus(context)
+      ? LinearGradient(colors: [skin.pal.accent, skin.accent2])
+      : _accentGradient(context);
   return GestureDetector(
     onTap: () => onChanged(!value),
     child: AnimatedContainer(
@@ -2101,7 +2125,7 @@ Widget evsToggle(BuildContext context, bool value, ValueChanged<bool> onChanged)
       height: 23,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        gradient: value ? _accentGradient(context) : null,
+        gradient: value ? onGradient : null,
         color: value ? null : _overlayFill(context, 0.12),
         border: Border.all(
             color: value ? Colors.transparent : _stroke(context)),
@@ -2292,6 +2316,8 @@ Widget evsRadioCard(BuildContext context, {
   required VoidCallback onTap,
   Widget? extra,
 }) {
+  // Nexus radio-options (§5.5) use the info accent; classic keeps the primary.
+  final acc = _isNexus(context) ? _info(context) : _accent(context);
   return InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(14),
@@ -2299,9 +2325,9 @@ Widget evsRadioCard(BuildContext context, {
       padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
-        color: selected ? _accent(context).withValues(alpha: 0.1) : _overlayFill(context, 0.03),
+        color: selected ? acc.withValues(alpha: 0.1) : _overlayFill(context, 0.03),
         border: Border.all(
-            color: selected ? _accent(context).withValues(alpha: 0.3) : _stroke(context)),
+            color: selected ? acc.withValues(alpha: 0.35) : _stroke(context)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2313,15 +2339,15 @@ Widget evsRadioCard(BuildContext context, {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                  color: selected ? _accent(context) : _faint(context), width: 2),
+                  color: selected ? acc : _faint(context), width: 2),
             ),
             alignment: Alignment.center,
             child: selected
                 ? Container(
                     width: 8,
                     height: 8,
-                    decoration: BoxDecoration(
-                        shape: BoxShape.circle, color: _accent(context)))
+                    decoration:
+                        BoxDecoration(shape: BoxShape.circle, color: acc))
                 : null,
           ),
           const SizedBox(width: 12),
