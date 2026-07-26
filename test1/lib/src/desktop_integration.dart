@@ -79,7 +79,12 @@ class CommandExecutor {
     try {
       // A batch script dodges the nested-quoting maze of RunAs; /sc onlogon +
       // /disable = the task never fires on its own, it only exists to be /run.
-      final dir = await io.Directory.systemTemp.createTemp('evs_task');
+      // Scratch dir under the app's own data root (<exeDir>\userdata), never
+      // the system temp: EVS keeps everything it writes on the drive it is
+      // installed on.
+      final dir = await io.Directory(
+              '${await appDataRoot()}${io.Platform.pathSeparator}tmp')
+          .createTemp('evs_task');
       final script = io.File('${dir.path}\\create_task.cmd');
       await script.writeAsString('@echo off\r\n'
           'schtasks /create /tn "$tn" /tr "${_taskAction(c)}" '
@@ -759,6 +764,10 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Push game-mode config (thresholds, exclusions, localized phrases) now
       // that the socket is up; the sidecar started the monitor with defaults.
       app.applyGameModeConfig();
+      // Clone server (GPU): activate it as the TTS engine if configured, and
+      // follow game mode so it releases/reclaims VRAM with the game.
+      app.hookCloneGpuGameMode();
+      unawaited(app.applyCloneServer());
       unawaited(app.syncActiveMics()); // resolve multi-mic devices (block 8.2)
     } catch (_) {}
   }

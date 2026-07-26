@@ -354,6 +354,25 @@ class AppState extends ChangeNotifier {
   String cosyvoiceInstruct = '';
   String cosyvoiceDevice = 'cuda'; // 'cpu' | 'cuda'
 
+  // ---- GPU load control for the clone server (Qwen3-TTS) -----------------
+  // There is no driver-level "use N% of the GPU" knob, so load is shaped by
+  // four real levers pushed to the server (POST <endpoint>/config): a hard VRAM
+  // ceiling, idle unloading (frees VRAM entirely between phrases), a duty-cycle
+  // throttle, and a pause flag driven by EVS's own game mode.
+  // `cloneGpuProfile` is a preset over the three numeric knobs; editing any of
+  // them individually switches it to 'custom'.
+  String cloneGpuProfile = 'balanced'; // 'max' | 'balanced' | 'quiet' | 'custom'
+  // What happens to the cloned voice while a game is running:
+  //   'cache'  — pre-rendered phrases still play from disk (zero GPU), anything
+  //              new falls back to Piper (default)
+  //   'off'    — clone fully disabled, Piper only
+  //   'normal' — keep synthesizing on the GPU (may cost FPS)
+  String cloneGpuInGame = 'cache';
+  double cloneGpuVramLimitGb = 5; // 0 = uncapped
+  int cloneGpuIdleUnloadSec = 120; // 0 = never unload
+  double cloneGpuThrottle = 0.25; // 0..1 share of synth time spent idling
+  String cloneGpuPrecision = 'auto'; // 'auto' | 'bf16' | 'fp16'
+
   // Voice clone (XTTS-v2 on CPU) — a temporary local stand-in for GPU CosyVoice
   // while a graphics card is awaited. The engine ships as a separate downloaded
   // component (`clone`); `cloneSamplePath` is any WAV 6–10 s of the target
@@ -582,6 +601,12 @@ class AppState extends ChangeNotifier {
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
+    cloneGpuProfile = prefs.getString('cloneGpuProfile') ?? 'balanced';
+    cloneGpuInGame = prefs.getString('cloneGpuInGame') ?? 'cache';
+    cloneGpuVramLimitGb = prefs.getDouble('cloneGpuVramLimitGb') ?? 5;
+    cloneGpuIdleUnloadSec = prefs.getInt('cloneGpuIdleUnloadSec') ?? 120;
+    cloneGpuThrottle = prefs.getDouble('cloneGpuThrottle') ?? 0.25;
+    cloneGpuPrecision = prefs.getString('cloneGpuPrecision') ?? 'auto';
     // CPU-XTTS clone disabled: the CPU build was unintelligible, so the app no
     // longer runs it (UI hidden). Forced false regardless of the persisted pref
     // so a previously-enabled machine reverts to Piper on launch. GPU render
@@ -682,6 +707,8 @@ class AppState extends ChangeNotifier {
         cosyvoiceEndpoint, cosyvoiceVoice, cosyvoiceClonePath,
         cosyvoiceClonePromptText, cosyvoiceSpeed, cosyvoiceEmotion,
         cosyvoiceInstruct, cosyvoiceDevice,
+        cloneGpuProfile, cloneGpuInGame, cloneGpuVramLimitGb,
+        cloneGpuIdleUnloadSec, cloneGpuThrottle, cloneGpuPrecision,
         // Every field _restoreSettingsFields() re-reads MUST appear here: a
         // field that restores but isn't snapshotted never flags the draft
         // dirty, so its edits silently revert when the screen closes (that was
@@ -808,6 +835,12 @@ class AppState extends ChangeNotifier {
     await prefs.setString('cosyvoiceEmotion', cosyvoiceEmotion);
     await prefs.setString('cosyvoiceInstruct', cosyvoiceInstruct);
     await prefs.setString('cosyvoiceDevice', cosyvoiceDevice);
+    await prefs.setString('cloneGpuProfile', cloneGpuProfile);
+    await prefs.setString('cloneGpuInGame', cloneGpuInGame);
+    await prefs.setDouble('cloneGpuVramLimitGb', cloneGpuVramLimitGb);
+    await prefs.setInt('cloneGpuIdleUnloadSec', cloneGpuIdleUnloadSec);
+    await prefs.setDouble('cloneGpuThrottle', cloneGpuThrottle);
+    await prefs.setString('cloneGpuPrecision', cloneGpuPrecision);
     await prefs.setBool('cloneEnabled', cloneEnabled);
     await prefs.setString('cloneSamplePath', cloneSamplePath);
     await prefs.setStringList('clonePhraseLib', clonePhraseLib);
@@ -912,6 +945,9 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     try {
       unawaited(applyCloneConfig());
+    } catch (_) {}
+    try {
+      unawaited(applyCloneServer());
     } catch (_) {}
     try {
       SidecarClient.instance.setSttDevice(sttDevice);
@@ -1030,6 +1066,12 @@ class AppState extends ChangeNotifier {
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
+    cloneGpuProfile = prefs.getString('cloneGpuProfile') ?? 'balanced';
+    cloneGpuInGame = prefs.getString('cloneGpuInGame') ?? 'cache';
+    cloneGpuVramLimitGb = prefs.getDouble('cloneGpuVramLimitGb') ?? 5;
+    cloneGpuIdleUnloadSec = prefs.getInt('cloneGpuIdleUnloadSec') ?? 120;
+    cloneGpuThrottle = prefs.getDouble('cloneGpuThrottle') ?? 0.25;
+    cloneGpuPrecision = prefs.getString('cloneGpuPrecision') ?? 'auto';
     // CPU-XTTS clone disabled: the CPU build was unintelligible, so the app no
     // longer runs it (UI hidden). Forced false regardless of the persisted pref
     // so a previously-enabled machine reverts to Piper on launch. GPU render
@@ -1234,6 +1276,7 @@ class AppState extends ChangeNotifier {
     ttsEngineChoice = v == 'cosyvoice' ? 'cosyvoice' : 'piper';
     _save();
     notifyListeners();
+    unawaited(applyCloneServer());
   }
 
   void setCosyvoiceEndpoint(String v) {
@@ -1241,6 +1284,7 @@ class AppState extends ChangeNotifier {
     cosyvoiceOnline = null; // must re-check after an address change
     _save();
     notifyListeners();
+    unawaited(applyCloneServer());
   }
 
   // CosyVoice deep-control setters (§3.2). State only for now — values are
@@ -1256,12 +1300,14 @@ class AppState extends ChangeNotifier {
     cosyvoiceClonePath = v;
     _save();
     notifyListeners();
+    unawaited(applyCloneServer());
   }
 
   void setCosyvoiceClonePromptText(String v) {
     cosyvoiceClonePromptText = v;
     _save();
     notifyListeners();
+    unawaited(applyCloneServer());
   }
 
   // ---- Voice clone (XTTS, CPU) ---------------------------------------
@@ -1394,6 +1440,164 @@ class AppState extends ChangeNotifier {
     cosyvoiceDevice = v == 'cuda' ? 'cuda' : 'cpu';
     _save();
     notifyListeners();
+  }
+
+  // ---- GPU load control (clone server) ---------------------------------
+
+  // Preset → the three numeric knobs. 'custom' keeps whatever is stored.
+  static const Map<String, (double vramGb, int idleSec, double throttle)>
+      kCloneGpuPresets = {
+    // Uncapped, stays resident for 10 min, never throttled.
+    'max': (0, 600, 0),
+    // Roughly half a 12 GB card, unloads after 2 min, mild duty cycle.
+    'balanced': (5, 120, 0.25),
+    // Small footprint, drops out of VRAM quickly, heavy duty cycle.
+    'quiet': (3, 30, 0.6),
+  };
+
+  void setCloneGpuProfile(String v) {
+    final preset = kCloneGpuPresets[v];
+    cloneGpuProfile = preset == null ? 'custom' : v;
+    if (preset != null) {
+      cloneGpuVramLimitGb = preset.$1;
+      cloneGpuIdleUnloadSec = preset.$2;
+      cloneGpuThrottle = preset.$3;
+    }
+    _save();
+    notifyListeners();
+    unawaited(pushCloneGpuConfig());
+  }
+
+  // Any manual tweak means the profile no longer describes the settings.
+  void _markCloneGpuCustom() {
+    cloneGpuProfile = 'custom';
+  }
+
+  void setCloneGpuInGame(String v) {
+    cloneGpuInGame = const {'cache', 'off', 'normal'}.contains(v) ? v : 'cache';
+    _save();
+    notifyListeners();
+    unawaited(pushCloneGpuConfig());
+  }
+
+  void setCloneGpuVramLimitGb(double v) {
+    cloneGpuVramLimitGb = v < 0 ? 0 : v;
+    _markCloneGpuCustom();
+    _save();
+    notifyListeners();
+    unawaited(pushCloneGpuConfig());
+  }
+
+  void setCloneGpuIdleUnloadSec(int v) {
+    cloneGpuIdleUnloadSec = v < 0 ? 0 : v;
+    _markCloneGpuCustom();
+    _save();
+    notifyListeners();
+    unawaited(pushCloneGpuConfig());
+  }
+
+  void setCloneGpuThrottle(double v) {
+    cloneGpuThrottle = v.clamp(0.0, 1.0);
+    _markCloneGpuCustom();
+    _save();
+    notifyListeners();
+    unawaited(pushCloneGpuConfig());
+  }
+
+  void setCloneGpuPrecision(String v) {
+    cloneGpuPrecision =
+        const {'auto', 'bf16', 'fp16'}.contains(v) ? v : 'auto';
+    _save();
+    notifyListeners();
+    unawaited(pushCloneGpuConfig());
+  }
+
+  // Convert the GB ceiling into the fraction-of-card the server expects. Needs
+  // the real card size, which the sidecar reports; with no reading available we
+  // send 0 (uncapped) rather than guessing a wrong fraction.
+  double _cloneGpuVramFraction() {
+    if (cloneGpuVramLimitGb <= 0) return 0;
+    final totalMb = SidecarClient.instance.gpuInfo.value.$3;
+    if (totalMb <= 0) return 0;
+    final frac = (cloneGpuVramLimitGb * 1024) / totalMb;
+    return frac.clamp(0.05, 1.0);
+  }
+
+  // Whether the clone server should currently refuse GPU work: the user asked
+  // for the clone to stand down while a game is running.
+  bool get cloneGpuPausedByGame {
+    if (cloneGpuInGame == 'normal') return false;
+    return SidecarClient.instance.gameModeStatus.value.$1;
+  }
+
+  // Push the GPU-load settings to the clone server. Best-effort: the server is
+  // an optional local process, so failures are silent (the engine already falls
+  // back to Piper when it's unreachable).
+  Future<void> pushCloneGpuConfig() async {
+    final base = cosyvoiceEndpoint.trim();
+    if (base.isEmpty) return;
+    final url = '${base.replaceAll(RegExp(r'/+$'), '')}/config';
+    try {
+      await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'language': lang == 'en' ? 'English' : 'Russian',
+              'precision': cloneGpuPrecision,
+              'vram_fraction': _cloneGpuVramFraction(),
+              'idle_unload_sec': cloneGpuIdleUnloadSec,
+              'throttle': cloneGpuThrottle,
+              'paused': cloneGpuPausedByGame,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Server not running / not reachable — nothing to configure.
+    }
+  }
+
+  // Activate (or stand down) the GPU clone server as the TTS engine. This is
+  // what actually switches the sidecar onto the cloning engine — it needs an
+  // endpoint AND a voice sample, and it stands down entirely while a game runs
+  // if the user chose "off" for game mode.
+  Future<void> applyCloneServer() async {
+    final gameOff = cloneGpuInGame == 'off' &&
+        SidecarClient.instance.gameModeStatus.value.$1;
+    final on = ttsEngineChoice == 'cosyvoice' &&
+        cosyvoiceEndpoint.trim().isNotEmpty &&
+        cosyvoiceClonePath.trim().isNotEmpty &&
+        !gameOff;
+    await SidecarClient.instance.applyCosy(
+      enabled: on,
+      endpoint: cosyvoiceEndpoint.trim(),
+      ref: cosyvoiceClonePath.trim(),
+      promptText: cosyvoiceClonePromptText,
+      speed: cosyvoiceSpeed,
+    );
+    if (on) {
+      // Pre-render the fixed phrase set so common lines play from cache — the
+      // whole point of "cache + Piper" while gaming (zero GPU for known lines).
+      SidecarClient.instance.prerender(clonePhrasesToRender());
+    }
+    await pushCloneGpuConfig();
+  }
+
+  // Re-apply when the game mode flips so the server frees (or reclaims) VRAM in
+  // step with the game, and the engine is restored afterwards. Wired once from
+  // the sidecar bootstrap; a cheap no-op when no clone server is configured.
+  bool _cloneGpuGameHooked = false;
+  bool? _lastGameActive;
+  void hookCloneGpuGameMode() {
+    if (_cloneGpuGameHooked) return;
+    _cloneGpuGameHooked = true;
+    SidecarClient.instance.gameModeStatus.addListener(() {
+      final active = SidecarClient.instance.gameModeStatus.value.$1;
+      if (active == _lastGameActive) return;
+      _lastGameActive = active;
+      if (cosyvoiceEndpoint.trim().isEmpty) return;
+      unawaited(applyCloneServer());
+    });
   }
 
   // Best-effort reachability probe for the CosyVoice HTTP server. Any response

@@ -203,6 +203,7 @@ class SidecarClient {
     _send({'type': 'stt.config', 'model': _sttModel, 'vad': _vadAggr});
     if (_ttsFx != null) _send({'type': 'tts.config', 'fx': _ttsFx});
     if (_cloneEnabled) unawaited(_pushClone());
+    if (_cosyEnabled) unawaited(_pushCosy());
     _ws!.listen((data) {
       try {
         final m = jsonDecode(data as String) as Map<String, dynamic>;
@@ -446,6 +447,13 @@ class SidecarClient {
   // ---- Voice clone (XTTS) — engine-agnostic phrase cache, shared with
   // CosyVoice. State is retained so a reconnect re-applies it. -------------
   bool _cloneEnabled = false;
+  // Clone-server (GPU, Qwen3-TTS / CosyVoice contract) state — retained so a
+  // reconnected sidecar gets it again, exactly like the clone above.
+  bool _cosyEnabled = false;
+  String _cosyEndpoint = '';
+  String _cosyRef = '';
+  String _cosyPrompt = '';
+  double _cosySpeed = 1.0;
   String _cloneRef = '';
   String _cloneLang = 'ru';
   List<String> _clonePhrases = const [];
@@ -523,22 +531,44 @@ class SidecarClient {
     String promptText = '',
     double speed = 1.0,
   }) async {
-    if (enabled && endpoint.isNotEmpty && ref.isNotEmpty) {
+    _cosyEnabled = enabled && endpoint.isNotEmpty && ref.isNotEmpty;
+    _cosyEndpoint = endpoint;
+    _cosyRef = ref;
+    _cosyPrompt = promptText;
+    _cosySpeed = speed;
+    await _pushCosy();
+  }
+
+  Future<void> _pushCosy() async {
+    if (_cosyEnabled) {
       final cacheDir = await _cloneCacheDir();
-      final fp = await _voiceFingerprint(ref);
+      final fp = await _voiceFingerprint(_cosyRef);
       _send({
         'type': 'tts.config',
         'cache_dir': cacheDir,
         'voice_fp': fp,
         'cosy': {
-          'endpoint': endpoint,
-          'ref': ref,
-          'prompt': promptText,
-          'speed': speed,
+          'endpoint': _cosyEndpoint,
+          'ref': _cosyRef,
+          'prompt': _cosyPrompt,
+          'speed': _cosySpeed,
         },
         'engine': 'cosyvoice',
       });
+    } else {
+      // Hand the engine back to Piper. Also the cure for the sidecar's
+      // "synthesis failed -> system voice, and stay there" latch: re-applying
+      // restores the clone once the server is usable again (e.g. after a game).
+      _send({'type': 'tts.config', 'engine': 'piper'});
     }
+  }
+
+  // Ask the sidecar to pre-render a fixed phrase set into the shared clone
+  // cache (no-op unless a cloning engine is active). Cached lines then play
+  // instantly and, crucially, without touching the GPU.
+  void prerender(List<String> phrases) {
+    if (phrases.isEmpty) return;
+    _send({'type': 'tts.prerender', 'phrases': phrases});
   }
 
   Future<void> setDenoise(String mode) async {

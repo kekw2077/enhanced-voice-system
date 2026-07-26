@@ -307,9 +307,9 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineTitle': 'Движок озвучки',
     'ttsEnginePiper': 'Piper',
     'ttsEnginePiperHint': 'быстро, офлайн, CPU',
-    'ttsEngineCosy': 'CosyVoice',
-    'ttsEngineCosyHint': 'качество, GPU',
-    'ttsCosyUnavailable': 'CosyVoice недоступен — сервер не отвечает',
+    'ttsEngineCosy': 'Клон (сервер)',
+    'ttsEngineCosyHint': 'ваш голос: Qwen3-TTS или CosyVoice',
+    'ttsCosyUnavailable': 'Клон-сервер не отвечает — запустите локальный Qwen3-TTS или укажите адрес CosyVoice',
     'motionMode': 'Анимации интерфейса',
     'motionModeDesc':
         'Декоративные анимации (сфера, рамки, идл-волны) нагружают процессор. '
@@ -355,11 +355,11 @@ const Map<String, Map<String, String>> _i18n = {
         'Системные фразы и озвучка команд готовятся заранее и звучат мгновенно; '
             'новый длинный текст синтезируется на ходу. Сверху можно наложить '
             'Voice FX (например, пресет EDI).',
-    'ttsCosyEndpoint': 'Endpoint CosyVoice',
+    'ttsCosyEndpoint': 'Адрес клон-сервера',
     'ttsCosyCheck': 'Проверить соединение',
     'ttsCosyOnline': 'На связи',
     'ttsCosyOffline': 'Не отвечает',
-    'ttsCosyFellBack': 'CosyVoice недоступен — озвучка переключена на Piper',
+    'ttsCosyFellBack': 'Клон-сервер недоступен — озвучка переключена на Piper',
     'ttsCosyChecking': 'Проверка…',
     'ttsCosyWiringHint':
         'Настройки сохраняются. Синтез через CosyVoice подключится, когда сервер будет развёрнут.',
@@ -588,6 +588,37 @@ const Map<String, Map<String, String>> _i18n = {
     'volNoNumber': 'Не расслышал число',
     'volSet': 'Громкость {app}: {N}%',
     'volTarget': 'Целевая громкость, %',
+    'gpuLoadTitle': 'Нагрузка на видеокарту',
+    'gpuLoadHint':
+        'Для локального сервера Qwen3-TTS: профиль ограничивает, сколько '
+            'видеопамяти занимает клон и как быстро освобождает её в простое. '
+            'Удалённый CosyVoice эти настройки игнорирует — он считает на своей машине.',
+    'gpuProfile': 'Профиль',
+    'gpuProfileMax': 'Максимум',
+    'gpuProfileBalanced': 'Баланс',
+    'gpuProfileQuiet': 'Тихий',
+    'gpuProfileCustom': 'Своё',
+    'gpuInGame': 'Когда запущена игра',
+    'gpuInGameDesc':
+        'Определяется игровым режимом (полный экран или высокая занятость '
+            'видеопамяти).',
+    'gpuInGameCache': 'Кэш + Piper',
+    'gpuInGameNormal': 'Как обычно',
+    'gpuInGameOff': 'Выключать',
+    'gpuAdvanced': 'Дополнительно',
+    'gpuVramLimit': 'Лимит видеопамяти',
+    'gpuVramNoLimit': 'Без лимита',
+    'gpuIdleUnload': 'Выгружать из памяти после',
+    'gpuIdleUnloadDesc':
+        'В простое модель убирается из видеопамяти — во время игры видеокарта '
+            'полностью свободна. Первая фраза после паузы прозвучит с задержкой.',
+    'gpuIdleNever': 'Никогда',
+    'gpuThrottle': 'Сдерживание',
+    'gpuThrottleDesc':
+        'Пауза после каждой фразы: средняя нагрузка ниже, синтез медленнее.',
+    'gpuPrecision': 'Точность',
+    'gpuPrecisionDesc': 'bf16 — быстрее на новых картах, fp16 — совместимее.',
+    'gpuPrecisionAuto': 'Авто',
     'add': 'Добавить',
     'cardConnMode': 'Режим подключения',
     'modeOnDevice': 'Локально на устройстве (on-device)',
@@ -1362,9 +1393,9 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEngineTitle': 'Voice engine',
     'ttsEnginePiper': 'Piper',
     'ttsEnginePiperHint': 'fast, offline, CPU',
-    'ttsEngineCosy': 'CosyVoice',
-    'ttsEngineCosyHint': 'quality, GPU',
-    'ttsCosyUnavailable': 'CosyVoice unavailable — server not responding',
+    'ttsEngineCosy': 'Clone (server)',
+    'ttsEngineCosyHint': 'your voice: Qwen3-TTS or CosyVoice',
+    'ttsCosyUnavailable': 'Clone server not responding — start the local Qwen3-TTS or set a CosyVoice address',
     'motionMode': 'Interface animations',
     'motionModeDesc':
         'Decorative animations (sphere, borders, idle waves) cost CPU. '
@@ -1411,11 +1442,11 @@ const Map<String, Map<String, String>> _i18n = {
         'System phrases and command speech are pre-rendered and instant; novel '
             'long text is synthesized on the fly. You can layer Voice FX on top '
             '(e.g. the EDI preset).',
-    'ttsCosyEndpoint': 'CosyVoice endpoint',
+    'ttsCosyEndpoint': 'Clone server address',
     'ttsCosyCheck': 'Check connection',
     'ttsCosyOnline': 'Online',
     'ttsCosyOffline': 'Not responding',
-    'ttsCosyFellBack': 'CosyVoice unavailable — switched to Piper',
+    'ttsCosyFellBack': 'Clone server unavailable — switched to Piper',
     'ttsCosyChecking': 'Checking…',
     'ttsCosyWiringHint':
         'Settings are saved. CosyVoice synthesis connects once the server is deployed.',
@@ -1643,6 +1674,36 @@ const Map<String, Map<String, String>> _i18n = {
     'volNoNumber': "I didn't catch a number",
     'volSet': '{app} volume: {N}%',
     'volTarget': 'Target volume, %',
+    'gpuLoadTitle': 'GPU load',
+    'gpuLoadHint':
+        'For the local Qwen3-TTS server: the profile caps how much video memory '
+            'the clone holds and how quickly it frees it when idle. A remote '
+            'CosyVoice ignores these — it renders on its own machine.',
+    'gpuProfile': 'Profile',
+    'gpuProfileMax': 'Maximum',
+    'gpuProfileBalanced': 'Balanced',
+    'gpuProfileQuiet': 'Quiet',
+    'gpuProfileCustom': 'Custom',
+    'gpuInGame': 'While a game is running',
+    'gpuInGameDesc':
+        'Detected by game mode (fullscreen app or high video-memory use).',
+    'gpuInGameCache': 'Cache + Piper',
+    'gpuInGameNormal': 'As usual',
+    'gpuInGameOff': 'Turn off',
+    'gpuAdvanced': 'Advanced',
+    'gpuVramLimit': 'Video-memory cap',
+    'gpuVramNoLimit': 'No cap',
+    'gpuIdleUnload': 'Unload from memory after',
+    'gpuIdleUnloadDesc':
+        'When idle the model leaves video memory, so the GPU is completely free '
+            'during a game. The first phrase after a pause takes longer.',
+    'gpuIdleNever': 'Never',
+    'gpuThrottle': 'Throttle',
+    'gpuThrottleDesc':
+        'Pause after each phrase: lower average load, slower synthesis.',
+    'gpuPrecision': 'Precision',
+    'gpuPrecisionDesc': 'bf16 is faster on newer cards, fp16 is more compatible.',
+    'gpuPrecisionAuto': 'Auto',
     'add': 'Add',
     'cardConnMode': 'Connection mode',
     'modeOnDevice': 'On-device (local)',

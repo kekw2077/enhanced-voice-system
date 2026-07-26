@@ -28,6 +28,36 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.6.0</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Клон голоса на видеокарте (Qwen3-TTS)</b> — замена вырезанному CPU-клону. Сервер запускается в вашем venv (инструкция: <code>sidecar/GPU_CLONE_SETUP.md</code>), EVS подключается по адресу; движок называется «Клон (сервер)». Веса модели скачиваются на диск, где установлен EVS. Тот же движок работает и с CosyVoice — достаточно сменить адрес, когда рендер переедет на сервер с видеокартой.</li>
+          <li><b>Управление нагрузкой на видеокарту:</b> профили Максимум / Баланс / Тихий — лимит видеопамяти, выгрузка модели из памяти в простое, сдерживание. Тонкая настройка — в «Дополнительно».</li>
+          <li><b>Клон и игры:</b> по умолчанию во время игры знакомые фразы играют из кэша (видеокарта не трогается), новые — обычным голосом. Можно выбрать «Как обычно» или «Выключать»; после выхода из игры клон-голос возвращается сам.</li>
+          <li>Исправлено: клон-сервер вообще не подключался как движок озвучки (настройки сохранялись, но не применялись) и не переживал переподключение голосового движка.</li>
+          <li>Все файлы программы пишутся только на диск, где установлен EVS — временные файлы больше не создаются в системной папке Windows.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 26 Jul 2026 21:30:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.6.0/EVS-Setup-2.6.0.exe"
+        sparkle:version="2.6.0"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHDaEIqg9RD5mty6n2Glb5PP07nwWeeSs0FRaNtkCHFF9XtTLG2gYqeQrBkEReBWxZU3kztvjU9XWRp0="
+        evs:sha256="8163c48256bb629c05c0b31f0403c44eb62d489690d1e713a0d20f7a570e4146"
+        length="16625574"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.5.0</title>
       <description><![CDATA[
         <style>

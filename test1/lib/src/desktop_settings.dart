@@ -4268,6 +4268,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
   late final TextEditingController _instruct =
       TextEditingController(text: widget.app.cosyvoiceInstruct);
   bool _checking = false;
+  bool _gpuAdvOpen = false; // raw GPU-load knobs, collapsed by default
 
   // Emotion presets → i18n label keys (map to instruct phrases once wired).
   static const List<(String, String)> _emotions = [
@@ -4594,8 +4595,135 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         // the voice cloner is discoverable and can be configured up front (they
         // still only take effect once the CosyVoice server is reachable).
         ..._cosyDeepControls(),
+        ..._gpuLoadControls(),
       ],
     );
+  }
+
+  // GPU-load control for the clone server. There is no driver-level "use N% of
+  // the GPU" knob, so the load is shaped by a VRAM ceiling, idle unloading, a
+  // duty-cycle throttle and a game-mode stand-down — presented as one profile
+  // with the raw knobs tucked under "Дополнительно".
+  List<Widget> _gpuLoadControls() {
+    final totalMb = SidecarClient.instance.gpuInfo.value.$3;
+    final maxGb = totalMb > 0 ? (totalMb / 1024).floorToDouble() : 12.0;
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
+        child: Text(app.t('gpuLoadTitle'),
+            style: TextStyle(
+                color: _body(context),
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+        child: Text(app.t('gpuLoadHint'),
+            style: TextStyle(fontSize: 11, color: _faint(context))),
+      ),
+      evsRow(context,
+        stacked: true,
+        label: app.t('gpuProfile'),
+        control: evsSegmentedWide<String>(context, [
+          ('max', app.t('gpuProfileMax')),
+          ('balanced', app.t('gpuProfileBalanced')),
+          ('quiet', app.t('gpuProfileQuiet')),
+          if (app.cloneGpuProfile == 'custom')
+            ('custom', app.t('gpuProfileCustom')),
+        ], app.cloneGpuProfile, app.setCloneGpuProfile),
+      ),
+      evsRow(context,
+        stacked: true,
+        label: app.t('gpuInGame'),
+        desc: app.t('gpuInGameDesc'),
+        control: evsSegmentedWide<String>(context, [
+          ('cache', app.t('gpuInGameCache')),
+          ('normal', app.t('gpuInGameNormal')),
+          ('off', app.t('gpuInGameOff')),
+        ], app.cloneGpuInGame, app.setCloneGpuInGame),
+      ),
+      // Collapsible raw knobs — touching any of them switches the profile to
+      // "Своё", so the preset never silently misreports the real values.
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() => _gpuAdvOpen = !_gpuAdvOpen),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(children: [
+              Icon(
+                  _gpuAdvOpen
+                      ? Icons.keyboard_arrow_down
+                      : Icons.keyboard_arrow_right,
+                  size: 18,
+                  color: _sub(context)),
+              const SizedBox(width: 4),
+              Text(app.t('gpuAdvanced'),
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: _sub(context))),
+            ]),
+          ),
+        ),
+      ),
+      if (_gpuAdvOpen) ...[
+        evsRow(context,
+          label: app.t('gpuVramLimit'),
+          desc: app.cloneGpuVramLimitGb <= 0
+              ? app.t('gpuVramNoLimit')
+              : '${app.cloneGpuVramLimitGb.toStringAsFixed(1)} ГБ / '
+                  '${maxGb.toStringAsFixed(0)} ГБ',
+          control: evsSlider(context,
+            value: app.cloneGpuVramLimitGb.clamp(0, maxGb),
+            min: 0,
+            max: maxGb,
+            divisions: (maxGb * 2).round(),
+            label: app.cloneGpuVramLimitGb <= 0
+                ? app.t('gpuVramNoLimit')
+                : '${app.cloneGpuVramLimitGb.toStringAsFixed(1)} ГБ',
+            onChanged: app.setCloneGpuVramLimitGb,
+          ),
+        ),
+        evsRow(context,
+          label: app.t('gpuIdleUnload'),
+          desc: app.t('gpuIdleUnloadDesc'),
+          control: evsSlider(context,
+            value: app.cloneGpuIdleUnloadSec.toDouble().clamp(0, 600),
+            min: 0,
+            max: 600,
+            divisions: 20,
+            label: app.cloneGpuIdleUnloadSec <= 0
+                ? app.t('gpuIdleNever')
+                : '${app.cloneGpuIdleUnloadSec} c',
+            onChanged: (v) => app.setCloneGpuIdleUnloadSec(v.round()),
+          ),
+        ),
+        evsRow(context,
+          label: app.t('gpuThrottle'),
+          desc: app.t('gpuThrottleDesc'),
+          control: evsSlider(context,
+            value: app.cloneGpuThrottle.clamp(0.0, 1.0),
+            min: 0,
+            max: 1,
+            divisions: 10,
+            label: '${(app.cloneGpuThrottle * 100).round()}%',
+            onChanged: app.setCloneGpuThrottle,
+          ),
+        ),
+        evsRow(context,
+          stacked: true,
+          label: app.t('gpuPrecision'),
+          desc: app.t('gpuPrecisionDesc'),
+          control: evsSegmentedWide<String>(context, [
+            ('auto', app.t('gpuPrecisionAuto')),
+            ('bf16', 'bf16'),
+            ('fp16', 'fp16'),
+          ], app.cloneGpuPrecision, app.setCloneGpuPrecision),
+        ),
+      ],
+    ];
   }
 }
 
