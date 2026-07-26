@@ -2335,7 +2335,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       min: 0.75,
                       max: 1.5,
                       value: app.fontSize.clamp(0.75, 1.5),
-                      activeColor: _accent(context),
+                      activeColor:
+                          _isNexus(context) ? _info(context) : _accent(context),
                       onChanged: (v) => app.setFontSize(v),
                     ),
                   ),

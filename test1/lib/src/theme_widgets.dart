@@ -2220,7 +2220,9 @@ Widget evsSlider(BuildContext context, {
             min: min,
             max: max,
             divisions: divisions,
-            activeColor: _accent(context),
+            // Nexus tracks the same info accent its nav/controls use (§5.4);
+            // classic keeps the original accent untouched.
+            activeColor: _isNexus(context) ? _info(context) : _accent(context),
             onChanged: onChanged,
           ),
         ),

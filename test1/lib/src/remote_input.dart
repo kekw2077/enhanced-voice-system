@@ -1031,24 +1031,58 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
 }
 
 // Small bordered text field matching the settings look (used by the remote panel).
-class _RemoteField extends StatelessWidget {
+// Stateful only to track focus: in the Nexus style the border lights up in the
+// info accent while editing (§5.4). Classic renders exactly as before.
+class _RemoteField extends StatefulWidget {
   const _RemoteField({required this.controller, required this.onChanged});
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   @override
+  State<_RemoteField> createState() => _RemoteFieldState();
+}
+
+class _RemoteFieldState extends State<_RemoteField> {
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onFocus);
+  }
+
+  void _onFocus() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_onFocus);
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
+    final nexus = _isNexus(context);
+    final focused = nexus && _focus.hasFocus;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 140),
       height: 34,
       padding: const EdgeInsets.symmetric(horizontal: 11),
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         color: _overlayFill(context, 0.04),
-        border: Border.all(color: _stroke(context)),
+        border: Border.all(
+          color: focused
+              ? _info(context).withValues(alpha: 0.55)
+              : _stroke(context),
+        ),
       ),
       child: TextField(
-        controller: controller,
-        onChanged: onChanged,
+        controller: widget.controller,
+        focusNode: _focus,
+        onChanged: widget.onChanged,
         keyboardType: TextInputType.number,
         style: TextStyle(fontSize: 12.5, color: _body(context)),
         decoration: const InputDecoration(

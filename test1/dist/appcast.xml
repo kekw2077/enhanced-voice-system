@@ -28,6 +28,32 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.6.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Стиль Nexus — завершающая полировка:</b> ползунки настроек и подсветка активного поля ввода теперь в фирменном акценте Nexus. Классический стиль не изменился ни на пиксель.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 26 Jul 2026 22:15:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.6.1/EVS-Setup-2.6.1.exe"
+        sparkle:version="2.6.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHEhPFJISSG8V32TrxzzXO32/9YTQjlJZ2OhwNsUCHF63h9ah8S5z9NcPfkTbRz8DK/a4t6m3b8TsX5w="
+        evs:sha256="6f1f3d71cf39d369652d6a64c3448eb3165e4ef1d29937b585f210fde5ae3148"
+        length="16625993"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.6.0</title>
       <description><![CDATA[
         <style>
