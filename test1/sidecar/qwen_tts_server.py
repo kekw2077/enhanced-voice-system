@@ -88,7 +88,14 @@ def pin_cache_to(cache_dir: str) -> None:
     os.makedirs(cache_dir, exist_ok=True)
     os.environ["HF_HOME"] = cache_dir
     os.environ["HF_HUB_CACHE"] = os.path.join(cache_dir, "hub")
-    os.environ["TRANSFORMERS_CACHE"] = cache_dir
+    # NB: do NOT set TRANSFORMERS_CACHE. It is deprecated, and pointing it at
+    # cache_dir (a level above HF_HUB_CACHE) makes transformers resolve model
+    # sub-modules against a SECOND, separate cache tree: the weights get
+    # re-downloaded into <cache>/models--… while the real snapshot sits in
+    # <cache>/hub/models--…, and loading then dies on a missing sub-module
+    # ("Can't load feature extractor for …/speech_tokenizer"). HF_HOME already
+    # implies <cache>/hub for every HF library.
+    os.environ.pop("TRANSFORMERS_CACHE", None)
     os.environ["TORCH_HOME"] = os.path.join(cache_dir, "torch")
     os.environ["XDG_CACHE_HOME"] = cache_dir
     # Big temp files (model shards being written) must not land on C: either.
@@ -229,6 +236,11 @@ class QwenTtsEngine:
             except Exception:
                 self._model = Qwen3TTSModel.from_pretrained(
                     self.model_id, **kwargs)
+            # Start the idle clock NOW. It defaults to 0.0, so without this the
+            # idle thread sees "unused since epoch" and evicts the model the
+            # moment it appears — every single phrase would then pay the full
+            # ~15 s reload.
+            self._last_used = time.time()
             _log(f"ready in {time.time() - t0:.1f}s")
         finally:
             self._loading = False
@@ -252,7 +264,7 @@ class QwenTtsEngine:
         while not self._stop.wait(5.0):
             try:
                 if (self.idle_unload_sec > 0 and self._model is not None
-                        and not self._loading
+                        and not self._loading and self._last_used > 0
                         and time.time() - self._last_used > self.idle_unload_sec):
                     _log(f"idle > {self.idle_unload_sec}s")
                     self.unload()
@@ -272,6 +284,13 @@ class QwenTtsEngine:
         if getattr(data, "ndim", 1) > 1:
             data = data.mean(axis=1)
 
+        # Without a transcript of the reference clip the model can only clone the
+        # TIMBRE (x-vector mode); its in-context mode hard-fails with "ref_text is
+        # required when x_vector_only_mode=False". EVS treats the transcript as
+        # optional, so pick the mode that matches what we were actually given —
+        # supplying it (Настройки → образец голоса) gives the better clone.
+        ref_text = (ref_text or "").strip()
+        x_only = not ref_text
         with self._lock:
             t0 = time.time()
             self._load()
@@ -279,7 +298,8 @@ class QwenTtsEngine:
                 text=text,
                 language=language or self.language,
                 ref_audio=(data, sr_in),
-                ref_text=ref_text or "",
+                ref_text=ref_text or None,
+                x_vector_only_mode=x_only,
             )
             self._last_used = time.time()
             elapsed = self._last_used - t0
