@@ -886,6 +886,38 @@ class ComponentManager {
     return download(id);
   }
 
+  // One-time reclaim: the CPU voice clone (XTTS) was removed from EVS — it
+  // produced unintelligible speech and its component + caches weighed ~8 GB on
+  // disk. Delete any leftover clone install/cache/markers so an updated machine
+  // gets the space back. Best-effort and idempotent (a no-op once gone), so it's
+  // safe to call on every launch.
+  Future<void> purgeClone() async {
+    try {
+      final sep = io.Platform.pathSeparator;
+      final dir = await _componentsDir();
+      for (final n in const ['clone', 'tts-clone', 'tts-cache']) {
+        try {
+          final d = io.Directory('$dir$sep$n');
+          if (await d.exists()) await d.delete(recursive: true);
+        } catch (_) {}
+      }
+      for (final f in const [
+        '.clone.version',
+        '.tts-clone.version',
+        'evs_clone.zip',
+        'evs_clone.zip.new',
+        'evs_clone.zip.part',
+        'evs_clone.zip.001',
+        'evs_clone.zip.002',
+      ]) {
+        try {
+          final file = io.File('$dir$sep$f');
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   Future<String> _versionMarkerPath(String id) async =>
       '${await _componentsDir()}${io.Platform.pathSeparator}.$id.version';
 

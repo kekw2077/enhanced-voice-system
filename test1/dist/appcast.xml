@@ -28,6 +28,32 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.5.0</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Клонировщик голоса на CPU (XTTS) полностью удалён:</b> он давал невнятную озвучку, а его компонент с кэшами занимал около 8 ГБ на диске. При обновлении EVS сам освобождает это место (удаляет остатки клона), и движок больше никогда не докачивает клон-компонент. Голос — обычный (Piper). GPU-клон вернём позже отдельным решением.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 26 Jul 2026 20:00:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.5.0/EVS-Setup-2.5.0.exe"
+        sparkle:version="2.5.0"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHCs9HYzlGKHYsi3F2uqEHz5mO4kYuzr6+NNu8iQCHAJCafiFSvMnCjhUXt4VkPE5Zihi29BV5ekhx1I="
+        evs:sha256="eb3112e4f5fe1ae40795849a3cc875c3165e55afb3a1725311db516504a517e3"
+        length="16618328"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.4.9</title>
       <description><![CDATA[
         <style>

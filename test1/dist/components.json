@@ -1,15 +1,5 @@
 {
   "components": {
-    "clone": {
-      "file": "evs_clone.zip",
-      "exe": "evs_clone.exe",
-      "archive": true,
-      "version": "1",
-      "url": "https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_clone.zip",
-      "sha256": "38796364d5fa1d04051d495774baddaa95152c6a48c9796d43dd1812b4e466af",
-      "size": 2864855916,
-      "parts": 2
-    },
     "sidecar": {
       "file": "evs_sidecar.zip",
       "exe": "evs_sidecar.exe",
