@@ -582,7 +582,11 @@ class AppState extends ChangeNotifier {
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
-    cloneEnabled = prefs.getBool('cloneEnabled') ?? false;
+    // CPU-XTTS clone disabled: the CPU build was unintelligible, so the app no
+    // longer runs it (UI hidden). Forced false regardless of the persisted pref
+    // so a previously-enabled machine reverts to Piper on launch. GPU render
+    // (Qwen3-TTS) will re-introduce cloning later. Was: prefs.getBool('cloneEnabled').
+    cloneEnabled = false;
     cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
     activeVoicePreset = prefs.getString('activeVoicePreset') ?? '';
@@ -646,6 +650,12 @@ class AppState extends ChangeNotifier {
         conversations = [];
       }
     }
+    // Prime the sidecar's retained voice-FX config so it's (re)applied on every
+    // connect. Otherwise _ttsFx stays null on a fresh launch (setTtsFx is only
+    // ever called from the settings screen), the on-connect handler in
+    // SidecarClient sends nothing, and the voice plays with no effects until
+    // settings are opened — the "FX resets to normal after restart" bug.
+    unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
     notifyListeners();
     fetchModels();
   }
@@ -1020,7 +1030,11 @@ class AppState extends ChangeNotifier {
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
-    cloneEnabled = prefs.getBool('cloneEnabled') ?? false;
+    // CPU-XTTS clone disabled: the CPU build was unintelligible, so the app no
+    // longer runs it (UI hidden). Forced false regardless of the persisted pref
+    // so a previously-enabled machine reverts to Piper on launch. GPU render
+    // (Qwen3-TTS) will re-introduce cloning later. Was: prefs.getBool('cloneEnabled').
+    cloneEnabled = false;
     cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
     activeVoicePreset = prefs.getString('activeVoicePreset') ?? '';
@@ -2010,7 +2024,12 @@ class AppState extends ChangeNotifier {
         cmd.speakPhrase.trim().isNotEmpty ? cmd.speakPhrase.trim() : t('vaDone')
       );
     }
-    var n = NumberWords.extract(utterance) ?? cmd.defaultValue;
+    // Use the value configured on the command (the target the user set in the
+    // wizard) first, so running it never depends on hearing a number in speech.
+    // That dependency broke both the voice path ("не расслышал число") and the
+    // manual test-run (empty utterance). A spoken number still overrides when
+    // present and the command has no fixed target.
+    var n = cmd.defaultValue ?? NumberWords.extract(utterance);
     if (n == null) return (false, t('volNoNumber'));
     n = n.clamp(cmd.argMin, cmd.argMax);
     final r =

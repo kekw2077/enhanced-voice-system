@@ -1537,7 +1537,11 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
   Future<void> _send() async {
     final app = context.read<AppState>();
     final text = _controller.text.trim();
-    if (text.isEmpty || _sending || app.isModelLoading) return;
+    // Block a new send while a reply is still generating / the model is loading
+    // (mirrors the classic chat, which stays locked until the turn finishes).
+    if (text.isEmpty || _sending || app.isModelLoading || app.isGenerating) {
+      return;
+    }
     app.buzz();
     _controller.clear();
     setState(() => _sending = true);
@@ -1677,6 +1681,46 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
   }
 
   Widget _inputRow(BuildContext context, AppState app) {
+    // Commands-only mode: text chat is locked, exactly like the classic bar. The
+    // mic stays so push-to-talk voice commands still work.
+    if (!app.chatEnabled) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: _stroke(context))),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: _overlayFill(context, 0.05),
+                  border: Border.all(color: _stroke(context)),
+                ),
+                child: Row(children: [
+                  Icon(Icons.lock_outline, size: 16, color: _sub(context)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(app.t('chatDisabledHint'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: EvsType.body
+                            .copyWith(fontSize: 12.5, color: _sub(context))),
+                  ),
+                ]),
+              ),
+            ),
+            const SizedBox(width: 9),
+            _micBtn(context),
+          ],
+        ),
+      );
+    }
+    final loading = app.isModelLoading;
+    final busy = _sending || app.isGenerating || loading;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
@@ -1693,6 +1737,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
               ),
               child: TextField(
                 controller: _controller,
+                enabled: !loading,
                 minLines: 1,
                 maxLines: 4,
                 textInputAction: TextInputAction.send,
@@ -1704,14 +1749,36 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                   contentPadding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 11),
                   border: InputBorder.none,
-                  hintText: app.t('nxChatHint'),
+                  hintText:
+                      loading ? app.t('preparingModel') : app.t('nxChatHint'),
                   hintStyle: TextStyle(color: _faint(context), fontSize: 13),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 9),
-          _iconBtn(context, Icons.send_rounded, _send),
+          // Send is locked while a reply generates / the model loads — the busy
+          // spinner replaces the button so no second message can be fired off,
+          // matching the classic chat's behaviour.
+          busy
+              ? Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: _overlayFill(context, 0.05),
+                    border: Border.all(color: _stroke(context)),
+                  ),
+                  child: Center(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: _sub(context)),
+                    ),
+                  ),
+                )
+              : _iconBtn(context, Icons.send_rounded, _send),
           const SizedBox(width: 9),
           _micBtn(context),
         ],

@@ -1380,8 +1380,9 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     } else if (t == VoiceCommandType.file) {
       await _pickFileValue();
     } else if (t == VoiceCommandType.appVolume) {
-      // Default the phrase template so the {N} slot is discoverable.
-      if (_phraseCtrl.text.trim().isEmpty) _phraseCtrl.text = 'громкость на {N}';
+      // Plain trigger phrase (no {N} template): the target volume is a fixed
+      // value chosen in this step, so the phrase is matched like any other
+      // command and running it never has to parse a number out of speech.
       setState(() {
         _sessions = null;
         _step = 1;
@@ -1432,6 +1433,9 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     if (_type == VoiceCommandType.appVolume) {
       if (_avProcess.trim().isEmpty) return;
       final def = int.tryParse(_avDefaultCtrl.text.trim());
+      // A numeric action needs its target/step value baked in; without it the
+      // command would fail at runtime with "не расслышал число".
+      if (_avAction != 'mute' && _avAction != 'unmute' && def == null) return;
       Navigator.pop(
           context,
           VoiceCommand(
@@ -1503,7 +1507,10 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         ),
         if (_step == 1 && _type == VoiceCommandType.appVolume)
           TextButton(
-            onPressed: _avProcess.trim().isEmpty
+            onPressed: (_avProcess.trim().isEmpty ||
+                    (_avAction != 'mute' &&
+                        _avAction != 'unmute' &&
+                        _avDefaultCtrl.text.trim().isEmpty))
                 ? null
                 : () => setState(() => _step = 2),
             child: Text(app.t('next')),
@@ -1599,7 +1606,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
             const SizedBox(height: 10),
             Row(children: [
               Expanded(
-                child: Text(app.t('volDefault'),
+                child: Text(app.t(_avAction == 'set' ? 'volTarget' : 'volDefault'),
                     style: TextStyle(
                         fontSize: 12.5, color: _body(context))),
               ),
@@ -1607,6 +1614,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                 width: 80,
                 child: TextField(
                   controller: _avDefaultCtrl,
+                  // Rebuild so the Next/Save buttons enable once a value exists.
+                  onChanged: (_) => setState(() {}),
                   keyboardType: TextInputType.number,
                   style: TextStyle(fontSize: 12.5, color: _body(context)),
                   decoration: InputDecoration(

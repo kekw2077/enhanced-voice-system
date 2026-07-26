@@ -4082,7 +4082,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             control: evsToggle(context, app.announceReady, app.setAnnounceReady),
           ),
           _TtsEngineCard(app),
-          _VoiceCloneCard(app),
+          // CPU-XTTS clone hidden: the CPU build produced unintelligible speech
+          // ("набор звуков"). TTS falls back to Piper. The GPU render
+          // (Qwen3-TTS) will replace it later; re-add _VoiceCloneCard(app) then.
           _TtsInterpCard(app),
           evsRow(context, 
             label: app.t('ttsRate'),
@@ -4730,6 +4732,9 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
 // this one is the local CPU cloner (its own component + phrase cache) while
 // CosyVoice's sample belongs to its remote GPU server. Keeping them in one card
 // made the two sets of settings read as one and confused which was which.
+//
+// Currently NOT shown (CPU build was unintelligible) — kept for the GPU-render
+// rework. ignore: unused_element
 class _VoiceCloneCard extends StatefulWidget {
   const _VoiceCloneCard(this.app);
   final AppState app;
