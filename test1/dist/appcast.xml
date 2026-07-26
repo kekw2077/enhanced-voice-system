@@ -28,6 +28,33 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.4.7</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Подключение телефона:</b> QR теперь по умолчанию отдаёт адрес локальной сети (Wi-Fi), а не Tailscale — телефон в той же сети раньше подключался к недостижимому 100.x и «сканировал, но не соединялся». Добавлен выбор адреса (Wi-Fi / Tailscale) и видимый host:port для ручного ввода.</li>
+          <li><b>Клон голоса:</b> заготовки фраз теперь реально сохраняются в кэш (была ошибка записи временного файла) — прогон один раз, дальше мгновенно, без повторной подготовки после команд. Голосовой движок обновится автоматически при запуске.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 26 Jul 2026 14:30:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.4.7/EVS-Setup-2.4.7.exe"
+        sparkle:version="2.4.7"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHHhj7Id/3SzXpa81TK1+j0iP0rTr4NaNUI3TsmYCHBPznYWoDuhwLeiL+RLPi5k7B4k1bDYl3H6hEfo="
+        evs:sha256="eb5e58eaf72826fb51b169c9036345ece639873ac9fb6d15339159299b690755"
+        length="16621485"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.4.6</title>
       <description><![CDATA[
         <style>

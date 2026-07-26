@@ -617,6 +617,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
       TextEditingController(text: widget.app.remoteInputPort.toString());
   List<String> _addrs = [];
   String? _pairCode;
+  String? _selectedAddr; // which local address the QR advertises
 
   AppState get app => widget.app;
 
@@ -637,7 +638,33 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
     super.dispose();
   }
 
-  String get _primaryAddr => _addrs.isNotEmpty ? _addrs.first : '127.0.0.1';
+  // The address the QR advertises. Defaults to the most likely SAME-WI-FI LAN
+  // address (192.168 → 10 → 172.16-31) rather than a Tailscale 100.x one: a
+  // phone on the same Wi-Fi but NOT on the Tailnet could scan the code yet never
+  // reach a 100.x host ("scans but won't connect"). The user can still pick
+  // Tailscale explicitly when the phone is on the Tailnet.
+  String get _primaryAddr {
+    if (_selectedAddr != null && _addrs.contains(_selectedAddr)) {
+      return _selectedAddr!;
+    }
+    return _defaultAddr(_addrs);
+  }
+
+  static String _defaultAddr(List<String> addrs) {
+    if (addrs.isEmpty) return '127.0.0.1';
+    bool p(String a, String pre) => a.startsWith(pre);
+    for (final pre in const ['192.168.', '10.', '172.']) {
+      final m = addrs.firstWhere(
+          (a) => p(a, pre) && !a.startsWith('169.254.'),
+          orElse: () => '');
+      if (m.isNotEmpty && !(pre == '10.' && m == '10.8.1.1')) return m;
+    }
+    // Nothing obviously-LAN: prefer any non-link-local, else the first.
+    return addrs.firstWhere((a) => !a.startsWith('169.254.'),
+        orElse: () => addrs.first);
+  }
+
+  bool _isTailscale(String a) => a.startsWith('100.');
 
   void _newCode() {
     setState(() => _pairCode = RemoteInputServer.instance.newPairCode());
@@ -649,6 +676,61 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
         'port': app.remoteInputPort,
         if (_pairCode != null) 'code': _pairCode,
       });
+
+  // Address chips: the phone must be able to REACH the chosen address, so let
+  // the user pick between Wi-Fi/LAN (same router) and Tailscale (same Tailnet).
+  Widget _addrPicker(BuildContext context) {
+    final chosen = _primaryAddr;
+    final addrs = _addrs.where((a) => !a.startsWith('169.254.')).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(app.t('remoteAddrPick'),
+            style: TextStyle(fontSize: 11.5, color: _sub(context))),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final a in addrs)
+              GestureDetector(
+                onTap: () => setState(() => _selectedAddr = a),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: a == chosen
+                        ? _accent(context).withValues(alpha: 0.14)
+                        : _overlayFill(context, 0.04),
+                    border: Border.all(
+                      color: a == chosen
+                          ? _accent(context).withValues(alpha: 0.4)
+                          : _stroke(context),
+                    ),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(_isTailscale(a) ? 'Tailscale' : 'Wi-Fi',
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                            color: a == chosen
+                                ? _accent(context)
+                                : _faint(context))),
+                    const SizedBox(width: 6),
+                    Text(a,
+                        style: EvsType.mono.copyWith(
+                            fontSize: 11.5,
+                            color:
+                                a == chosen ? _txt(context) : _sub(context))),
+                  ]),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 
   String _deviceStatus(RemoteDevice d) {
     if (d.lastSeen.isEmpty) return app.t('remoteNever');
@@ -808,6 +890,10 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                               letterSpacing: 2,
                               color: _txt(context))),
                       const SizedBox(height: 6),
+                      SelectableText('$_primaryAddr:${app.remoteInputPort}',
+                          style: EvsType.mono.copyWith(
+                              fontSize: 12.5, color: _body(context))),
+                      const SizedBox(height: 4),
                       Text(app.t('remotePairHint'),
                           style: TextStyle(
                               fontSize: 11.5, color: _faint(context))),
@@ -829,6 +915,11 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                 ),
               ],
             ),
+          ),
+        if (_pairCode != null && _addrs.length > 1)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 2, 14, 4),
+            child: _addrPicker(context),
           ),
       ],
     );

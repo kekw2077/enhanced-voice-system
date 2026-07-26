@@ -532,6 +532,8 @@ const Map<String, Map<String, String>> _i18n = {
         'Введите этот код (или отсканируйте QR) в приложении на телефоне. Действует 5 минут.',
     'remoteNewCode': 'Обновить код',
     'remoteScanQr': 'QR для подключения',
+    'remoteAddrPick':
+        'Адрес для телефона (он должен видеть эту сеть): Wi-Fi — тот же роутер, Tailscale — тот же Tailnet.',
     'remoteUnpair': 'Отвязать',
     'remotePermVoice': 'Голос',
     'remotePermText': 'Текст',
@@ -1584,6 +1586,8 @@ const Map<String, Map<String, String>> _i18n = {
         'Enter this code (or scan the QR) in the phone app. Valid for 5 minutes.',
     'remoteNewCode': 'New code',
     'remoteScanQr': 'QR to connect',
+    'remoteAddrPick':
+        'Address for the phone (it must be on this network): Wi-Fi — same router, Tailscale — same Tailnet.',
     'remoteUnpair': 'Unpair',
     'remotePermVoice': 'Voice',
     'remotePermText': 'Text',
