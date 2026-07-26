@@ -703,6 +703,19 @@ class TtsEngine:
         self._active = self._pyttsx3
         self._active_name = "pyttsx3"
 
+    def _fallback_engine(self, failed):
+        """Best replacement for an engine that just failed to synthesize.
+
+        A failing CLONE engine drops to Piper (a real neural voice) whenever a
+        Piper voice is installed — the robotic system SAPI voice is the LAST
+        resort, not the first. This is what makes the app's "cache + Piper"
+        game-mode promise true: while the clone server stands down, cached
+        phrases still play in the cloned voice and anything new is spoken by
+        Piper instead of SAPI."""
+        if failed is not self._piper and self._piper.available:
+            return self._piper, "piper"
+        return self._pyttsx3, "pyttsx3"
+
     def preview(self, voice_dir: str, voice_id: str, text: str,
                 rate: float = 1.0, volume: float = 1.0) -> None:
         """Speak a fixed sample in a specific Piper voice WITHOUT touching the
@@ -900,16 +913,26 @@ class TtsEngine:
                 res = engine.synthesize(text, rate, volume)
             except Exception:
                 res = None
-        # Piper / clone failed at runtime -> drop to the system voice for this
-        # utterance (and stay there) with a UI event.
+        # Piper / clone failed at runtime -> fall back for this utterance (and
+        # stay there) with a UI event. A failed CLONE prefers Piper; only a
+        # failed/absent Piper drops all the way to the system voice.
         if res is None and (engine is self._piper or self._is_clone(engine)):
+            alt, alt_name = self._fallback_engine(engine)
             self._emit_status(self._active_name, self._voice, "error",
-                              "synthesis failed; using system voice")
-            self._fallback_to_pyttsx3()
+                              "synthesis failed; using %s" % alt_name)
+            self._active = alt
+            self._active_name = alt_name
             try:
-                res = self._pyttsx3.synthesize(text, rate, volume)
+                res = alt.synthesize(text, rate, volume)
             except Exception:
                 res = None
+            if res is None and alt is not self._pyttsx3:
+                # Piper failed too — last resort is the system voice.
+                self._fallback_to_pyttsx3()
+                try:
+                    res = self._pyttsx3.synthesize(text, rate, volume)
+                except Exception:
+                    res = None
         played = False
         if res is not None and not self._stop.is_set():
             played = self._play_samples(res[0], res[1], on_level)
