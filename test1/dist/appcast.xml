@@ -28,6 +28,35 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.9.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Исправлено: заготовленные фразы клон-голоса не воспроизводились</b> — говорил системный голос. Причин было две. Движок клона нельзя было выбрать, пока сервер выключен (кнопка блокировалась), а кэш заготовок читается только при выбранном клоне — выхода из этого состояния в интерфейсе не было. И сайдкар искал кэш только у активного движка, поэтому остановленный сервер прятал готовые фразы за системным голосом. Теперь кэш проверяется первым и не зависит от того, какой движок запущен.</li>
+          <li><b>Клон-сервер восстанавливается сам:</b> как только он снова доступен, EVS возвращается на него в течение минуты — заходить в настройки не нужно.</li>
+          <li><b>Разовая починка настроек:</b> если клон настроен, а голос Piper не установлен, движок озвучки возвращается на клон.</li>
+          <li>В строке состояния вместо «не отвечает» — «сервер офлайн, заготовки из кэша».</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 27 Jul 2026 14:30:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.9.1/EVS-Setup-2.9.1.exe"
+        sparkle:version="2.9.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHC4KevgalcZUhvhtNFs+ni8/wNoXD3iY2BtWdiECHAXrL6GclTm2JdL5t5FBpd2BN+TwyxTHIg8gogA="
+        evs:sha256="a9239491abd5385fa69d50d21db737ebe1085c919c4128ea11229aca3f5688f3"
+        length="16650989"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.9.0</title>
       <description><![CDATA[
         <style>

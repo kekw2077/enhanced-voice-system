@@ -2507,7 +2507,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         if (app.ttsEngineChoice == 'cosyvoice') {
           voice = app.t('ttsEngineCosy');
           voiceOk = app.cosyvoiceOnline == true;
-          if (!voiceOk) voice = '$voice — ${app.t('ttsCosyOffline')}';
+          // Offline is not "dead": pre-rendered phrases still play from the
+          // cache in the cloned voice, so say that instead of just "не отвечает".
+          if (!voiceOk) voice = '$voice — ${app.t('voiceStatusCache')}';
         } else if (app.ttsPiperVoice.isNotEmpty) {
           voice = 'Piper';
           voiceOk = true;
@@ -5081,6 +5083,13 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
     // status refreshes on every change.
     context.watch<AppState>();
     final cosyOnline = app.cosyvoiceOnline == true;
+    // Selectable as soon as an endpoint AND a voice sample exist — being
+    // reachable RIGHT NOW is not a requirement. Gating on the live probe was a
+    // dead end: the pre-rendered phrase cache only plays while a cloning engine
+    // is selected, so a stopped server made its own cache unreachable and left
+    // no way back in the UI.
+    final cosyConfigured = app.cosyvoiceEndpoint.trim().isNotEmpty &&
+        app.cosyvoiceClonePath.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -5091,13 +5100,19 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                 enabled: true),
             const SizedBox(width: 8),
             _engineChip('cosyvoice', 'ttsEngineCosy', 'ttsEngineCosyHint',
-                enabled: cosyOnline),
+                enabled: cosyConfigured),
           ]),
         ),
-        if (!cosyOnline)
+        if (!cosyConfigured)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
             child: Text(app.t('ttsCosyUnavailable'),
+                style: TextStyle(fontSize: 11.5, color: _warn(context))),
+          )
+        else if (!cosyOnline)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+            child: Text(app.t('ttsCosyFellBack'),
                 style: TextStyle(fontSize: 11.5, color: _warn(context))),
           ),
         // Endpoint + check.

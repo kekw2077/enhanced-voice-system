@@ -24,6 +24,7 @@ import os
 import queue
 import sys
 import threading
+import time
 
 
 def _log(msg: str) -> None:
@@ -560,6 +561,10 @@ class TtsEngine:
         self._active: BaseTtsEngine = self._pyttsx3
         self._active_name = "pyttsx3"
         self._switching = False
+        # Earliest moment the configured clone engine may be tried again after a
+        # failed render (0 = right now). Keeps a dead server from being probed on
+        # every single utterance while still recovering on its own.
+        self._clone_retry_at = 0.0
 
         self._queue: "queue.Queue" = queue.Queue()
         self._worker: threading.Thread | None = None
@@ -606,6 +611,7 @@ class TtsEngine:
 
     def set_engine(self, name: str) -> None:
         self._desired = name if name in self._engines else "piper"
+        self._clone_retry_at = 0.0  # explicit choice deserves an immediate try
         _log(f"set_engine: requested '{name}' -> desired '{self._desired}'")
         threading.Thread(target=self._apply_blocking, daemon=True).start()
 
@@ -620,6 +626,7 @@ class TtsEngine:
                         speed=None) -> None:
         self._cosy.set_config(endpoint=endpoint, ref=ref,
                               prompt_text=prompt_text, speed=speed)
+        self._clone_retry_at = 0.0
         if self._desired == "cosyvoice":
             threading.Thread(target=self._apply_blocking, daemon=True).start()
 
@@ -796,17 +803,33 @@ class TtsEngine:
     def _is_clone(self, engine) -> bool:
         return engine is self._clone or engine is self._cosy
 
+    def _desired_clone(self):
+        """The cloning engine the user CONFIGURED, whatever is active right now.
+
+        The cache used to be keyed on (and gated by) the *active* engine, so a
+        clone server that was merely offline made every pre-rendered phrase
+        unreachable: the manager had already fallen back, `_is_clone(active)`
+        was false, and 21 phrases rendered in the user's own voice sat on disk
+        while Windows SAPI did the talking."""
+        if self._desired in ("xtts", "cosyvoice"):
+            return self._engines[self._desired], self._desired
+        return None, ""
+
+    def _clone_retry_ok(self) -> bool:
+        return time.time() >= self._clone_retry_at
+
     def _cache_ok(self, rate: float) -> bool:
         # Cache only at natural speed — rate bakes into synthesis, so a changed
         # rate needs its own render; the common case (rate≈1.0) stays instant.
         return bool(self._cache_dir and self._voice_fp) and abs(rate - 1.0) < 0.02
 
-    def _cache_file(self, text: str):
-        lang = getattr(self._active, "_lang", "ru")
-        key = "%s|%s|%s|%s" % (self._active_name, self._voice_fp, lang,
-                               text.strip())
+    def _cache_file(self, text: str, name: str = "", engine=None):
+        name = name or self._active_name
+        lang = getattr(engine if engine is not None else self._active,
+                       "_lang", "ru")
+        key = "%s|%s|%s|%s" % (name, self._voice_fp, lang, text.strip())
         h = hashlib.sha1(key.encode("utf-8")).hexdigest()
-        folder = os.path.join(self._cache_dir, self._active_name, self._voice_fp)
+        folder = os.path.join(self._cache_dir, name, self._voice_fp)
         return folder, os.path.join(folder, h + ".wav")
 
     @staticmethod
@@ -851,8 +874,11 @@ class TtsEngine:
         engine so they later play instantly. Skips parametric phrases ({N}) and
         ones already cached; emits `tts.prerender` progress."""
         def _run() -> None:
-            eng = self._active
-            if not self._is_clone(eng) or not (self._cache_dir and self._voice_fp):
+            # Render with the CONFIGURED clone engine, not the active one: the
+            # user may press "заготовить заново" right after starting the
+            # server, while the manager is still on its fallback.
+            eng, name = self._desired_clone()
+            if eng is None or not (self._cache_dir and self._voice_fp):
                 self._emit({"type": "tts.prerender", "state": "skip",
                             "done": 0, "total": 0})
                 return
@@ -876,7 +902,7 @@ class TtsEngine:
             for p in uniq:
                 if self._stop.is_set():
                     break
-                folder, cf = self._cache_file(p)
+                folder, cf = self._cache_file(p, name, eng)
                 if not os.path.isfile(cf):
                     try:
                         res = eng.synthesize(p, 1.0, 1.0)
@@ -892,23 +918,47 @@ class TtsEngine:
         threading.Thread(target=_run, daemon=True).start()
 
     def _play_one(self, text: str, rate: float, volume: float, on_level) -> None:
-        engine = self._active
         res = None
-        # Cloning engines: serve from / populate the shared phrase cache.
-        if self._is_clone(engine) and self._cache_ok(rate):
-            folder, cf = self._cache_file(text)
+        # 1) Pre-rendered phrase in the cloned voice. Checked FIRST and keyed on
+        #    the configured clone engine, so a stopped/unreachable server (or a
+        #    fallback latched by an earlier failure) can no longer hide a cache
+        #    full of the user's own voice behind the Windows system voice.
+        clone_eng, clone_name = self._desired_clone()
+        cf = folder = ""
+        if clone_eng is not None and self._cache_ok(rate):
+            folder, cf = self._cache_file(text, clone_name, clone_eng)
             if os.path.isfile(cf):
                 res = self._read_wav(cf)
-            if res is None:
-                try:
-                    res = engine.synthesize(text, 1.0, 1.0)  # natural, cacheable
-                except Exception:
-                    res = None
                 if res is not None:
-                    self._store_wav(cf, folder, res[0], res[1])
-            if res is not None:
-                res = (self._scale(res[0], volume), res[1])
-        else:
+                    res = (self._scale(res[0], volume), res[1])
+        # 2) Not cached: render it with the clone engine and store it. This also
+        #    re-arms the clone after the server comes back — retried at most
+        #    once a minute so a dead endpoint doesn't stall every utterance.
+        clone_tried = False
+        if res is None and cf and self._clone_retry_ok():
+            clone_tried = True
+            r = None
+            try:
+                if not clone_eng.is_loaded:
+                    clone_eng.load()
+                r = clone_eng.synthesize(text, 1.0, 1.0)  # natural, cacheable
+            except Exception:
+                r = None
+            if r is not None:
+                self._store_wav(cf, folder, r[0], r[1])
+                if self._active is not clone_eng:
+                    self._active = clone_eng
+                    self._active_name = clone_name
+                    _log(f"clone '{clone_name}' recovered -> ACTIVE")
+                    self._emit_status(clone_name, self._voice, "ready")
+                res = (self._scale(r[0], volume), r[1])
+            else:
+                self._clone_retry_at = time.time() + 60.0
+        # 3) Anything else (Piper, system voice — and the clone at a non-natural
+        #    rate, which bypasses the cache). Skipped when step 2 already tried
+        #    this exact engine, so a dead server isn't called twice per phrase.
+        engine = self._active
+        if res is None and not (clone_tried and engine is clone_eng):
             try:
                 res = engine.synthesize(text, rate, volume)
             except Exception:

@@ -972,6 +972,7 @@ class AppState extends ChangeNotifier {
     try {
       unawaited(applyCloneConfig());
     } catch (_) {}
+    _restoreCloneEngineOnce();
     try {
       unawaited(applyCloneServer());
     } catch (_) {}
@@ -1599,6 +1600,26 @@ class AppState extends ChangeNotifier {
   // what actually switches the sidecar onto the cloning engine — it needs an
   // endpoint AND a voice sample, and it stands down entirely while a game runs
   // if the user chose "off" for game mode.
+  // One-time repair for copies stranded by the old auto-revert: until 2.8.1 an
+  // unreachable clone server rewrote ttsEngineChoice to 'piper' and persisted
+  // it. With no Piper voice installed that means the Windows system voice —
+  // and, because the phrase cache is only consulted while a CLONING engine is
+  // selected, a fully rendered cache of the user's own voice sat unused with no
+  // way back in the UI (the CosyVoice chip was disabled while offline).
+  // Restores the clone exactly in that state: clone configured, no Piper voice.
+  void _restoreCloneEngineOnce() {
+    if (prefs.getBool('cloneEngineRestored') == true) return;
+    unawaited(prefs.setBool('cloneEngineRestored', true));
+    if (ttsEngineChoice != 'piper' ||
+        ttsPiperVoice.trim().isNotEmpty ||
+        cosyvoiceEndpoint.trim().isEmpty ||
+        cosyvoiceClonePath.trim().isEmpty) {
+      return;
+    }
+    ttsEngineChoice = 'cosyvoice';
+    unawaited(prefs.setString('ttsEngineChoice', ttsEngineChoice));
+  }
+
   Future<void> applyCloneServer() async {
     final gameOff = cloneGpuInGame == 'off' &&
         SidecarClient.instance.gameModeStatus.value.$1;

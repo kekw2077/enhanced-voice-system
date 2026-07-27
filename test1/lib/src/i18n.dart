@@ -218,6 +218,7 @@ const Map<String, Map<String, String>> _i18n = {
     'voiceStatusReady': 'слушает',
     'voiceStatusOff': 'движок не запущен',
     'voiceStatusSystem': 'системный (голос не выбран)',
+    'voiceStatusCache': 'сервер офлайн, заготовки из кэша',
     'settingsSearchEmpty': 'Ничего не найдено',
     'micGain': 'Усиление микрофона',
     'micGainDesc':
@@ -1373,6 +1374,7 @@ const Map<String, Map<String, String>> _i18n = {
     'voiceStatusReady': 'listening',
     'voiceStatusOff': 'engine not running',
     'voiceStatusSystem': 'system (no voice selected)',
+    'voiceStatusCache': 'server offline, cached phrases',
     'settingsSearchEmpty': 'Nothing found',
     'micGain': 'Microphone gain',
     'micGainDesc':
