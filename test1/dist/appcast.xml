@@ -28,6 +28,32 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.7.2</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Установщик с выбором модулей:</b> при первой установке можно отметить, что доставить сразу — голосовой движок, распознавание речи GigaAM-v3, шумоподавление. Выбранное скачивается прямо во время установки, и приложение стартует уже готовым. Ничего не выбрали — всё по-прежнему доступно из самого приложения. Плюс фирменное оформление мастера установки.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 27 Jul 2026 02:50:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.7.2/EVS-Setup-2.7.2.exe"
+        sparkle:version="2.7.2"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHHPuS62z4Orqzv8ff7NOlJgJGYF+1sfraccV9pQCHFxqaUdTrssxx1Q6lAOZiMkfxWnKP7AFnfIfup0="
+        evs:sha256="0a0dd934bb2ad048a015daf4307d73a00643465380c8c9a812efff62348fbfb8"
+        length="16637048"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.7.1</title>
       <description><![CDATA[
         <style>

@@ -1,4 +1,4 @@
-; Inno Setup script for EVS (Windows desktop).
+﻿; Inno Setup script for EVS (Windows desktop).
 ; Packages the Flutter release build into a single EVS-Setup-X.Y.Z.exe that
 ; WinSparkle (auto_updater) can download and run silently to update the app.
 ;
@@ -42,6 +42,12 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; EVS branding: dark banner strip + header badge, both built from the app icon
+; (dist/wizard-banner.bmp, dist/wizard-small.bmp). Inno themes only these images
+; — the wizard chrome itself follows Windows, by design.
+WizardImageFile=wizard-banner.bmp
+WizardSmallImageFile=wizard-small.bmp
+WizardImageStretch=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Per-user install by default (installs to %LocalAppData%\Programs\EVS, no UAC).
@@ -67,9 +73,144 @@ begin
   Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
+// ---- Optional module downloads (Inno 6.1+ built-in, no plugins) -----------
+//
+// Files land exactly where the app already looks for them, so the app's own
+// logic finishes the job and nothing here has to duplicate it:
+//   * sidecar  -> userdata\components\evs_sidecar.zip.new
+//                 (ComponentManager.applyStagedUpdates verifies the sha256 and
+//                  extracts it on the next launch — the same tested path used
+//                  for background engine updates)
+//   * models   -> userdata\models\<id>\<file>  (plain files, no extraction)
+//
+// A silent in-app update passes /VERYSILENT, where no component page is shown
+// and nothing is downloaded — updates keep working exactly as before.
+var
+  DownloadPage: TDownloadWizardPage;
+
+function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  Result := True;
+end;
+
+procedure InitializeWizard;
+begin
+  DownloadPage := CreateDownloadPage(
+    SetupMessage(msgWizardPreparing), SetupMessage(msgPreparingDesc),
+    @OnDownloadProgress);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Gigaam, Sherpa: String;
+  Queued: Boolean;
+begin
+  Result := True;
+  if CurPageID <> wpReady then Exit;
+  Queued := False;
+
+  Gigaam := 'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16/resolve/main/';
+  Sherpa := 'https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/';
+
+  DownloadPage.Clear;
+  if WizardIsComponentSelected('sidecar') then
+  begin
+    DownloadPage.Add('https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_sidecar.zip', 'evs_sidecar.zip.new', '');
+    Queued := True;
+  end;
+  if WizardIsComponentSelected('gigaam') then
+  begin
+    DownloadPage.Add(Gigaam + 'encoder.int8.onnx', 'gigaam__encoder.int8.onnx', '');
+    DownloadPage.Add(Gigaam + 'decoder.onnx',      'gigaam__decoder.onnx', '');
+    DownloadPage.Add(Gigaam + 'joiner.onnx',       'gigaam__joiner.onnx', '');
+    DownloadPage.Add(Gigaam + 'tokens.txt',        'gigaam__tokens.txt', '');
+    Queued := True;
+  end;
+  if WizardIsComponentSelected('denoise') then
+  begin
+    DownloadPage.Add(Sherpa + 'dpdfnet_baseline.onnx', 'denoise__dpdfnet_baseline.onnx', '');
+    Queued := True;
+  end;
+
+  if not Queued then Exit;
+
+  DownloadPage.Show;
+  try
+    try
+      DownloadPage.Download;
+    except
+      // Never fail the install over a download: the app can fetch any missing
+      // piece itself later, so just tell the user and carry on.
+      SuppressibleMsgBox(
+        'Не удалось загрузить дополнительные модули:'#13#10 +
+        GetExceptionMessage + #13#10#13#10 +
+        'EVS установится, а недостающее можно будет скачать в самом приложении.',
+        mbInformation, MB_OK, IDOK);
+    end;
+  finally
+    DownloadPage.Hide;
+  end;
+end;
+
+// Move whatever downloaded into the app's data folders. Runs after the files
+// are copied, so {app} exists.
+procedure MoveDownloaded;
+var
+  Comp, Models, Giga, Den: String;
+begin
+  // A silent in-app update shows no component page and downloads nothing,
+  // so there is nothing to move — and the component flags would still read
+  // as the default type, which must not be acted on here.
+  if WizardSilent then Exit;
+  Comp := ExpandConstant('{app}\userdata\components');
+  Models := ExpandConstant('{app}\userdata\models');
+  Giga := Models + '\gigaam-v3';
+  Den := Models + '\denoise-df';
+
+  if WizardIsComponentSelected('sidecar') then
+  begin
+    ForceDirectories(Comp);
+    CopyFile(ExpandConstant('{tmp}\evs_sidecar.zip.new'), Comp + '\evs_sidecar.zip.new', False);
+  end;
+  if WizardIsComponentSelected('gigaam') then
+  begin
+    ForceDirectories(Giga);
+    CopyFile(ExpandConstant('{tmp}\gigaam__encoder.int8.onnx'), Giga + '\encoder.int8.onnx', False);
+    CopyFile(ExpandConstant('{tmp}\gigaam__decoder.onnx'),      Giga + '\decoder.onnx', False);
+    CopyFile(ExpandConstant('{tmp}\gigaam__joiner.onnx'),       Giga + '\joiner.onnx', False);
+    CopyFile(ExpandConstant('{tmp}\gigaam__tokens.txt'),        Giga + '\tokens.txt', False);
+  end;
+  if WizardIsComponentSelected('denoise') then
+  begin
+    ForceDirectories(Den);
+    CopyFile(ExpandConstant('{tmp}\denoise__dpdfnet_baseline.onnx'), Den + '\dpdfnet_baseline.onnx', False);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then MoveDownloaded;
+end;
+
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+; Optional modules fetched DURING setup (see the [Code] download page). Nothing
+; here is bundled in the installer itself — it stays ~16 MB. Anything left
+; unchecked can still be downloaded later from inside the app, exactly as
+; before; the installer is a convenience, not the only path.
+; Piper voices are deliberately NOT offered here.
+[Types]
+Name: "full";    Description: "Полная (движок + распознавание + шумоподавление)"
+Name: "compact"; Description: "Обычная (только голосовой движок)"
+Name: "minimal"; Description: "Минимальная (без загрузок)"
+Name: "custom";  Description: "Выборочная"; Flags: iscustom
+
+[Components]
+Name: "sidecar"; Description: "Голосовой движок (обязателен для голоса), ~110 МБ"; Types: full compact custom
+Name: "gigaam";  Description: "Распознавание речи GigaAM-v3 (офлайн, русский), ~230 МБ"; Types: full
+Name: "denoise"; Description: "Шумоподавление DeepFilterNet, ~9 МБ"; Types: full
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
