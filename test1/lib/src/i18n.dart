@@ -178,6 +178,9 @@ const Map<String, Map<String, String>> _i18n = {
     'clonePhr2Prepare': 'Заготовить заново',
     'clonePhr2Preparing': 'Готовлю фразы…',
     'clonePhr2Play': 'Прослушать',
+    'clonePhr2NotUsed': 'Заготовки сейчас не используются: выбран обычный движок озвучки. '
+        'Кнопка прослушивания всё равно играет запись клона.',
+    'clonePhr2Enable': 'Включить клон-голос',
     'chatToggleOn': 'Включить чат',
     'chatToggleOff': 'Выключить чат (только команды)',
     'chatTurnedOn': 'Чат включён',
@@ -1334,6 +1337,9 @@ const Map<String, Map<String, String>> _i18n = {
     'clonePhr2Prepare': 'Re-prepare',
     'clonePhr2Preparing': 'Preparing phrases…',
     'clonePhr2Play': 'Play',
+    'clonePhr2NotUsed': 'Prepared phrases are not in use: a regular TTS engine is selected. '
+        'The preview button still plays the cloned recording.',
+    'clonePhr2Enable': 'Use the cloned voice',
     'chatToggleOn': 'Enable chat',
     'chatToggleOff': 'Disable chat (commands only)',
     'chatTurnedOn': 'Chat enabled',

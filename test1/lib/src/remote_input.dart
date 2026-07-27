@@ -182,14 +182,15 @@ class RemoteInputServer {
           _send(req, {'error': 'empty'}, status: 400);
           return;
         }
-        final reply = await app.runRemoteCommand(text);
-        // Speak on the desktop unless the phone asked for text only (§14.5).
-        if (app.remoteResponseTarget != 'phone_text') {
-          final say = await app.interpretForTts(reply);
+        final res = await app.runRemoteCommand(text);
+        // Speak on the desktop unless the phone asked for text only (§14.5) —
+        // and never twice: an executed command already announced itself.
+        if (app.remoteResponseTarget != 'phone_text' && !res.spoken) {
+          final say = await app.interpretForTts(res.reply);
           SidecarClient.instance.speak(say,
               rate: app.ttsRate, volume: app.ttsVolume);
         }
-        _send(req, {'reply': reply});
+        _send(req, {'reply': res.reply});
         return;
       }
       if (req.method == 'POST' && path == '/command/voice') {
@@ -236,13 +237,13 @@ class RemoteInputServer {
               status: 422);
           return;
         }
-        final reply = await app.runRemoteCommand(text);
-        if (app.remoteResponseTarget != 'phone_text') {
-          final say = await app.interpretForTts(reply);
+        final res = await app.runRemoteCommand(text);
+        if (app.remoteResponseTarget != 'phone_text' && !res.spoken) {
+          final say = await app.interpretForTts(res.reply);
           SidecarClient.instance
               .speak(say, rate: app.ttsRate, volume: app.ttsVolume);
         }
-        _send(req, {'text': text, 'reply': reply});
+        _send(req, {'text': text, 'reply': res.reply});
         return;
       }
       _send(req, {'error': 'not_found'}, status: 404);

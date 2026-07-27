@@ -2653,12 +2653,26 @@ class AppState extends ChangeNotifier {
   // Run a remote text command through the normal LLM backend and return the
   // reply. A one-off synthetic conversation (global persona, no chat history) —
   // it must not touch or pollute the user's open chats.
-  Future<String> runRemoteCommand(String text) async {
+  /// A phrase from a paired phone, routed exactly like speech heard here: the
+  /// command catalog first, chat only as the fallback. It used to go straight
+  /// to the LLM, so phone commands never actually ran anything — and when the
+  /// LLM server was unreachable the phone got an error for a command that
+  /// needed no model at all.
+  ///
+  /// `spoken` is true when the command already announced itself on the desktop,
+  /// so the caller must not speak the reply a second time.
+  Future<({String reply, bool spoken})> runRemoteCommand(String text) async {
+    final done = await VoiceAssistant.instance.runRemotePhrase(this, text);
+    if (done != null) return (reply: done, spoken: voiceResponses);
+    // Commands-only mode: say so instead of silently opening a chat turn.
+    if (!chatEnabled) {
+      return (reply: '${t('vaCmdNotFound')}: «$text»', spoken: false);
+    }
     final service = _llmFactory.current;
     final synthetic = Conversation(id: 'remote-temp', title: '');
     final history = [ChatMessage(role: 'user', content: text)];
     final reply = await service.generateResponse(synthetic, history);
-    return persona.enforceEmojiPolicy(reply).trim();
+    return (reply: persona.enforceEmojiPolicy(reply).trim(), spoken: false);
   }
 
   void addVoiceCommand(VoiceCommand c) {

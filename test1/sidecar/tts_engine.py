@@ -556,6 +556,10 @@ class TtsEngine:
         # Engine-agnostic phrase cache (shared by xtts + cosyvoice).
         self._cache_dir = ""
         self._voice_fp = ""
+        # Which cache folder holds the rendered phrases ("cosyvoice" / "xtts").
+        # Kept even while Piper is the selected engine so the prepared-phrases
+        # preview can still find them.
+        self._cache_engine = "cosyvoice"
         # Resolve the real starting engine: Piper only when a voice is present,
         # otherwise the always-available system voice.
         self._active: BaseTtsEngine = self._pyttsx3
@@ -630,13 +634,15 @@ class TtsEngine:
         if self._desired == "cosyvoice":
             threading.Thread(target=self._apply_blocking, daemon=True).start()
 
-    def set_cache(self, cache_dir=None, voice_fp=None) -> None:
+    def set_cache(self, cache_dir=None, voice_fp=None, engine=None) -> None:
         """Phrase-cache location + the active voice's fingerprint (so different
         samples / engines never share cached audio)."""
         if cache_dir is not None:
             self._cache_dir = cache_dir or ""
         if voice_fp is not None:
             self._voice_fp = voice_fp or ""
+        if engine is not None:
+            self._cache_engine = engine or "cosyvoice"
 
     def set_voice(self, voice_dir: str | None, voice_id: str | None) -> None:
         self._voice = voice_id or ""
@@ -755,14 +761,19 @@ class TtsEngine:
     # ---- queued playback ----------------------------------------------
 
     def speak(self, text: str, rate: float = 1.0, volume: float = 1.0,
-              on_done=None, on_level=None) -> None:
+              on_done=None, on_level=None, cached: bool = False) -> None:
+        """[cached] plays the phrase straight from the clone cache when it is
+        there, whatever engine is selected — that is what the "прослушать"
+        button in the prepared-phrases card means. Without it the preview went
+        through the active engine and answered with Piper, which looks exactly
+        like the cache being ignored."""
         if not self.available or not text.strip():
             if on_done:
                 on_done()
             return
         # A new utterance cancels any pending stop and joins the queue.
         self._stop.clear()
-        self._queue.put((text, rate, volume, on_done, on_level))
+        self._queue.put((text, rate, volume, on_done, on_level, cached))
         self._ensure_worker()
 
     def _ensure_worker(self) -> None:
@@ -777,10 +788,10 @@ class TtsEngine:
                 item = self._queue.get(timeout=30)  # idle-exit after 30s
             except queue.Empty:
                 return
-            text, rate, volume, on_done, on_level = item
+            text, rate, volume, on_done, on_level, cached = item
             try:
                 if not self._stop.is_set():
-                    self._play_one(text, rate, volume, on_level)
+                    self._play_one(text, rate, volume, on_level, cached)
             finally:
                 self._queue.task_done()
             # Only signal "level 0 / done" once the whole queue is drained, so
@@ -917,7 +928,8 @@ class TtsEngine:
                         "done": done, "total": total})
         threading.Thread(target=_run, daemon=True).start()
 
-    def _play_one(self, text: str, rate: float, volume: float, on_level) -> None:
+    def _play_one(self, text: str, rate: float, volume: float, on_level,
+                  cached: bool = False) -> None:
         res = None
         # 1) Pre-rendered phrase in the cloned voice. Checked FIRST and keyed on
         #    the configured clone engine, so a stopped/unreachable server (or a
@@ -925,7 +937,16 @@ class TtsEngine:
         #    full of the user's own voice behind the Windows system voice.
         clone_eng, clone_name = self._desired_clone()
         cf = folder = ""
-        if clone_eng is not None and self._cache_ok(rate):
+        # A preview from the prepared-phrases card ([cached]) reads the cache
+        # even when Piper — not a cloning engine — is the selected one: the
+        # button exists to play back what was actually rendered.
+        if cached and clone_eng is None and self._cache_dir and self._voice_fp:
+            _, pf = self._cache_file(text, self._cache_engine, self._cosy)
+            if os.path.isfile(pf):
+                res = self._read_wav(pf)
+                if res is not None:
+                    res = (self._scale(res[0], volume), res[1])
+        if res is None and clone_eng is not None and self._cache_ok(rate):
             folder, cf = self._cache_file(text, clone_name, clone_eng)
             if os.path.isfile(cf):
                 res = self._read_wav(cf)

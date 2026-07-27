@@ -556,6 +556,7 @@ class SidecarClient {
         'type': 'tts.config',
         'cache_dir': cacheDir,
         'voice_fp': fp,
+        'cache_engine': 'cosyvoice',
         'cosy': {
           'endpoint': _cosyEndpoint,
           'ref': _cosyRef,
@@ -568,7 +569,15 @@ class SidecarClient {
       // Hand the engine back to Piper. Also the cure for the sidecar's
       // "synthesis failed -> system voice, and stay there" latch: re-applying
       // restores the clone once the server is usable again (e.g. after a game).
-      _send({'type': 'tts.config', 'engine': 'piper'});
+      // The cache coordinates go along even here: the prepared-phrases preview
+      // must be able to play a rendered phrase while Piper is selected.
+      final msg = <String, dynamic>{'type': 'tts.config', 'engine': 'piper'};
+      if (_cosyRef.isNotEmpty) {
+        msg['cache_dir'] = await _cloneCacheDir();
+        msg['voice_fp'] = await _voiceFingerprint(_cosyRef);
+        msg['cache_engine'] = 'cosyvoice';
+      }
+      _send(msg);
     }
   }
 
@@ -727,8 +736,18 @@ class SidecarClient {
     });
   }
 
-  void speak(String text, {double rate = 1.0, double volume = 1.0}) =>
-      _send({'type': 'tts.speak', 'text': text, 'rate': rate, 'volume': volume});
+  void speak(String text,
+          {double rate = 1.0, double volume = 1.0, bool cached = false}) =>
+      _send({
+        'type': 'tts.speak',
+        'text': text,
+        'rate': rate,
+        'volume': volume,
+        // Play the pre-rendered clone file for this phrase if there is one,
+        // regardless of the selected engine — used by the "прослушать" button
+        // in the prepared-phrases card, which otherwise answered in Piper.
+        if (cached) 'cached': true,
+      });
   // Cut off any in-progress speech synthesis/playback immediately (voice stop
   // command). The sidecar's main.py already handles `tts.stop`.
   void stopSpeaking() => _send({'type': 'tts.stop'});
@@ -1093,6 +1112,29 @@ class VoiceAssistant {
     } else {
       await app.sendMessage(command);
     }
+  }
+
+  /// Run a phrase that arrived from a paired phone through the SAME pipeline as
+  /// speech heard on the desktop: the user's command catalog first.
+  ///
+  /// Without this the remote path went straight to the LLM, so "открой браузер"
+  /// from the phone was answered with chit-chat instead of opening a browser —
+  /// and with the LLM server unreachable it just failed. Returns the line to
+  /// send back (already spoken on the desktop by the command itself), or null
+  /// when nothing matched so the caller can fall back to chat.
+  Future<String?> runRemotePhrase(AppState app, String text) async {
+    final (match, score) = _matchCommand(app, text);
+    if (match == null) {
+      unawaited(appendLog(
+          'commands',
+          'REMOTE no match: "${_norm(text)}" '
+              'best=${score.toStringAsFixed(2)}/${app.cmdThreshold}'));
+      return null;
+    }
+    await _runCommand(app, match, utterance: text);
+    return match.speakPhrase.trim().isNotEmpty
+        ? match.speakPhrase.trim()
+        : app.t('vaDone');
   }
 
   // Execute a catalog/interpreted command with the usual safety policies.

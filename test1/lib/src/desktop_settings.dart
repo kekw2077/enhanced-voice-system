@@ -6595,6 +6595,11 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
   @override
   Widget build(BuildContext context) {
     final phrases = app.clonePhrasesToRender();
+    // Prepared phrases only replace normal speech while a CLONING engine is the
+    // selected one. Picking Piper silently turned the whole cache off, which
+    // reads as "the clone stopped working" — so say it, and offer the switch.
+    final cloneOff = app.ttsEngineChoice != 'cosyvoice' &&
+        app.cosyvoiceClonePath.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -6606,6 +6611,28 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
             style: TextStyle(fontSize: 11.5, color: _faint(context)),
           ),
         ),
+        if (cloneOff)
+          Container(
+            margin: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: _warn(context).withValues(alpha: 0.10),
+              border: Border.all(color: _warn(context).withValues(alpha: 0.32)),
+            ),
+            child: Row(children: [
+              Icon(Icons.info_outline, size: 16, color: _warn(context)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(app.t('clonePhr2NotUsed'),
+                    style: TextStyle(fontSize: 11.5, color: _body(context))),
+              ),
+              const SizedBox(width: 10),
+              evsGhostButton(
+                  context, app.t('clonePhr2Enable'), Icons.record_voice_over,
+                  onTap: () => app.setTtsEngineChoice('cosyvoice')),
+            ]),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
           child: Align(
@@ -6646,10 +6673,13 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
                     tooltip: app.t('clonePhr2Play'),
                     icon: Icon(Icons.play_circle_outline,
                         size: 19, color: _info(context)),
-                    // Speaks through the active engine: a cached phrase plays
-                    // instantly from disk in the cloned voice.
-                    onPressed: () => SidecarClient.instance
-                        .speak(p, rate: app.ttsRate, volume: app.ttsVolume),
+                    // Plays the RENDERED file, not "this phrase through the
+                    // current engine" — the point of the button is to hear what
+                    // was prepared, so it must not answer in Piper.
+                    onPressed: () => SidecarClient.instance.speak(p,
+                        rate: app.ttsRate,
+                        volume: app.ttsVolume,
+                        cached: true),
                   ),
                 ]),
               );

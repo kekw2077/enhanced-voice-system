@@ -200,7 +200,10 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                           volume=float(data.get("volume", 1.0)),
                           on_done=lambda: emit({"type": "tts.done"}),
                           on_level=lambda v: emit(
-                              {"type": "tts.level", "level": v}))
+                              {"type": "tts.level", "level": v}),
+                          # Preview of a prepared phrase: play the rendered
+                          # file itself, whatever engine is selected.
+                          cached=bool(data.get("cached", False)))
             elif t == "tts.stop":
                 tts.stop()
             elif t == "tts.config":
@@ -211,9 +214,11 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                                   str(voice) if voice else "")
                 # Cloning config (set BEFORE engine so a switch to xtts/cosyvoice
                 # loads with the sample/exe already in place). Cache is shared.
-                if "cache_dir" in data or "voice_fp" in data:
+                if ("cache_dir" in data or "voice_fp" in data
+                        or "cache_engine" in data):
                     tts.set_cache(cache_dir=data.get("cache_dir"),
-                                  voice_fp=data.get("voice_fp"))
+                                  voice_fp=data.get("voice_fp"),
+                                  engine=data.get("cache_engine"))
                 clone = data.get("clone")
                 if isinstance(clone, dict):
                     tts.set_clone_config(exe=clone.get("exe"),
