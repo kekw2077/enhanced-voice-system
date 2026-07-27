@@ -1118,6 +1118,23 @@ class VoiceAssistant {
     VizOverlayServer.instance.note('${app.t('vaRunning')} ${cmd.phrase}');
     // App-volume runs through the sidecar (Core Audio) and speaks its own
     // outcome (set / not-playing / no-number), so it bypasses CommandExecutor.
+    // Chat on/off by voice ("Айрис, включи чат"). Handled here rather than in
+    // CommandExecutor because it toggles app state, not the OS. Chat only ever
+    // turns off explicitly — by another command or the button — so a question
+    // asked right after "включи чат" always lands in an open chat.
+    if (cmd.type == VoiceCommandType.system &&
+        (cmd.value == 'chat on' || cmd.value == 'chat off')) {
+      final on = cmd.value == 'chat on';
+      app.setChatEnabled(on);
+      final say = cmd.speakPhrase.trim().isNotEmpty
+          ? cmd.speakPhrase.trim()
+          : app.t(on ? 'chatTurnedOn' : 'chatTurnedOff');
+      VizOverlayServer.instance.note(say, kind: 'ok');
+      if (app.voiceResponses) _speak(app, say);
+      unawaited(appendLog('commands', '${cmd.phrase} -> [chat] ${cmd.value}'));
+      state.value = _listening ? VaState.listening : VaState.idle;
+      return;
+    }
     if (cmd.type == VoiceCommandType.appVolume) {
       final (ok, say) = await app.applyAppVolume(cmd, utterance);
       if (!ok) _toast(say);

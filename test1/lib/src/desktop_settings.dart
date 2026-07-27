@@ -1787,6 +1787,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   late final List<(IconData, String, String)> _sections = const [
     (Icons.settings_outlined, 'navGeneral', 'navGeneralSub'),
     (Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub'),
+    (Icons.record_voice_over_outlined, 'navAssistantVoice', 'navAssistantVoiceSub'),
     (Icons.auto_awesome_outlined, 'navWidgets', 'navWidgetsSub'),
     (Icons.bolt_outlined, 'navVoiceCommands', 'navVoiceCommandsSub'),
     (Icons.phone_iphone, 'navRemote', 'navRemoteSub'),
@@ -2272,7 +2273,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ],
             ),
           ),
-          if (_section == 1) _voiceStatus(app),
+          if (_section == 1 || _section == 2) _voiceStatus(app),
           Divider(color: _stroke(context), height: 1),
           Expanded(
             child: LayoutBuilder(
@@ -2377,14 +2378,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'uiStyle': 0, 'fontSize': 0, 'motionMode': 0,
     // 1 — голосовой ввод
     'cardInputDevice': 1, 'micSensitivity': 1, 'micGain': 1,
-    'recognitionLanguage': 1, 'showPartial': 1, 'cardVoiceResp': 1,
-    'voiceResponses': 1, 'announceReady': 1, 'ttsRate': 1, 'ttsVolume': 1,
-    'ttsFx': 1, 'ttsEngineTitle': 1, 'ttsCosyEndpoint': 1, 'gpuLoadTitle': 1,
-    'gpuProfile': 1, 'gpuInGame': 1,
+    'recognitionLanguage': 1, 'showPartial': 1,
+    'cardVoiceResp': 2, 'voiceResponses': 2, 'announceReady': 2, 'ttsRate': 2,
+    'ttsVolume': 2, 'ttsFx': 2, 'ttsEngineTitle': 2, 'ttsCosyEndpoint': 2,
+    'gpuLoadTitle': 2, 'gpuProfile': 2, 'gpuInGame': 2,
     // 3 — команды · 4 — телефоны · 5 — модели
-    'cmdAdd': 3, 'cmdMode': 3,
-    'remoteEnable': 4, 'remotePort': 4, 'remoteAddress': 4, 'remoteResponse': 4,
-    'voiceImportTitle': 5,
+    'cmdAdd': 4, 'cmdMode': 4,
+    'remoteEnable': 5, 'remotePort': 5, 'remoteAddress': 5, 'remoteResponse': 5,
+    'voiceImportTitle': 6,
   };
 
   List<(String key, int section)> _matches(AppState app) {
@@ -2591,21 +2592,27 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     switch (_section) {
       case 0:
         return _generalCards(app);
+      // "Голосовой ввод" held everything at once (mic, recognition, denoise,
+      // TTS engine, voice FX, clone, GPU load) and was by far the hardest
+      // section to scan. Split in two, sharing one builder: the first three
+      // cards are capture/recognition, the rest are the assistant's voice.
       case 1:
-        return _voiceInputCards(app);
+        return _voiceInputCards(app).take(3).toList();
       case 2:
-        return _widgetsCards(app);
+        return _voiceInputCards(app).skip(3).toList();
       case 3:
-        return _voiceCommandCards(app);
+        return _widgetsCards(app);
       case 4:
-        return _remoteInputCards(app);
+        return _voiceCommandCards(app);
       case 5:
-        return _modelCards(app);
+        return _remoteInputCards(app);
       case 6:
-        return _personaCards(app);
+        return _modelCards(app);
       case 7:
-        return _privacyCards(app);
+        return _personaCards(app);
       case 8:
+        return _privacyCards(app);
+      case 9:
         return _aboutCards(app);
       default:
         return const [];

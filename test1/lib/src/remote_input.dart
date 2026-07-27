@@ -1763,6 +1763,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
           ('vol up', 'sysVolUp', Icons.volume_up),
           ('vol down', 'sysVolDown', Icons.volume_down),
           ('mute', 'sysMute', Icons.volume_off),
+          ('chat on', 'sysChatOn', Icons.chat_bubble_outline),
+          ('chat off', 'sysChatOff', Icons.speaker_notes_off_outlined),
         ]);
       case VoiceCommandType.media:
         return _actionStep(const [

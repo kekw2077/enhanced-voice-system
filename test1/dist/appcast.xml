@@ -28,6 +28,34 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.8.0</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Настройки перестроены:</b> перегруженный раздел «Голосовой ввод» разделён на два — <b>«Микрофон и распознавание»</b> (устройство, усиление, чувствительность, шумоподавление, язык) и <b>«Голос ассистента»</b> (движок озвучки, голоса, скорость и громкость, эффекты, клон и нагрузка на видеокарту). Уточнены названия: «Модель и инференс» → «Нейросеть», «Виджеты» → «Виджеты и оверлей».</li>
+          <li><b>Кнопка включения/выключения чата</b> — на месте бывшей кнопки голосового ввода. Выключенный чат = режим «только голосовые команды».</li>
+          <li><b>Чат голосом:</b> создайте команду (Команды → Системное → «Включить чат») и скажите «Айрис, включи чат» — после этого можно сразу задать вопрос. Выключается только явно: командой или кнопкой.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 27 Jul 2026 04:40:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.8.0/EVS-Setup-2.8.0.exe"
+        sparkle:version="2.8.0"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHFn5vw3u9e0M7p1vXuI1XjNUIWFXqe1SWG+juaACHACAiwUmr9d/fLsHwxOy1t5kXs3nHQXLoKN0BdQ="
+        evs:sha256="6529cd637d782b4764a33e99a2cad6b7df69b870fe14191b707456fc425d41fe"
+        length="16645103"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.7.4</title>
       <description><![CDATA[
         <style>

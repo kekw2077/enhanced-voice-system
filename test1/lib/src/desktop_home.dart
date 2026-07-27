@@ -947,20 +947,20 @@ class _NexusRail extends StatelessWidget {
                     ? Navigator.of(context).maybePop()
                     : Scaffold.of(context).openDrawer()),
             _navIcon(context, Icons.bolt_outlined, app.t('nxNavCommands'),
-                active: activeSection == 3,
-                onTap: () => _openSettings(context, 3)),
+                active: activeSection == 4,
+                onTap: () => _openSettings(context, 4)),
             _navIcon(context, Icons.memory, app.t('nxNavModels'),
-                active: activeSection == 5,
-                onTap: () => _openSettings(context, 5)),
+                active: activeSection == 6,
+                onTap: () => _openSettings(context, 6)),
             _navIcon(context, Icons.receipt_long_outlined, app.t('nxNavLog'),
-                active: activeSection == 8,
-                onTap: () => _openSettings(context, 8)),
+                active: activeSection == 9,
+                onTap: () => _openSettings(context, 9)),
             const Spacer(),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
                 active: activeSection != null &&
-                    activeSection != 3 &&
-                    activeSection != 5 &&
-                    activeSection != 8,
+                    activeSection != 4 &&
+                    activeSection != 6 &&
+                    activeSection != 9,
                 onTap: () => _openSettings(context, 0)),
             const SizedBox(height: 10),
           ],
@@ -1705,6 +1705,8 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                 ]),
               ),
             ),
+            const SizedBox(width: 9),
+            _chatToggleBtn(context, app),
           ],
         ),
       );
@@ -1769,7 +1771,45 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                   ),
                 )
               : _iconBtn(context, Icons.send_rounded, _send),
+          const SizedBox(width: 9),
+          _chatToggleBtn(context, app),
         ],
+      ),
+    );
+  }
+
+  // Chat on/off, in the slot the mic button used to occupy (the mic listens
+  // continuously, so a push-to-talk button there was redundant). Off = the
+  // assistant only takes voice commands.
+  Widget _chatToggleBtn(BuildContext context, AppState app) {
+    final on = app.chatEnabled;
+    return Tooltip(
+      message: on ? app.t('chatToggleOff') : app.t('chatToggleOn'),
+      child: GestureDetector(
+        onTap: () {
+          app.buzz();
+          app.setChatEnabled(!on);
+        },
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: on ? null : _overlayFill(context, 0.05),
+            border: on ? null : Border.all(color: _stroke(context)),
+            gradient: on
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [_accent(context), _accent2(context)],
+                  )
+                : null,
+          ),
+          child: Icon(
+              on ? Icons.chat_bubble_outline : Icons.speaker_notes_off_outlined,
+              size: 18,
+              color: on ? Colors.white : _sub(context)),
+        ),
       ),
     );
   }
