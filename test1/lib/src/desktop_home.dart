@@ -1672,36 +1672,6 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
     );
   }
 
-  Widget _micBtn(BuildContext context) {
-    return ValueListenableBuilder<VaState>(
-      valueListenable: VoiceAssistant.instance.state,
-      builder: (context, s, _) {
-        final listening = s == VaState.listening || s == VaState.armed;
-        return GestureDetector(
-          onTap: () => VoiceAssistant.instance.promptOnce(),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: listening ? _warn(context) : null,
-              gradient: listening
-                  ? null
-                  : LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [_accent(context), _accent2(context)],
-                    ),
-            ),
-            child: Icon(Icons.mic_none_rounded,
-                size: 18,
-                color: listening ? const Color(0xFF1A1204) : Colors.white),
-          ),
-        );
-      },
-    );
-  }
-
   Widget _inputRow(BuildContext context, AppState app) {
     // Commands-only mode: text chat is locked, exactly like the classic bar. The
     // mic stays so push-to-talk voice commands still work.
@@ -1735,8 +1705,6 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                 ]),
               ),
             ),
-            const SizedBox(width: 9),
-            _micBtn(context),
           ],
         ),
       );
@@ -1801,8 +1769,6 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                   ),
                 )
               : _iconBtn(context, Icons.send_rounded, _send),
-          const SizedBox(width: 9),
-          _micBtn(context),
         ],
       ),
     );

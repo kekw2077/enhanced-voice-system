@@ -173,6 +173,14 @@ const Map<String, Map<String, String>> _i18n = {
     'micSensitivity': 'Чувствительность микрофона',
     'micSensitivityDesc': 'Ниже строгость определения речи (VAD) — микрофон реагирует на более тихую/дальнюю речь, но чаще ловит шум. Применяется при следующем запуске прослушивания.',
     'nxCloseHint': 'закрыть —',
+    'settingsSearchHint': 'Поиск по настройкам…',
+    'voiceStatusMic': 'Микрофон',
+    'voiceStatusStt': 'Распознавание',
+    'voiceStatusVoice': 'Голос',
+    'voiceStatusReady': 'слушает',
+    'voiceStatusOff': 'движок не запущен',
+    'voiceStatusSystem': 'системный (голос не выбран)',
+    'settingsSearchEmpty': 'Ничего не найдено',
     'micGain': 'Усиление микрофона',
     'micGainDesc':
         'Насколько громче делать сигнал микрофона. Помогает, если вас плохо '
@@ -1282,6 +1290,14 @@ const Map<String, Map<String, String>> _i18n = {
     'micSensitivity': 'Microphone sensitivity',
     'micSensitivityDesc': 'Lower speech-detection strictness (VAD) — the mic reacts to quieter/farther speech but catches more noise. Applies on the next listening start.',
     'nxCloseHint': 'close —',
+    'settingsSearchHint': 'Search settings…',
+    'voiceStatusMic': 'Microphone',
+    'voiceStatusStt': 'Recognition',
+    'voiceStatusVoice': 'Voice',
+    'voiceStatusReady': 'listening',
+    'voiceStatusOff': 'engine not running',
+    'voiceStatusSystem': 'system (no voice selected)',
+    'settingsSearchEmpty': 'Nothing found',
     'micGain': 'Microphone gain',
     'micGainDesc':
         'How much louder to make the mic signal. Helps when you are hard to '

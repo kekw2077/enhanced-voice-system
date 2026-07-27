@@ -1781,6 +1781,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     app.savePersona(app.persona);
   }
 
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
   late final List<(IconData, String, String)> _sections = const [
     (Icons.settings_outlined, 'navGeneral', 'navGeneralSub'),
     (Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub'),
@@ -2244,8 +2247,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     return SafeArea(
       child: Column(
         children: [
+          _searchBar(app),
+          if (_query.trim().isNotEmpty) ...[
+            Divider(color: _stroke(context), height: 1),
+            Expanded(child: _searchResults(app)),
+          ] else ...[
           Padding(
-            padding: const EdgeInsets.fromLTRB(28, 18, 28, 14),
+            padding: const EdgeInsets.fromLTRB(28, 4, 28, 14),
             child: Row(
               children: [
                 Text(app.t(s.$2),
@@ -2264,6 +2272,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ],
             ),
           ),
+          if (_section == 1) _voiceStatus(app),
           Divider(color: _stroke(context), height: 1),
           Expanded(
             child: LayoutBuilder(
@@ -2285,8 +2294,233 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               },
             ),
           ),
+          ],
         ],
       ),
+    );
+  }
+
+  // Live "what is actually running" strip for the voice section. Settings show
+  // what is CONFIGURED; this shows what is in effect — which is where the real
+  // surprises live (a clone endpoint that was never made the active engine, or
+  // no Piper voice installed so speech silently falls to the Windows voice).
+  Widget _voiceStatus(AppState app) {
+    final sc = SidecarClient.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([sc.status]),
+      builder: (context, _) {
+        final up = sc.status.value == SidecarStatus.connected;
+        final stt = app.sttSidecarEngine == 'gigaam' ? 'GigaAM-v3' : 'Whisper';
+
+        String voice;
+        bool voiceOk;
+        if (app.ttsEngineChoice == 'cosyvoice') {
+          voice = app.t('ttsEngineCosy');
+          voiceOk = app.cosyvoiceOnline == true;
+          if (!voiceOk) voice = '$voice — ${app.t('ttsCosyOffline')}';
+        } else if (app.ttsPiperVoice.isNotEmpty) {
+          voice = 'Piper';
+          voiceOk = true;
+        } else {
+          voice = app.t('voiceStatusSystem');
+          voiceOk = false;
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(28, 0, 28, 12),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _statusChip(app.t('voiceStatusMic'),
+                  up ? app.t('voiceStatusReady') : app.t('voiceStatusOff'), up),
+              _statusChip(app.t('voiceStatusStt'), stt, up),
+              _statusChip(app.t('voiceStatusVoice'), voice, voiceOk),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _statusChip(String label, String value, bool ok) {
+    final c = ok ? _success(context) : _warn(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: c.withValues(alpha: 0.10),
+        border: Border.all(color: c.withValues(alpha: 0.32)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(ok ? Icons.check_circle_outline : Icons.error_outline,
+            size: 13, color: c),
+        const SizedBox(width: 6),
+        Text('$label: ',
+            style: TextStyle(fontSize: 11.5, color: _sub(context))),
+        Text(value,
+            style: TextStyle(
+                fontSize: 11.5, fontWeight: FontWeight.w600, color: _txt(context))),
+      ]),
+    );
+  }
+
+  // ---- Search ------------------------------------------------------------
+  //
+  // Settings are nine sections deep, so a setting you cannot name the section
+  // for is effectively invisible — twice in testing a control was requested
+  // that already existed (response volume, mic sensitivity). The index maps a
+  // label's i18n key to its section; matching runs over the localized label AND
+  // its description, so searching "тихо" or "не слышно" finds the mic gain.
+  static const Map<String, int> _searchIndex = {
+    // 0 — общие
+    'uiStyle': 0, 'fontSize': 0, 'motionMode': 0,
+    // 1 — голосовой ввод
+    'cardInputDevice': 1, 'micSensitivity': 1, 'micGain': 1,
+    'recognitionLanguage': 1, 'showPartial': 1, 'cardVoiceResp': 1,
+    'voiceResponses': 1, 'announceReady': 1, 'ttsRate': 1, 'ttsVolume': 1,
+    'ttsFx': 1, 'ttsEngineTitle': 1, 'ttsCosyEndpoint': 1, 'gpuLoadTitle': 1,
+    'gpuProfile': 1, 'gpuInGame': 1,
+    // 3 — команды · 4 — телефоны · 5 — модели
+    'cmdAdd': 3, 'cmdMode': 3,
+    'remoteEnable': 4, 'remotePort': 4, 'remoteAddress': 4, 'remoteResponse': 4,
+    'voiceImportTitle': 5,
+  };
+
+  List<(String key, int section)> _matches(AppState app) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    final out = <(String, int)>[];
+    void consider(String key, int section) {
+      final label = app.t(key);
+      final desc = app.t('${key}Desc');
+      final hay = '$label ${desc == '${key}Desc' ? '' : desc}'.toLowerCase();
+      if (hay.contains(q)) out.add((key, section));
+    }
+
+    _searchIndex.forEach(consider);
+    // Section names themselves are searchable too ("телефон" -> Телефоны).
+    for (var i = 0; i < _sections.length; i++) {
+      final s = _sections[i];
+      if ('${app.t(s.$2)} ${app.t(s.$3)}'.toLowerCase().contains(q)) {
+        out.add((s.$2, i));
+      }
+    }
+    return out;
+  }
+
+  Widget _searchBar(AppState app) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(28, 14, 28, 10),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: _overlayFill(context, 0.04),
+              border: Border.all(color: _stroke(context)),
+            ),
+            child: Row(children: [
+              Icon(Icons.search, size: 17, color: _faint(context)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (v) => setState(() => _query = v),
+                  style: TextStyle(fontSize: 13, color: _txt(context)),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    border: InputBorder.none,
+                    hintText: app.t('settingsSearchHint'),
+                    hintStyle:
+                        TextStyle(fontSize: 13, color: _faint(context)),
+                  ),
+                ),
+              ),
+              if (_query.isNotEmpty)
+                InkResponse(
+                  radius: 16,
+                  onTap: () => setState(() {
+                    _searchCtrl.clear();
+                    _query = '';
+                  }),
+                  child: Icon(Icons.close, size: 16, color: _sub(context)),
+                ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _searchResults(AppState app) {
+    final res = _matches(app);
+    if (res.isEmpty) {
+      return Center(
+        child: Text(app.t('settingsSearchEmpty'),
+            style: TextStyle(fontSize: 13, color: _faint(context))),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(28, 16, 28, 28),
+      itemCount: res.length,
+      itemBuilder: (_, i) {
+        final (key, section) = res[i];
+        final desc = app.t('${key}Desc');
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            // Jump to the section that holds it and drop out of search mode.
+            onTap: () => setState(() {
+              _section = section;
+              _searchCtrl.clear();
+              _query = '';
+            }),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 11, 14, 11),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: _overlayFill(context, 0.03),
+                border: Border.all(color: _stroke(context)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(app.t(key),
+                            style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: _txt(context))),
+                        if (desc != '${key}Desc') ...[
+                          const SizedBox(height: 2),
+                          Text(desc,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 11.5, color: _faint(context))),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(app.t(_sections[section].$2),
+                      style: TextStyle(
+                          fontSize: 11.5, color: _sub(context))),
+                  const SizedBox(width: 6),
+                  Icon(Icons.chevron_right, size: 16, color: _faint(context)),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
