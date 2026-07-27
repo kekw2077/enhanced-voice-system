@@ -1310,8 +1310,19 @@ class AppState extends ChangeNotifier {
   }
 
   void setTtsEngineChoice(String v) {
-    // CosyVoice can only be made active once its endpoint answers (§3.2).
-    if (v == 'cosyvoice' && cosyvoiceOnline != true) return;
+    // The clone can be selected while its server is DOWN, and that is the whole
+    // point: the pre-rendered phrase cache is only consulted while a CLONING
+    // engine is selected, and anything uncached falls back per utterance
+    // (Piper, else the system voice). Requiring a live probe here made the
+    // cache unreachable exactly when it mattered — and silently, because this
+    // returned without a word, so both the engine chip and the "Включить
+    // клон-голос" button did nothing at all. A sample is still required: there
+    // is nothing to clone or replay without one.
+    if (v == 'cosyvoice' &&
+        (cosyvoiceEndpoint.trim().isEmpty ||
+            cosyvoiceClonePath.trim().isEmpty)) {
+      return;
+    }
     ttsEngineChoice = v == 'cosyvoice' ? 'cosyvoice' : 'piper';
     _save();
     notifyListeners();
