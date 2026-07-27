@@ -1645,17 +1645,138 @@ class _GameModeCard extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Settings navigation — two levels: group -> page.
+//
+// The panel used to be ten flat sections, each one long scroll. "Голос
+// ассистента" alone stacked the engine picker, the whole clone block, the
+// GPU-load knobs, the interpreter and five FX sliders into ONE card — and a
+// card cannot be split across masonry columns, so that column ran several
+// screens deep while the others ended after two cards. Every group is now cut
+// into short pages: one screen = one topic.
+//
+// Pages are addressed by a stable string id, never by position. The numeric
+// section indexes the Nexus rail passed around silently started pointing at
+// the wrong screen every time a section was split (the LLM and System
+// subsystem cards opened "Телефоны" instead of the model settings).
+class _Pages {
+  static const basics = 'general.basics';
+  static const startup = 'general.startup';
+  static const micDevice = 'mic.device';
+  static const stt = 'mic.stt';
+  static const listen = 'mic.listen';
+  static const voiceOut = 'voice.out';
+  static const voiceEngine = 'voice.engine';
+  static const voiceClone = 'voice.clone';
+  static const voiceFx = 'voice.fx';
+  static const voicePhrases = 'voice.phrases';
+  static const widgetsLook = 'widgets.look';
+  static const widgetsParams = 'widgets.params';
+  static const cmdExec = 'cmd.exec';
+  static const cmdCatalog = 'cmd.catalog';
+  static const cmdSecurity = 'cmd.security';
+  static const remote = 'remote';
+  static const llmConn = 'llm.conn';
+  static const llmModels = 'llm.models';
+  static const llmParams = 'llm.params';
+  static const personaStyle = 'persona.style';
+  static const personaMemory = 'persona.memory';
+  static const privAccess = 'privacy.access';
+  static const privData = 'privacy.data';
+  static const about = 'about.info';
+  static const changelog = 'about.changelog';
+}
+
+class _NavPage {
+  final String id;
+  final String titleKey;
+  const _NavPage(this.id, this.titleKey);
+}
+
+class _NavGroup {
+  final IconData icon;
+  final String titleKey;
+  final String subKey;
+  final List<_NavPage> pages;
+  const _NavGroup(this.icon, this.titleKey, this.subKey, this.pages);
+  // A one-page group needs no second level: the rail row IS the destination.
+  bool get single => pages.length == 1;
+}
+
+const List<_NavGroup> _kNav = [
+  _NavGroup(Icons.settings_outlined, 'navGeneral', 'navGeneralSub', [
+    _NavPage(_Pages.basics, 'pgBasics'),
+    _NavPage(_Pages.startup, 'pgStartup'),
+  ]),
+  _NavGroup(Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub', [
+    _NavPage(_Pages.micDevice, 'pgMicDevice'),
+    _NavPage(_Pages.stt, 'pgStt'),
+    _NavPage(_Pages.listen, 'pgListen'),
+  ]),
+  _NavGroup(
+      Icons.record_voice_over_outlined, 'navAssistantVoice',
+      'navAssistantVoiceSub', [
+    _NavPage(_Pages.voiceOut, 'pgVoiceOut'),
+    _NavPage(_Pages.voiceEngine, 'pgVoiceEngine'),
+    _NavPage(_Pages.voiceClone, 'pgVoiceClone'),
+    _NavPage(_Pages.voiceFx, 'pgVoiceFx'),
+    _NavPage(_Pages.voicePhrases, 'pgVoicePhrases'),
+  ]),
+  _NavGroup(Icons.auto_awesome_outlined, 'navWidgets', 'navWidgetsSub', [
+    _NavPage(_Pages.widgetsLook, 'pgWsLook'),
+    _NavPage(_Pages.widgetsParams, 'pgWsParams'),
+  ]),
+  _NavGroup(Icons.bolt_outlined, 'navVoiceCommands', 'navVoiceCommandsSub', [
+    _NavPage(_Pages.cmdExec, 'pgCmdExec'),
+    _NavPage(_Pages.cmdCatalog, 'pgCmdCatalog'),
+    _NavPage(_Pages.cmdSecurity, 'pgCmdSecurity'),
+  ]),
+  _NavGroup(Icons.phone_iphone, 'navRemote', 'navRemoteSub', [
+    _NavPage(_Pages.remote, 'navRemote'),
+  ]),
+  _NavGroup(Icons.memory, 'navModel', 'navModelSub', [
+    _NavPage(_Pages.llmConn, 'pgLlmConn'),
+    _NavPage(_Pages.llmModels, 'pgLlmModels'),
+    _NavPage(_Pages.llmParams, 'pgLlmParams'),
+  ]),
+  _NavGroup(Icons.chat_bubble_outline, 'navPersona', 'navPersonaSub', [
+    _NavPage(_Pages.personaStyle, 'pgPersonaStyle'),
+    _NavPage(_Pages.personaMemory, 'pgPersonaMemory'),
+  ]),
+  _NavGroup(Icons.lock_outline, 'navPrivacy', 'navPrivacySub', [
+    _NavPage(_Pages.privAccess, 'pgPrivAccess'),
+    _NavPage(_Pages.privData, 'pgPrivData'),
+  ]),
+  _NavGroup(Icons.info_outline, 'navAbout', 'navAboutSub', [
+    _NavPage(_Pages.about, 'pgAboutInfo'),
+    _NavPage(_Pages.changelog, 'pgChangelog'),
+  ]),
+];
+
+// Group holding [id]; falls back to the first group so an unknown/stale id can
+// never render an empty panel.
+_NavGroup _navGroupOf(String id) => _kNav.firstWhere(
+      (g) => g.pages.any((p) => p.id == id),
+      orElse: () => _kNav.first,
+    );
+
+_NavPage _navPageOf(String id) {
+  final g = _navGroupOf(id);
+  return g.pages.firstWhere((p) => p.id == id, orElse: () => g.pages.first);
+}
+
 class DesktopSettings extends StatefulWidget {
-  // Which section to open on (index into _sections). Lets the Nexus rail jump
-  // straight to Commands / Models / About instead of always landing on General.
-  final int initialSection;
-  const DesktopSettings({super.key, this.initialSection = 0});
+  // Which page to open on (a _Pages id). Lets the Nexus rail and the subsystem
+  // cards jump straight to Commands / Models / About instead of landing on the
+  // first page.
+  final String initialPage;
+  const DesktopSettings({super.key, this.initialPage = _Pages.basics});
   @override
   State<DesktopSettings> createState() => _DesktopSettingsState();
 }
 
 class _DesktopSettingsState extends State<DesktopSettings> {
-  late int _section = widget.initialSection;
+  late String _page = widget.initialPage;
   // Held so dispose() can end draft mode without a BuildContext (TZ2.2).
   AppState? _appRef;
   // Phase-1 placeholders for not-yet-wired desktop toggles (autostart, tray…).
@@ -1784,19 +1905,6 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
 
-  late final List<(IconData, String, String)> _sections = const [
-    (Icons.settings_outlined, 'navGeneral', 'navGeneralSub'),
-    (Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub'),
-    (Icons.record_voice_over_outlined, 'navAssistantVoice', 'navAssistantVoiceSub'),
-    (Icons.auto_awesome_outlined, 'navWidgets', 'navWidgetsSub'),
-    (Icons.bolt_outlined, 'navVoiceCommands', 'navVoiceCommandsSub'),
-    (Icons.phone_iphone, 'navRemote', 'navRemoteSub'),
-    (Icons.memory, 'navModel', 'navModelSub'),
-    (Icons.chat_bubble_outline, 'navPersona', 'navPersonaSub'),
-    (Icons.lock_outline, 'navPrivacy', 'navPrivacySub'),
-    (Icons.info_outline, 'navAbout', 'navAboutSub'),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -1833,8 +1941,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         // window reads as one shell instead of a separate screen.
                         if (app.appStyle == AppStyle.nexus)
                           _NexusRail(
-                            activeSection: _section,
-                            onSection: (s) => setState(() => _section = s),
+                            activePage: _page,
+                            onSection: (p) => setState(() => _page = p),
                           ),
                         _nav(app),
                         Expanded(
@@ -2140,91 +2248,17 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         color: _faint(context))),
               ),
             Expanded(
-              child: ListView.builder(
+              child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                itemCount: _sections.length,
-                itemBuilder: (_, i) {
-                  final s = _sections[i];
-                  final active = i == _section;
-                  // Nexus tints the active section with info (§5.1); classic
-                  // keeps the accent highlight.
-                  final actAcc = nexus ? _info(context) : _accent(context);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 1),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(13),
-                        onTap: () => setState(() => _section = i),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 11, vertical: 10),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(13),
-                            color: active
-                                ? actAcc.withValues(alpha: nexus ? 0.09 : 0.13)
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: active
-                                  ? actAcc.withValues(alpha: nexus ? 0.30 : 0.22)
-                                  : Colors.transparent,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 31,
-                                height: 31,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(9),
-                                  color: active
-                                      ? actAcc.withValues(alpha: 0.2)
-                                      : _overlayFill(context, 0.042),
-                                ),
-                                child: Icon(s.$1,
-                                    size: 14,
-                                    color: active
-                                        ? actAcc
-                                        : const Color(0xFF9691C0)),
-                              ),
-                              const SizedBox(width: 11),
-                              Expanded(
-                                child: nexus
-                                    ? Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(app.t(s.$2),
-                                              style: TextStyle(
-                                                  fontSize: 13.5,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: active
-                                                      ? _txt(context)
-                                                      : _sub(context))),
-                                          const SizedBox(height: 1),
-                                          Text(app.t(s.$3),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: _faint(context))),
-                                        ],
-                                      )
-                                    : Text(app.t(s.$2),
-                                        style: TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w600,
-                                            color: active
-                                                ? _txt(context)
-                                                : _sub(context))),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+                children: [
+                  for (final g in _kNav) ...[
+                    _navGroupTile(app, g, nexus),
+                    // Only the group holding the open page unfolds, so the rail
+                    // stays one screen tall no matter how many pages exist.
+                    if (!g.single && _navGroupOf(_page) == g)
+                      for (final p in g.pages) _navPageTile(app, p, nexus),
+                  ],
+                ],
               ),
             ),
             if (nexus)
@@ -2242,9 +2276,150 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     );
   }
 
+  // First navigation level. A group with pages never carries the filled
+  // highlight itself — that belongs to the open page below it — it only tints
+  // its icon/label so you can see which branch you are in.
+  Widget _navGroupTile(AppState app, _NavGroup g, bool nexus) {
+    final actAcc = nexus ? _info(context) : _accent(context);
+    final open = _navGroupOf(_page) == g;
+    final filled = open && g.single;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(13),
+          // Tapping a group opens its first page; tapping the open group is a
+          // no-op rather than a collapse, so the rail never hides where you are.
+          onTap: () => setState(() => _page = g.pages.first.id),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(13),
+              color: filled
+                  ? actAcc.withValues(alpha: nexus ? 0.09 : 0.13)
+                  : Colors.transparent,
+              border: Border.all(
+                color: filled
+                    ? actAcc.withValues(alpha: nexus ? 0.30 : 0.22)
+                    : Colors.transparent,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 31,
+                  height: 31,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(9),
+                    color: open
+                        ? actAcc.withValues(alpha: 0.2)
+                        : _overlayFill(context, 0.042),
+                  ),
+                  child: Icon(g.icon,
+                      size: 14,
+                      color: open ? actAcc : const Color(0xFF9691C0)),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: nexus
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(app.t(g.titleKey),
+                                style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: open
+                                        ? _txt(context)
+                                        : _sub(context))),
+                            const SizedBox(height: 1),
+                            Text(app.t(g.subKey),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 11, color: _faint(context))),
+                          ],
+                        )
+                      : Text(app.t(g.titleKey),
+                          style: TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              color: open ? _txt(context) : _sub(context))),
+                ),
+                if (!g.single)
+                  Icon(open ? Icons.expand_more : Icons.chevron_right,
+                      size: 15, color: _faint(context)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Second navigation level: the actual destinations, indented under the open
+  // group and carrying the active highlight.
+  Widget _navPageTile(AppState app, _NavPage p, bool nexus) {
+    final actAcc = nexus ? _info(context) : _accent(context);
+    final active = p.id == _page;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 1, 0, 1),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => _page = p.id),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 7, 11, 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: active
+                  ? actAcc.withValues(alpha: nexus ? 0.09 : 0.13)
+                  : Colors.transparent,
+              border: Border.all(
+                color: active
+                    ? actAcc.withValues(alpha: nexus ? 0.30 : 0.22)
+                    : Colors.transparent,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: active ? actAcc : _stroke(context),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(app.t(p.titleKey),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight:
+                              active ? FontWeight.w600 : FontWeight.w500,
+                          color: active ? _txt(context) : _sub(context))),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // -------- right pane: section topbar + card grid --------
   Widget _sectionScaffold(AppState app) {
-    final s = _sections[_section];
+    final g = _navGroupOf(_page);
+    final p = _navPageOf(_page);
+    // One-page groups keep the old "Название — подпись" heading; inside a split
+    // group the page name leads and the group name is the breadcrumb.
+    final title = g.single ? app.t(g.titleKey) : app.t(p.titleKey);
+    final crumb = g.single ? app.t(g.subKey) : app.t(g.titleKey);
     return SafeArea(
       child: Column(
         children: [
@@ -2257,7 +2432,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             padding: const EdgeInsets.fromLTRB(28, 4, 28, 14),
             child: Row(
               children: [
-                Text(app.t(s.$2),
+                Text(title,
                     style: TextStyle(
                         fontSize: 21,
                         fontWeight: FontWeight.w800,
@@ -2266,31 +2441,45 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 const SizedBox(width: 10),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text('— ${app.t(s.$3)}',
+                  child: Text('— $crumb',
                       style: TextStyle(
                           fontSize: 13, color: _faint(context))),
                 ),
               ],
             ),
           ),
-          if (_section == 1 || _section == 2) _voiceStatus(app),
+          // Live pipeline strip on every voice-related page.
+          if (_page.startsWith('mic.') || _page.startsWith('voice.'))
+            _voiceStatus(app),
           Divider(color: _stroke(context), height: 1),
           Expanded(
             child: LayoutBuilder(
               builder: (ctx, cons) {
                 const gap = 14.0;
-                final inner = cons.maxWidth - 56; // minus horizontal padding
-                // Column count follows the window width: 1 / 2 / 3.
-                final w = cons.maxWidth;
-                final cols = w < 640 ? 1 : (w < 1024 ? 2 : 3);
+                // Cap the text column on wide monitors: pages are short now,
+                // and a lone card stretched across 2500 px reads badly.
+                final inner = math.min(cons.maxWidth - 56, 1180.0);
                 final cards = _cardsFor(app);
+                // Column count follows the window width: 1 / 2 / 3 — but never
+                // more columns than there are cards, or a single-card page
+                // would render as one narrow strip with two empty columns.
+                final w = cons.maxWidth;
+                var cols = w < 640 ? 1 : (w < 1024 ? 2 : 3);
+                if (cards.isNotEmpty && cols > cards.length) {
+                  cols = cards.length;
+                }
                 return SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(28, 22, 28, 28),
                   // True masonry: cards stack tightly per column instead of the
                   // old paired-row Wrap, which left a big gap whenever two
                   // side-by-side cards had very different heights (or one
                   // collapsed to nothing, e.g. the GPU-only cards).
-                  child: _cardMasonry(cards, cols, gap, inner),
+                  child: Center(
+                    child: SizedBox(
+                      width: inner,
+                      child: _cardMasonry(cards, cols, gap, inner),
+                    ),
+                  ),
                 );
               },
             ),
@@ -2373,38 +2562,75 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // that already existed (response volume, mic sensitivity). The index maps a
   // label's i18n key to its section; matching runs over the localized label AND
   // its description, so searching "тихо" or "не слышно" finds the mic gain.
-  static const Map<String, int> _searchIndex = {
-    // 0 — общие
-    'uiStyle': 0, 'fontSize': 0, 'motionMode': 0,
-    // 1 — голосовой ввод
-    'cardInputDevice': 1, 'micSensitivity': 1, 'micGain': 1,
-    'recognitionLanguage': 1, 'showPartial': 1,
-    'cardVoiceResp': 2, 'voiceResponses': 2, 'announceReady': 2, 'ttsRate': 2,
-    'ttsVolume': 2, 'ttsFx': 2, 'ttsEngineTitle': 2, 'ttsCosyEndpoint': 2,
-    'gpuLoadTitle': 2, 'gpuProfile': 2, 'gpuInGame': 2,
-    // 3 — команды · 4 — телефоны · 5 — модели
-    'cmdAdd': 4, 'cmdMode': 4,
-    'remoteEnable': 5, 'remotePort': 5, 'remoteAddress': 5, 'remoteResponse': 5,
-    'voiceImportTitle': 6,
+  static const Map<String, String> _searchIndex = {
+    'uiStyle': _Pages.basics,
+    'fontSize': _Pages.basics,
+    'motionMode': _Pages.basics,
+    'autostart': _Pages.startup,
+    'minimizeToTray': _Pages.startup,
+    'globalHotkey': _Pages.startup,
+    'cardInputDevice': _Pages.micDevice,
+    'extraMics': _Pages.micDevice,
+    'micSensitivity': _Pages.stt,
+    'micGain': _Pages.stt,
+    'recognitionLanguage': _Pages.stt,
+    'sttEngine': _Pages.stt,
+    'cardDenoise': _Pages.stt,
+    'activationMode': _Pages.listen,
+    'showPartial': _Pages.listen,
+    'autoSendPause': _Pages.listen,
+    'cardVoiceResp': _Pages.voiceOut,
+    'voiceResponses': _Pages.voiceOut,
+    'announceReady': _Pages.voiceOut,
+    'ttsRate': _Pages.voiceOut,
+    'ttsVolume': _Pages.voiceOut,
+    'voiceImportTitle': _Pages.voiceOut,
+    'ttsEngineTitle': _Pages.voiceEngine,
+    'ttsCosyEndpoint': _Pages.voiceEngine,
+    'ttsInterp': _Pages.voiceEngine,
+    'ttsCosyClone': _Pages.voiceClone,
+    'ttsCosySpeed': _Pages.voiceClone,
+    'ttsCosyEmotion': _Pages.voiceClone,
+    'gpuLoadTitle': _Pages.voiceClone,
+    'gpuProfile': _Pages.voiceClone,
+    'gpuInGame': _Pages.voiceClone,
+    'ttsFx': _Pages.voiceFx,
+    'ttsFxPreset': _Pages.voiceFx,
+    'clonePhr2Title': _Pages.voicePhrases,
+    'cmdAdd': _Pages.cmdCatalog,
+    'cmdMode': _Pages.cmdExec,
+    'remoteEnable': _Pages.remote,
+    'remotePort': _Pages.remote,
+    'remoteAddress': _Pages.remote,
+    'remoteResponse': _Pages.remote,
+    'cardModels': _Pages.llmModels,
+    'cardConnMode': _Pages.llmConn,
+    'cardGenParams': _Pages.llmParams,
   };
 
-  List<(String key, int section)> _matches(AppState app) {
+  List<(String key, String page)> _matches(AppState app) {
     final q = _query.trim().toLowerCase();
     if (q.isEmpty) return const [];
-    final out = <(String, int)>[];
-    void consider(String key, int section) {
+    final out = <(String, String)>[];
+    void consider(String key, String page) {
       final label = app.t(key);
       final desc = app.t('${key}Desc');
       final hay = '$label ${desc == '${key}Desc' ? '' : desc}'.toLowerCase();
-      if (hay.contains(q)) out.add((key, section));
+      if (hay.contains(q)) out.add((key, page));
     }
 
     _searchIndex.forEach(consider);
-    // Section names themselves are searchable too ("телефон" -> Телефоны).
-    for (var i = 0; i < _sections.length; i++) {
-      final s = _sections[i];
-      if ('${app.t(s.$2)} ${app.t(s.$3)}'.toLowerCase().contains(q)) {
-        out.add((s.$2, i));
+    // Group and page names are searchable too ("телефон" -> Телефоны, "клон"
+    // -> Клон и нагрузка GPU).
+    for (final g in _kNav) {
+      if ('${app.t(g.titleKey)} ${app.t(g.subKey)}'.toLowerCase().contains(q)) {
+        out.add((g.titleKey, g.pages.first.id));
+      }
+      if (g.single) continue;
+      for (final p in g.pages) {
+        if (app.t(p.titleKey).toLowerCase().contains(q)) {
+          out.add((p.titleKey, p.id));
+        }
       }
     }
     return out;
@@ -2469,15 +2695,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       padding: const EdgeInsets.fromLTRB(28, 16, 28, 28),
       itemCount: res.length,
       itemBuilder: (_, i) {
-        final (key, section) = res[i];
+        final (key, page) = res[i];
         final desc = app.t('${key}Desc');
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            // Jump to the section that holds it and drop out of search mode.
+            // Jump to the page that holds it and drop out of search mode.
             onTap: () => setState(() {
-              _section = section;
+              _page = page;
               _searchCtrl.clear();
               _query = '';
             }),
@@ -2511,7 +2737,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Text(app.t(_sections[section].$2),
+                  Text(
+                      _navGroupOf(page).single
+                          ? app.t(_navGroupOf(page).titleKey)
+                          : '${app.t(_navGroupOf(page).titleKey)} · '
+                              '${app.t(_navPageOf(page).titleKey)}',
+                      textAlign: TextAlign.right,
                       style: TextStyle(
                           fontSize: 11.5, color: _sub(context))),
                   const SizedBox(width: 6),
@@ -2588,38 +2819,67 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     );
   }
 
+  // One page = one short list of cards. Everything is built per page (not
+  // filtered out of one big list) so opening "Эффекты" never constructs the
+  // asset-model or changelog cards.
   List<_CardSpec> _cardsFor(AppState app) {
-    switch (_section) {
-      case 0:
-        return _generalCards(app);
-      // "Голосовой ввод" held everything at once (mic, recognition, denoise,
-      // TTS engine, voice FX, clone, GPU load) and was by far the hardest
-      // section to scan. Split in two, sharing one builder: the first three
-      // cards are capture/recognition, the rest are the assistant's voice.
-      case 1:
-        return _voiceInputCards(app).take(3).toList();
-      case 2:
-        return _voiceInputCards(app).skip(3).toList();
-      case 3:
-        return _widgetsCards(app);
-      case 4:
-        return _voiceCommandCards(app);
-      case 5:
+    switch (_page) {
+      case _Pages.basics:
+        return _basicsCards(app);
+      case _Pages.startup:
+        return _startupCards(app);
+      case _Pages.micDevice:
+        return _micDeviceCards(app);
+      case _Pages.stt:
+        return _sttCards(app);
+      case _Pages.listen:
+        return _listenCards(app);
+      case _Pages.voiceOut:
+        return _voiceOutCards(app);
+      case _Pages.voiceEngine:
+        return _voiceEngineCards(app);
+      case _Pages.voiceClone:
+        return _voiceCloneCards(app);
+      case _Pages.voiceFx:
+        return _voiceFxCards(app);
+      case _Pages.voicePhrases:
+        return _voicePhraseCards(app);
+      case _Pages.widgetsLook:
+        return _widgetLookCards(app);
+      case _Pages.widgetsParams:
+        return _widgetParamCards(app);
+      case _Pages.cmdExec:
+        return _cmdExecCards(app);
+      case _Pages.cmdCatalog:
+        return _cmdCatalogCards(app);
+      case _Pages.cmdSecurity:
+        return _cmdSecurityCards(app);
+      case _Pages.remote:
         return _remoteInputCards(app);
-      case 6:
-        return _modelCards(app);
-      case 7:
-        return _personaCards(app);
-      case 8:
-        return _privacyCards(app);
-      case 9:
-        return _aboutCards(app);
+      case _Pages.llmConn:
+        return _llmConnCards(app);
+      case _Pages.llmModels:
+        return _llmAssetCards(app);
+      case _Pages.llmParams:
+        return [..._llmPresetCards(app), ..._llmGenCards(app)];
+      case _Pages.personaStyle:
+        return _personaStyleCards(app);
+      case _Pages.personaMemory:
+        return _personaMemoryCards(app);
+      case _Pages.privAccess:
+        return _privacyAccessCards(app);
+      case _Pages.privData:
+        return _privacyDataCards(app);
+      case _Pages.about:
+        return [..._aboutInfoCards(app), ..._aboutUpdateCards(app)];
+      case _Pages.changelog:
+        return _changelogCards(app);
       default:
         return const [];
     }
   }
 
-  // =================== SECTION 4: REMOTE INPUT (PHONES) ===================
+  // =================== ТЕЛЕФОНЫ ===================
   List<_CardSpec> _remoteInputCards(AppState app) {
     return [
       _CardSpec(
@@ -2632,8 +2892,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     ];
   }
 
-  // =================== SECTION 0: GENERAL ===================
-  List<_CardSpec> _generalCards(AppState app) {
+  // =================== ОБЩИЕ ===================
+  List<_CardSpec> _basicsCards(AppState app) {
     return [
       _CardSpec(evsCard(
         context,
@@ -2735,6 +2995,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
       )),
+    ];
+  }
+
+  List<_CardSpec> _startupCards(AppState app) {
+    return [
       _CardSpec(
         evsCard(
           context,
@@ -3104,9 +3369,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     );
   }
 
-  // =================== SECTION 2: VOICE COMMANDS ===================
-  List<_CardSpec> _voiceCommandCards(AppState app) {
-    final cmds = app.voiceCommands;
+  // =================== КОМАНДЫ ===================
+  List<_CardSpec> _cmdExecCards(AppState app) {
     return [
       _CardSpec(
         evsCard(context, icon: Icons.bolt_outlined, title: app.t('cardCmdExec'), rows: [
@@ -3151,6 +3415,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setStopWords(v)),
         ),
       ])),
+    ];
+  }
+
+  List<_CardSpec> _cmdSecurityCards(AppState app) {
+    return [
       _CardSpec(evsCard(context,
           icon: Icons.shield_outlined, title: app.t('cardSecurity'), rows: [
         evsRow(context, 
@@ -3175,6 +3444,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ], app.cmdConfirm, app.setCmdConfirm),
         ),
       ])),
+    ];
+  }
+
+  List<_CardSpec> _cmdCatalogCards(AppState app) {
+    final cmds = app.voiceCommands;
+    return [
       _CardSpec(
         evsCard(context,
             icon: Icons.format_list_bulleted, title: app.t('cardCatalog'), rows: [
@@ -3463,11 +3738,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     if (cmd != null) app.replaceVoiceCommand(existing, cmd);
   }
 
-  // =================== SECTION 2: WIDGETS ===================
+  // =================== ВИДЖЕТЫ ===================
   // Look of the voice visualization (adapted from the user-provided
   // widgets-settings mock): live preview with a voice simulation, style
   // tiles, per-style parameters, plus the floating-overlay controls.
-  List<_CardSpec> _widgetsCards(AppState app) {
+  List<_CardSpec> _widgetLookCards(AppState app) {
     final accent = Color(app.vizAccent);
     return [
       _CardSpec(
@@ -3511,6 +3786,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             ]),
         full: true,
       ),
+    ];
+  }
+
+  List<_CardSpec> _widgetParamCards(AppState app) {
+    return [
       _CardSpec(evsCard(context,
           icon: Icons.tune, title: app.t('cardWsParams'), rows: [
         evsRow(context, 
@@ -3661,11 +3941,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     }
   }
 
-  // =================== SECTION 3: MODEL & INFERENCE ===================
+  // =================== МОДЕЛЬ И ИНФЕРЕНС ===================
   // Desktop is remote-only by design: models come from a local server
   // (Ollama) or a remote API endpoint. On-device GGUF inference was removed
   // from the UI (the fllama engine code stays dormant in the codebase).
-  List<_CardSpec> _modelCards(AppState app) {
+  List<_CardSpec> _llmPresetCards(AppState app) {
     return [
       _CardSpec(
         evsCard(context,
@@ -3711,6 +3991,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         ]),
         full: true,
       ),
+    ];
+  }
+
+  List<_CardSpec> _llmAssetCards(AppState app) {
+    return [
       _CardSpec(
         evsCard(context,
             icon: Icons.dns_outlined,
@@ -3718,6 +4003,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             rows: [_AssetModelsCard(app)]),
         full: true,
       ),
+    ];
+  }
+
+  List<_CardSpec> _llmConnCards(AppState app) {
+    return [
       _CardSpec(
         evsCard(context, icon: Icons.wifi, title: app.t('cardConnMode'), rows: [
           Padding(
@@ -3772,6 +4062,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         if (app.models.isNotEmpty) _ModelModeCard(app),
         _LlmAdvancedCard(app),
       ])),
+    ];
+  }
+
+  List<_CardSpec> _llmGenCards(AppState app) {
+    return [
       _CardSpec(evsCard(context,
           icon: Icons.tune, title: app.t('cardGenParams'), rows: [
         evsNamedSlider(context, 
@@ -3851,8 +4146,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     );
   }
 
-  // =================== SECTION 4: PERSONALITY & MEMORY ===================
-  List<_CardSpec> _personaCards(AppState app) {
+  // =================== ЛИЧНОСТЬ И ПАМЯТЬ ===================
+  List<_CardSpec> _personaStyleCards(AppState app) {
     final p = app.persona;
     String pct(double v) => '${(v * 100).round()}%';
     return [
@@ -3946,6 +4241,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ),
       ])),
+    ];
+  }
+
+  List<_CardSpec> _personaMemoryCards(AppState app) {
+    final p = app.persona;
+    return [
       _CardSpec(
         evsCard(context, icon: Icons.access_time, title: app.t('cardMemory'), rows: [
           evsRow(context, 
@@ -4013,8 +4314,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     );
   }
 
-  // =================== SECTION 5: PRIVACY ===================
-  List<_CardSpec> _privacyCards(AppState app) {
+  // =================== ПРИВАТНОСТЬ ===================
+  List<_CardSpec> _privacyAccessCards(AppState app) {
     return [
       _CardSpec(evsCard(context,
           icon: Icons.shield_outlined, title: app.t('cardCmdScope'), rows: [
@@ -4057,6 +4358,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ),
       ])),
+    ];
+  }
+
+  List<_CardSpec> _privacyDataCards(AppState app) {
+    return [
       _CardSpec(
         evsCard(context, icon: Icons.delete_outline, title: app.t('cardData'), rows: [
           evsRow(context, 
@@ -4166,8 +4472,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     );
   }
 
-  // =================== SECTION 6: ABOUT ===================
-  List<_CardSpec> _aboutCards(AppState app) {
+  // =================== О ПРОГРАММЕ ===================
+  List<_CardSpec> _aboutInfoCards(AppState app) {
     return [
       _CardSpec(
         evsCard(context, icon: Icons.info_outline, title: app.t('navAbout'), rows: [
@@ -4199,10 +4505,22 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         ]),
         full: true,
       ),
+    ];
+  }
+
+  List<_CardSpec> _changelogCards(AppState app) {
+    return [
       _CardSpec(evsCard(context,
           icon: Icons.description_outlined, title: app.t('changelog'), rows: [
-        for (final e in kChangelog.take(3)) _clItem(e),
+        // The changelog is a page of its own now, so it can list far more than
+        // the three entries that used to fit next to the version card.
+        for (final e in kChangelog.take(12)) _clItem(e),
       ])),
+    ];
+  }
+
+  List<_CardSpec> _aboutUpdateCards(AppState app) {
+    return [
       _CardSpec(evsCard(context,
           icon: Icons.refresh, title: app.t('updates'), rows: [
         evsRow(context, 
@@ -4261,8 +4579,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   }
 
 
-  // =================== SECTION 1: VOICE INPUT ===================
-  List<_CardSpec> _voiceInputCards(AppState app) {
+  // =================== МИКРОФОН И ГОЛОС ===================
+  // ---- Микрофон и распознавание ----
+  List<_CardSpec> _sttCards(AppState app) {
     return [
       _CardSpec(evsCard(
         context,
@@ -4358,6 +4677,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           const _SttTestCard(),
         ],
       )),
+    ];
+  }
+
+  List<_CardSpec> _micDeviceCards(AppState app) {
+    return [
       _CardSpec(evsCard(
         context,
         icon: Icons.settings_voice_outlined,
@@ -4402,7 +4726,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           _MultiMicCard(app),
         ],
       )),
-      _CardSpec(_GameModeCard(app)),
+    ];
+  }
+
+  List<_CardSpec> _listenCards(AppState app) {
+    return [
       _CardSpec(evsCard(
         context,
         icon: Icons.headset_mic_outlined,
@@ -4442,30 +4770,37 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
       )),
+    ];
+  }
+
+  // ---- Голос ассистента ----
+  //
+  // This used to be ONE card ("Голосовые ответы") holding the on/off toggles,
+  // the engine picker, the entire clone block, the GPU-load knobs, the
+  // interpreter and five FX sliders. A card cannot be split across masonry
+  // columns, so it grew into the endless middle column. Now each concern is
+  // its own page.
+  List<_CardSpec> _voiceOutCards(AppState app) {
+    return [
       _CardSpec(evsCard(
         context,
         icon: Icons.record_voice_over_outlined,
         title: app.t('cardVoiceResp'),
         rows: [
-          evsRow(context, 
+          evsRow(context,
             label: app.t('voiceResponses'),
             desc: app.t('voiceResponsesDesc'),
             control: evsToggle(context, app.voiceResponses, app.setVoiceResponses),
           ),
-          evsRow(context, 
+          evsRow(context,
             label: app.t('announceReady'),
             desc: app.t('announceReadyDesc'),
             control: evsToggle(context, app.announceReady, app.setAnnounceReady),
           ),
-          _TtsEngineCard(app),
-          // CPU-XTTS clone hidden: the CPU build produced unintelligible speech
-          // ("набор звуков"). TTS falls back to Piper. The GPU render
-          // (Qwen3-TTS) will replace it later; re-add _VoiceCloneCard(app) then.
-          _TtsInterpCard(app),
-          evsRow(context, 
+          evsRow(context,
             label: app.t('ttsRate'),
             desc: app.t('ttsRateDesc'),
-            control: evsSlider(context, 
+            control: evsSlider(context,
               value: app.ttsRate.clamp(0.5, 2.0),
               min: 0.5,
               max: 2.0,
@@ -4474,9 +4809,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setTtsRate(v),
             ),
           ),
-          evsRow(context, 
+          evsRow(context,
             label: app.t('ttsVolume'),
-            control: evsSlider(context, 
+            control: evsSlider(context,
               value: (app.ttsVolume * 100).clamp(0, 100),
               min: 0,
               max: 100,
@@ -4485,6 +4820,55 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setTtsVolume(v / 100),
             ),
           ),
+        ],
+      )),
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.record_voice_over_outlined,
+        title: app.t('cardAssistantVoice'),
+        rows: [_AssistantVoiceCard(app)],
+      )),
+    ];
+  }
+
+  List<_CardSpec> _voiceEngineCards(AppState app) {
+    return [
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.graphic_eq,
+        title: app.t('ttsEngineTitle'),
+        rows: [_TtsEngineCard(app)],
+      )),
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.text_fields,
+        title: app.t('ttsInterp'),
+        rows: [_TtsInterpCard(app)],
+      )),
+    ];
+  }
+
+  List<_CardSpec> _voiceCloneCards(AppState app) {
+    return [
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.graphic_eq,
+        title: app.t('ttsCosySectionTitle'),
+        rows: [_TtsCloneCard(app)],
+      )),
+      // Game mode belongs next to the GPU-load profile: both answer "what
+      // happens while a game is running".
+      _CardSpec(_GameModeCard(app)),
+    ];
+  }
+
+  List<_CardSpec> _voiceFxCards(AppState app) {
+    return [
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.auto_fix_high_outlined,
+        title: app.t('ttsFx'),
+        rows: [
           evsRow(context,
             label: app.t('ttsFx'),
             desc: app.t('ttsFxDesc'),
@@ -4522,14 +4906,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               valueLabel: '${app.ttsFxLowpass} Hz',
               onChanged: (v) => app.setTtsFx(lowpass: (800 + v * 5200).round()),
             ),
-          ],        ],
+          ],
+        ],
       )),
-      _CardSpec(evsCard(
-        context,
-        icon: Icons.record_voice_over_outlined,
-        title: app.t('cardAssistantVoice'),
-        rows: [_AssistantVoiceCard(app)],
-      )),
+    ];
+  }
+
+  List<_CardSpec> _voicePhraseCards(AppState app) {
+    return [
       _CardSpec(evsCard(
         context,
         icon: Icons.playlist_play,
@@ -4642,40 +5026,13 @@ class _TtsEngineCard extends StatefulWidget {
 class _TtsEngineCardState extends State<_TtsEngineCard> {
   late final TextEditingController _ep =
       TextEditingController(text: widget.app.cosyvoiceEndpoint);
-  // CosyVoice deep-control text fields (§3.2).
-  late final TextEditingController _voice =
-      TextEditingController(text: widget.app.cosyvoiceVoice);
-  late final TextEditingController _clonePrompt =
-      TextEditingController(text: widget.app.cosyvoiceClonePromptText);
-  late final TextEditingController _instruct =
-      TextEditingController(text: widget.app.cosyvoiceInstruct);
   bool _checking = false;
-  bool _gpuAdvOpen = false; // raw GPU-load knobs, collapsed by default
-
-  // Emotion presets → i18n label keys (map to instruct phrases once wired).
-  static const List<(String, String)> _emotions = [
-    ('neutral', 'ttsCosyEmotionNeutral'),
-    ('happy', 'ttsCosyEmotionHappy'),
-    ('sad', 'ttsCosyEmotionSad'),
-    ('serious', 'ttsCosyEmotionSerious'),
-    ('calm', 'ttsCosyEmotionCalm'),
-    ('excited', 'ttsCosyEmotionExcited'),
-  ];
 
   AppState get app => widget.app;
-
-  Future<void> _pickCloneSample() async {
-    final res = await FilePicker.pickFiles();
-    final p = res?.files.single.path;
-    if (p != null && p.isNotEmpty) app.setCosyvoiceClonePath(p);
-  }
 
   @override
   void dispose() {
     _ep.dispose();
-    _voice.dispose();
-    _clonePrompt.dispose();
-    _instruct.dispose();
     super.dispose();
   }
 
@@ -4716,6 +5073,147 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         ),
       ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Watch directly (this card sits inside a LayoutBuilder) so the online
+    // status refreshes on every change.
+    context.watch<AppState>();
+    final cosyOnline = app.cosyvoiceOnline == true;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+          child: Row(children: [
+            _engineChip('piper', 'ttsEnginePiper', 'ttsEnginePiperHint',
+                enabled: true),
+            const SizedBox(width: 8),
+            _engineChip('cosyvoice', 'ttsEngineCosy', 'ttsEngineCosyHint',
+                enabled: cosyOnline),
+          ]),
+        ),
+        if (!cosyOnline)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+            child: Text(app.t('ttsCosyUnavailable'),
+                style: TextStyle(fontSize: 11.5, color: _warn(context))),
+          ),
+        // Endpoint + check.
+        evsRow(context,
+          stacked: true,
+          label: app.t('ttsCosyEndpoint'),
+          control: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _RemoteField(
+                controller: _ep,
+                onChanged: app.setCosyvoiceEndpoint,
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: _checking
+                      ? null
+                      : () async {
+                          setState(() => _checking = true);
+                          await app.checkCosyvoice();
+                          if (mounted) setState(() => _checking = false);
+                        },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _stroke(context)),
+                      color: _stroke(context),
+                    ),
+                    child: Text(
+                        _checking ? app.t('ttsCosyChecking') : app.t('ttsCosyCheck'),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _body(context))),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                if (app.cosyvoiceOnline != null)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: cosyOnline
+                                ? _success(context)
+                                : _danger(context))),
+                    const SizedBox(width: 6),
+                    Text(
+                        cosyOnline
+                            ? app.t('ttsCosyOnline')
+                            : app.t('ttsCosyOffline'),
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: cosyOnline
+                                ? _success(context)
+                                : _danger(context))),
+                  ]),
+              ]),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// The clone half of what used to be one giant TTS card: reference sample,
+// voice/emotion/instruct and the GPU-load profile of the render server. Split
+// out so "Движок синтеза" and "Клон и нагрузка GPU" are separate pages instead
+// of one column several screens tall.
+class _TtsCloneCard extends StatefulWidget {
+  const _TtsCloneCard(this.app);
+  final AppState app;
+  @override
+  State<_TtsCloneCard> createState() => _TtsCloneCardState();
+}
+
+class _TtsCloneCardState extends State<_TtsCloneCard> {
+  // CosyVoice deep-control text fields (§3.2).
+  late final TextEditingController _voice =
+      TextEditingController(text: widget.app.cosyvoiceVoice);
+  late final TextEditingController _clonePrompt =
+      TextEditingController(text: widget.app.cosyvoiceClonePromptText);
+  late final TextEditingController _instruct =
+      TextEditingController(text: widget.app.cosyvoiceInstruct);
+  bool _gpuAdvOpen = false; // raw GPU-load knobs, collapsed by default
+
+  // Emotion presets → i18n label keys (map to instruct phrases once wired).
+  static const List<(String, String)> _emotions = [
+    ('neutral', 'ttsCosyEmotionNeutral'),
+    ('happy', 'ttsCosyEmotionHappy'),
+    ('sad', 'ttsCosyEmotionSad'),
+    ('serious', 'ttsCosyEmotionSerious'),
+    ('calm', 'ttsCosyEmotionCalm'),
+    ('excited', 'ttsCosyEmotionExcited'),
+  ];
+
+  AppState get app => widget.app;
+
+  Future<void> _pickCloneSample() async {
+    final res = await FilePicker.pickFiles();
+    final p = res?.files.single.path;
+    if (p != null && p.isNotEmpty) app.setCosyvoiceClonePath(p);
+  }
+
+  @override
+  void dispose() {
+    _voice.dispose();
+    _clonePrompt.dispose();
+    _instruct.dispose();
+    super.dispose();
   }
 
   // Emotion preset dropdown (§3.2 wireframe shows a "[ нейтральная ▾ ]" select).
@@ -4877,105 +5375,16 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch directly (this card sits inside a LayoutBuilder) so the CosyVoice
-    // clone-sample label and online status refresh on every change.
+    // Watch directly (this card sits inside a LayoutBuilder) so the clone
+    // sample label refreshes on every change.
     context.watch<AppState>();
-    final cosyOnline = app.cosyvoiceOnline == true;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
-          child: Text(app.t('ttsEngineTitle'),
-              style: TextStyle(
-                  color: _body(context),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700)),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-          child: Row(children: [
-            _engineChip('piper', 'ttsEnginePiper', 'ttsEnginePiperHint',
-                enabled: true),
-            const SizedBox(width: 8),
-            _engineChip('cosyvoice', 'ttsEngineCosy', 'ttsEngineCosyHint',
-                enabled: cosyOnline),
-          ]),
-        ),
-        if (!cosyOnline)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-            child: Text(app.t('ttsCosyUnavailable'),
-                style: TextStyle(fontSize: 11.5, color: _warn(context))),
-          ),
-        // Endpoint + check.
-        evsRow(context, 
-          stacked: true,
-          label: app.t('ttsCosyEndpoint'),
-          control: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _RemoteField(
-                controller: _ep,
-                onChanged: app.setCosyvoiceEndpoint,
-              ),
-              const SizedBox(height: 8),
-              Row(children: [
-                InkWell(
-                  borderRadius: BorderRadius.circular(8),
-                  onTap: _checking
-                      ? null
-                      : () async {
-                          setState(() => _checking = true);
-                          await app.checkCosyvoice();
-                          if (mounted) setState(() => _checking = false);
-                        },
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _stroke(context)),
-                      color: _stroke(context),
-                    ),
-                    child: Text(
-                        _checking ? app.t('ttsCosyChecking') : app.t('ttsCosyCheck'),
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: _body(context))),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                if (app.cosyvoiceOnline != null)
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: cosyOnline
-                                ? _success(context)
-                                : _danger(context))),
-                    const SizedBox(width: 6),
-                    Text(
-                        cosyOnline
-                            ? app.t('ttsCosyOnline')
-                            : app.t('ttsCosyOffline'),
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: cosyOnline
-                                ? _success(context)
-                                : _danger(context))),
-                  ]),
-              ]),
-            ],
-          ),
-        ),
         // Deep CosyVoice controls (§3.2) — voice/preset, clone-by-WAV sample,
-        // speed, emotion, instruct and synthesis device. Always visible now so
-        // the voice cloner is discoverable and can be configured up front (they
-        // still only take effect once the CosyVoice server is reachable).
+        // speed, emotion, instruct and synthesis device. Always visible so the
+        // voice cloner is discoverable and can be configured up front (they
+        // still only take effect once the clone server is reachable).
         ..._cosyDeepControls(),
         ..._gpuLoadControls(),
       ],

@@ -881,21 +881,28 @@ class _NexusRail extends StatelessWidget {
   // [onSection] is set when the rail is rendered INSIDE the settings panel
   // (Nexus keeps it visible there, per the design): tapping an icon then just
   // switches the open section instead of stacking another settings route.
-  const _NexusRail({this.onSection, this.activeSection});
-  final void Function(int section)? onSection;
-  final int? activeSection;
+  const _NexusRail({this.onSection, this.activePage});
+  final void Function(String page)? onSection;
+  final String? activePage;
 
-  // Open settings on a specific section (index into DesktopSettings._sections):
-  // 0 General · 3 Voice commands · 5 Model & inference · 8 About. So each rail
-  // icon lands on its own relevant screen instead of all opening General.
-  void _openSettings(BuildContext context, [int section = 0]) {
+  // Open settings on a specific page (a _Pages id). Ids, not indexes: the old
+  // numeric sections silently shifted every time a section was split, and the
+  // rail kept opening the neighbouring screen.
+  void _openSettings(BuildContext context, [String page = _Pages.basics]) {
     final inline = onSection;
     if (inline != null) {
-      inline(section);
+      inline(page);
       return;
     }
     Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => DesktopSettings(initialSection: section)));
+        builder: (_) => DesktopSettings(initialPage: page)));
+  }
+
+  // A rail icon stays lit for its whole settings group, not just the one page
+  // it opens — otherwise the icon goes dark as soon as you pick a sub-page.
+  bool _inGroup(String page) {
+    final p = activePage;
+    return p != null && _navGroupOf(p) == _navGroupOf(page);
   }
 
   Widget _navIcon(BuildContext context, IconData icon, String tooltip,
@@ -947,21 +954,21 @@ class _NexusRail extends StatelessWidget {
                     ? Navigator.of(context).maybePop()
                     : Scaffold.of(context).openDrawer()),
             _navIcon(context, Icons.bolt_outlined, app.t('nxNavCommands'),
-                active: activeSection == 4,
-                onTap: () => _openSettings(context, 4)),
+                active: _inGroup(_Pages.cmdExec),
+                onTap: () => _openSettings(context, _Pages.cmdExec)),
             _navIcon(context, Icons.memory, app.t('nxNavModels'),
-                active: activeSection == 6,
-                onTap: () => _openSettings(context, 6)),
+                active: _inGroup(_Pages.llmConn),
+                onTap: () => _openSettings(context, _Pages.llmConn)),
             _navIcon(context, Icons.receipt_long_outlined, app.t('nxNavLog'),
-                active: activeSection == 9,
-                onTap: () => _openSettings(context, 9)),
+                active: _inGroup(_Pages.about),
+                onTap: () => _openSettings(context, _Pages.changelog)),
             const Spacer(),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
-                active: activeSection != null &&
-                    activeSection != 4 &&
-                    activeSection != 6 &&
-                    activeSection != 9,
-                onTap: () => _openSettings(context, 0)),
+                active: activePage != null &&
+                    !_inGroup(_Pages.cmdExec) &&
+                    !_inGroup(_Pages.llmConn) &&
+                    !_inGroup(_Pages.about),
+                onTap: () => _openSettings(context, _Pages.basics)),
             const SizedBox(height: 10),
           ],
         ),
@@ -1171,8 +1178,8 @@ class _NexusStageState extends State<_NexusStage> {
 class _NexusSubsystemCards extends StatelessWidget {
   const _NexusSubsystemCards();
 
-  void _open(BuildContext c, int section) => Navigator.of(c).push(
-      MaterialPageRoute(builder: (_) => DesktopSettings(initialSection: section)));
+  void _open(BuildContext c, String page) => Navigator.of(c).push(
+      MaterialPageRoute(builder: (_) => DesktopSettings(initialPage: page)));
 
   String _gb(int bytes, {int digits = 1}) =>
       (bytes / (1024 * 1024 * 1024)).toStringAsFixed(digits);
@@ -1298,7 +1305,7 @@ class _NexusSubsystemCards extends StatelessWidget {
         label: 'STT',
         dot: dot,
         keyColor: pipe.sttActive ? _warn(c) : null,
-        onTap: () => _open(c, 1),
+        onTap: () => _open(c, _Pages.stt),
         body: _valSub(c, engine, '$runtime · $device'));
   }
 
@@ -1333,7 +1340,7 @@ class _NexusSubsystemCards extends StatelessWidget {
         label: 'TTS',
         dot: dot,
         keyColor: pipe.ttsActive ? _info(c) : null,
-        onTap: () => _open(c, 1),
+        onTap: () => _open(c, _Pages.voiceEngine),
         body: _valSub(c, engine, sub));
   }
 
@@ -1376,7 +1383,7 @@ class _NexusSubsystemCards extends StatelessWidget {
         label: 'LLM',
         dot: dot,
         keyColor: pipe.llmActive ? _accent2(c) : null,
-        onTap: () => _open(c, 5),
+        onTap: () => _open(c, _Pages.llmConn),
         body: _valSub(c, model, mode));
   }
 
@@ -1407,7 +1414,7 @@ class _NexusSubsystemCards extends StatelessWidget {
         dot: offload ? _warn(c) : _success(c),
         keyColor: offload ? _warn(c) : null,
         tooltip: tip.isEmpty ? null : tip,
-        onTap: () => _open(c, 5),
+        onTap: () => _open(c, _Pages.voiceClone),
         body: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
