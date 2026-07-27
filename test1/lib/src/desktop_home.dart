@@ -878,14 +878,25 @@ class _NexusHubPainter extends CustomPainter {
 // the bottom. Nav icons route to existing destinations; "Диалог" is the active
 // home view and opens the conversations switcher.
 class _NexusRail extends StatelessWidget {
-  const _NexusRail();
+  // [onSection] is set when the rail is rendered INSIDE the settings panel
+  // (Nexus keeps it visible there, per the design): tapping an icon then just
+  // switches the open section instead of stacking another settings route.
+  const _NexusRail({this.onSection, this.activeSection});
+  final void Function(int section)? onSection;
+  final int? activeSection;
 
   // Open settings on a specific section (index into DesktopSettings._sections):
   // 0 General · 3 Voice commands · 5 Model & inference · 8 About. So each rail
   // icon lands on its own relevant screen instead of all opening General.
-  void _openSettings(BuildContext context, [int section = 0]) =>
-      Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => DesktopSettings(initialSection: section)));
+  void _openSettings(BuildContext context, [int section = 0]) {
+    final inline = onSection;
+    if (inline != null) {
+      inline(section);
+      return;
+    }
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => DesktopSettings(initialSection: section)));
+  }
 
   Widget _navIcon(BuildContext context, IconData icon, String tooltip,
       {bool active = false, VoidCallback? onTap}) {
@@ -928,17 +939,28 @@ class _NexusRail extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 6),
+            // Inside settings the "Диалог" icon leads back to the home view;
+            // on the home view it opens the conversations switcher.
             _navIcon(context, Icons.forum_outlined, app.t('nxNavDialog'),
-                active: true,
-                onTap: () => Scaffold.of(context).openDrawer()),
+                active: onSection == null,
+                onTap: () => onSection != null
+                    ? Navigator.of(context).maybePop()
+                    : Scaffold.of(context).openDrawer()),
             _navIcon(context, Icons.bolt_outlined, app.t('nxNavCommands'),
+                active: activeSection == 3,
                 onTap: () => _openSettings(context, 3)),
             _navIcon(context, Icons.memory, app.t('nxNavModels'),
+                active: activeSection == 5,
                 onTap: () => _openSettings(context, 5)),
             _navIcon(context, Icons.receipt_long_outlined, app.t('nxNavLog'),
+                active: activeSection == 8,
                 onTap: () => _openSettings(context, 8)),
             const Spacer(),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
+                active: activeSection != null &&
+                    activeSection != 3 &&
+                    activeSection != 5 &&
+                    activeSection != 8,
                 onTap: () => _openSettings(context, 0)),
             const SizedBox(height: 10),
           ],

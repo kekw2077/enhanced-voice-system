@@ -28,6 +28,32 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.7.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Стиль Nexus — окно настроек приведено к общему оформлению:</b> слева остаётся рейл с иконками (настройки больше не выглядят «отдельным экраном»), добавлен заголовок «Настройки» с подсказкой закрытия, и сам <b>Esc</b> теперь закрывает окно. Иконки рейла переключают раздел прямо внутри настроек. Цвета следуют выбранной теме. Классический стиль не изменился.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 27 Jul 2026 02:20:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.7.1/EVS-Setup-2.7.1.exe"
+        sparkle:version="2.7.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD0CHBAnIqXvQmfZ5AokRk8XnEsPVccwIb/FROeYgP4CHQCOd3G9j92ySR2M3CdcSA7ewtSgw2y2w6Q+CSdX"
+        evs:sha256="a35b663c8c0ba56aed209e88192fcb0578de23d98bacd55ce266223b92cb85b0"
+        length="16638860"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.7.0</title>
       <description><![CDATA[
         <style>

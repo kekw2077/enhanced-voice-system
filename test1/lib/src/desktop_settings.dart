@@ -1803,31 +1803,51 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       },
       child: Scaffold(
         backgroundColor: _bg(context),
-        body: Container(
-          decoration: _evsShellBg(context),
-          // Same shell shape as DesktopHome: the nav rail spans the FULL window
-          // height and the title bar sits only over the content column. The old
-          // order (title bar across the top, rail below it) left a strip above a
-          // visibly shortened rail.
-          child: Column(
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    _nav(app),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          const _WindowTitleBar(),
-                          Expanded(child: _sectionScaffold(app)),
-                        ],
-                      ),
+        // Nexus: Esc closes settings (the header advertises it). Classic keeps
+        // the plain back/close behaviour it always had.
+        body: CallbackShortcuts(
+          bindings: app.appStyle == AppStyle.nexus
+              ? {
+                  const SingleActivator(LogicalKeyboardKey.escape): () =>
+                      _handleExit(app),
+                }
+              : const {},
+          child: Focus(
+            autofocus: app.appStyle == AppStyle.nexus,
+            child: Container(
+              decoration: _evsShellBg(context),
+              // Same shell shape as DesktopHome: the nav rail spans the FULL window
+              // height and the title bar sits only over the content column. The old
+              // order (title bar across the top, rail below it) left a strip above a
+              // visibly shortened rail.
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Row(
+                      children: [
+                        // Nexus keeps its icon rail visible in settings, so the
+                        // window reads as one shell instead of a separate screen.
+                        if (app.appStyle == AppStyle.nexus)
+                          _NexusRail(
+                            activeSection: _section,
+                            onSection: (s) => setState(() => _section = s),
+                          ),
+                        _nav(app),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const _WindowTitleBar(),
+                              Expanded(child: _sectionScaffold(app)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  _saveBar(app),
+                ],
               ),
-              _saveBar(app),
-            ],
+            ),
           ),
         ),
       ),
@@ -2069,15 +2089,52 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-              child: Text('РАЗДЕЛЫ',
-                  style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                      color: _faint(context))),
-            ),
+            // Nexus header: the panel names itself and advertises Esc, which is
+            // wired up in build(). Classic keeps the plain "РАЗДЕЛЫ" label.
+            if (nexus)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(app.t('settings'),
+                        style: TextStyle(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: _txt(context))),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Text(app.t('nxCloseHint'),
+                          style: EvsType.caption.copyWith(
+                              fontSize: 11, color: _faint(context))),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(6),
+                          color: _overlayFill(context, 0.05),
+                          border: Border.all(color: _stroke(context)),
+                        ),
+                        child: Text('Esc',
+                            style: EvsType.mono.copyWith(
+                                fontSize: 10.5, color: _sub(context))),
+                      ),
+                    ]),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                child: Text('РАЗДЕЛЫ',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                        color: _faint(context))),
+              ),
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(horizontal: 8),
