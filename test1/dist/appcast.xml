@@ -28,6 +28,34 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.8.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Исправлено: привязанный телефон пропадал после перезапуска.</b> Привязка происходит внутри окна настроек, где сохранение отложено до нажатия «Сохранить», поэтому устройство не попадало на диск, а при выходе стиралось и из памяти. Теперь сохраняется сразу.</li>
+          <li><b>Исправлено: заготовленные фразы клон-голоса не звучали</b> — вместо них включался системный голос. Когда клон-сервер не отвечал, приложение переключало озвучку на обычный движок, а кэш фраз используется только при активном клон-движке. Теперь клон остаётся выбранным: заготовки играют вашим голосом даже с выключенным сервером, а новый текст озвучивается запасным голосом.</li>
+          <li><b>Новая карточка «Заготовленные фразы»</b> (Настройки → Голос ассистента): весь список заготовок, каждую можно прослушать, есть кнопка заготовить заново.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 27 Jul 2026 05:30:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.8.1/EVS-Setup-2.8.1.exe"
+        sparkle:version="2.8.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MD0CHFYk6IOn/o+yAHLMhPa2o0XFkryUCRI5fxI4QdsCHQCcFHaaXHdJym/gEKkZmh8ZpDzu05tChNIzVkpz"
+        evs:sha256="ef770eac7a53d8bee7c348ea6300c5d280e8b4706f293d40f47d20ba6740ecee"
+        length="16645827"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.8.0</title>
       <description><![CDATA[
         <style>

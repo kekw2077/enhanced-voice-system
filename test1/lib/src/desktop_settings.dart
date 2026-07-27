@@ -4530,6 +4530,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         title: app.t('cardAssistantVoice'),
         rows: [_AssistantVoiceCard(app)],
       )),
+      _CardSpec(evsCard(
+        context,
+        icon: Icons.playlist_play,
+        title: app.t('clonePhr2Title'),
+        rows: [_ClonePhrasesCard(app)],
+      )),
     ];
   }
 }
@@ -5604,7 +5610,7 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
           _prerenderStatus(),
           evsRow(context,
             stacked: true,
-            label: app.t('clonePhrasesTitle'),
+            label: app.t('clonePhr2Title'),
             desc: app.t('clonePhrasesDesc'),
             control: _phrasesTable(),
           ),
@@ -6147,4 +6153,86 @@ class _StylePreviewPainter extends CustomPainter {
   @override
   bool shouldRepaint(_StylePreviewPainter old) =>
       old.style != style || old.skin.pal.bg != skin.pal.bg;
+}
+
+// The phrases pre-rendered into the cloned voice, with a listen button each.
+// Without this the phrase cache was invisible: you could not tell what had been
+// prepared, nor hear whether it actually came out in your own voice.
+class _ClonePhrasesCard extends StatefulWidget {
+  const _ClonePhrasesCard(this.app);
+  final AppState app;
+  @override
+  State<_ClonePhrasesCard> createState() => _ClonePhrasesCardState();
+}
+
+class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
+  AppState get app => widget.app;
+
+  @override
+  Widget build(BuildContext context) {
+    final phrases = app.clonePhrasesToRender();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+          child: Text(
+            app.t('clonePhr2Hint')
+                .replaceAll('{n}', '${phrases.length}'),
+            style: TextStyle(fontSize: 11.5, color: _faint(context)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: evsGhostButton(
+                context, app.t('clonePhr2Prepare'), Icons.download_done,
+                onTap: () {
+              SidecarClient.instance.prerender(phrases);
+              showAppSnackBar(context, app.t('clonePhr2Preparing'));
+            }),
+          ),
+        ),
+        Container(
+          constraints: const BoxConstraints(maxHeight: 260),
+          margin: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _stroke(context)),
+            color: _overlayFill(context, 0.03),
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            itemCount: phrases.length,
+            separatorBuilder: (_, __) =>
+                Divider(height: 1, color: _stroke(context)),
+            itemBuilder: (_, i) {
+              final p = phrases[i];
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
+                child: Row(children: [
+                  Expanded(
+                    child: Text(p,
+                        style:
+                            TextStyle(fontSize: 12.5, color: _body(context))),
+                  ),
+                  IconButton(
+                    tooltip: app.t('clonePhr2Play'),
+                    icon: Icon(Icons.play_circle_outline,
+                        size: 19, color: _info(context)),
+                    // Speaks through the active engine: a cached phrase plays
+                    // instantly from disk in the cloned voice.
+                    onPressed: () => SidecarClient.instance
+                        .speak(p, rate: app.ttsRate, volume: app.ttsVolume),
+                  ),
+                ]),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

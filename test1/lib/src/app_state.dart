@@ -1656,11 +1656,15 @@ class AppState extends ChangeNotifier {
       cosyvoiceOnline = res.statusCode > 0;
     } catch (_) {
       cosyvoiceOnline = false;
-      // A downed server must never leave CosyVoice as the active engine — fall
-      // back to Piper so speech keeps working, persist it, and note it once.
+      // Do NOT switch the engine away here. The pre-rendered phrase cache is
+      // only consulted while a CLONING engine is active, so auto-reverting to
+      // Piper threw away every phrase already rendered in the user's own voice
+      // — and with no Piper voice installed that landed on the Windows system
+      // voice. Staying on the clone engine keeps cached phrases playing in the
+      // cloned voice even with the server down; anything NOT cached falls back
+      // per-utterance (Piper, else system voice). The offline state is already
+      // visible in the voice status strip.
       if (ttsEngineChoice == 'cosyvoice') {
-        ttsEngineChoice = 'piper';
-        _save();
         VizOverlayServer.instance.note(t('ttsCosyFellBack'), kind: 'info');
       }
     }
@@ -2560,10 +2564,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Paired phones must persist IMMEDIATELY, never through _save(): pairing
+  // happens inside the settings screen, where _save() is deferred until the
+  // user presses Save. remoteDevices is also (deliberately) excluded from the
+  // settings snapshot, so the draft never went dirty, nothing was ever written,
+  // and leaving settings re-read prefs — erasing the just-paired phone from
+  // memory too. That is exactly the "phone disappeared after restart" report.
+  Future<void> _persistRemoteDevices() async {
+    try {
+      await prefs.setString('remoteDevices',
+          jsonEncode(remoteDevices.map((d) => d.toJson()).toList()));
+    } catch (_) {}
+  }
+
   void addRemoteDevice(RemoteDevice d) {
     remoteDevices.add(d);
     _save();
     notifyListeners();
+    unawaited(_persistRemoteDevices());
   }
 
   void removeRemoteDevice(RemoteDevice d) {
@@ -2571,12 +2589,14 @@ class AppState extends ChangeNotifier {
     remoteDevices.removeWhere((x) => x.id == d.id);
     _save();
     notifyListeners();
+    unawaited(_persistRemoteDevices());
   }
 
   void renameRemoteDevice(RemoteDevice d, String name) {
     d.name = name.trim();
     _save();
     notifyListeners();
+    unawaited(_persistRemoteDevices());
   }
 
   void setRemoteDevicePerms(RemoteDevice d, {bool? voice, bool? text}) {
@@ -2584,12 +2604,14 @@ class AppState extends ChangeNotifier {
     if (text != null) d.permText = text;
     _save();
     notifyListeners();
+    unawaited(_persistRemoteDevices());
   }
 
   void setRemoteDeviceEnabled(RemoteDevice d, bool v) {
     d.enabled = v;
     _save();
     notifyListeners();
+    unawaited(_persistRemoteDevices());
   }
 
   // Server-side: stamp a device's last activity (no full save churn per request
@@ -2597,6 +2619,7 @@ class AppState extends ChangeNotifier {
   void touchRemoteDevice(RemoteDevice d) {
     d.lastSeen = DateTime.now().toUtc().toIso8601String();
     notifyListeners();
+    unawaited(_persistRemoteDevices());
   }
 
   RemoteDevice? remoteDeviceByToken(String token) {
