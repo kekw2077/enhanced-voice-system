@@ -172,6 +172,12 @@ const Map<String, Map<String, String>> _i18n = {
     'cardDenoise': 'Шумоподавление',
     'micSensitivity': 'Чувствительность микрофона',
     'micSensitivityDesc': 'Ниже строгость определения речи (VAD) — микрофон реагирует на более тихую/дальнюю речь, но чаще ловит шум. Применяется при следующем запуске прослушивания.',
+    'micGain': 'Усиление микрофона',
+    'micGainDesc':
+        'Насколько громче делать сигнал микрофона. Помогает, если вас плохо '
+            'слышно или вы сидите далеко: тихая речь иначе не проходит порог '
+            'громкости, каким бы чувствительным ни был детектор речи. Усиливает '
+            'и шум — поднимайте только до нужного. 1.0x — без изменений.',
     'micSensLow': 'Низкая',
     'micSensMed': 'Средняя',
     'micSensHigh': 'Высокая',
@@ -1274,6 +1280,12 @@ const Map<String, Map<String, String>> _i18n = {
     'cardDenoise': 'Noise suppression',
     'micSensitivity': 'Microphone sensitivity',
     'micSensitivityDesc': 'Lower speech-detection strictness (VAD) — the mic reacts to quieter/farther speech but catches more noise. Applies on the next listening start.',
+    'micGain': 'Microphone gain',
+    'micGainDesc':
+        'How much louder to make the mic signal. Helps when you are hard to '
+            'hear or sitting far away: quiet speech otherwise never clears the '
+            'loudness gate, however sensitive the speech detector is. It lifts '
+            'noise too — raise it only as far as needed. 1.0x = unchanged.',
     'micSensLow': 'Low',
     'micSensMed': 'Medium',
     'micSensHigh': 'High',

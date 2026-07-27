@@ -236,6 +236,11 @@ class AppState extends ChangeNotifier {
   // needs the GTCRN model; the sidecar fail-safes to off until it's present.
   String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
   int micVadAggr = 3; // webrtcvad aggressiveness 0..3 (higher = stricter / less sensitive)
+  // Mic input gain (0.5..4.0). Distinct from micVadAggr: that sets how strictly
+  // a frame is judged to be speech, this sets how loud the frame is. The STT
+  // pipeline also has an absolute energy gate, which a genuinely quiet mic can
+  // never clear no matter how permissive the VAD — gain is the fix for that.
+  double micGain = 1.0;
   // Voice post-FX (applied to synthesized/cloned speech in the sidecar).
   bool ttsFxEnabled = false;
   double ttsFxDetune = 0.35;   // chorus/detune double 0..1
@@ -551,6 +556,7 @@ class AppState extends ChangeNotifier {
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
+    micGain = prefs.getDouble('micGain') ?? 1.0;
     ttsFxEnabled = prefs.getBool('ttsFxEnabled') ?? false;
     ttsFxDetune = prefs.getDouble('ttsFxDetune') ?? 0.35;
     ttsFxMetallic = prefs.getDouble('ttsFxMetallic') ?? 0.22;
@@ -727,7 +733,7 @@ class AppState extends ChangeNotifier {
         // field that restores but isn't snapshotted never flags the draft
         // dirty, so its edits silently revert when the screen closes (that was
         // the "FX sliders don't save" bug — and the clone toggle too).
-        motionMode, micVadAggr,
+        motionMode, micVadAggr, micGain,
         ttsFxEnabled, ttsFxDetune, ttsFxMetallic, ttsFxReverb, ttsFxLowpass,
         cloneEnabled, cloneSamplePath, clonePhraseLib.join(','),
         activeVoicePreset, jsonEncode(voicePresets),
@@ -800,6 +806,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
     await prefs.setString('denoiseMode', denoiseMode);
     await prefs.setInt('micVadAggr', micVadAggr);
+    await prefs.setDouble('micGain', micGain);
     await prefs.setBool('ttsFxEnabled', ttsFxEnabled);
     await prefs.setDouble('ttsFxDetune', ttsFxDetune);
     await prefs.setDouble('ttsFxMetallic', ttsFxMetallic);
@@ -957,6 +964,9 @@ class AppState extends ChangeNotifier {
       unawaited(SidecarClient.instance.setVadAggressiveness(micVadAggr));
     } catch (_) {}
     try {
+      unawaited(SidecarClient.instance.setMicGain(micGain));
+    } catch (_) {}
+    try {
       unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
     } catch (_) {}
     try {
@@ -1029,6 +1039,7 @@ class AppState extends ChangeNotifier {
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
+    micGain = prefs.getDouble('micGain') ?? 1.0;
     ttsFxEnabled = prefs.getBool('ttsFxEnabled') ?? false;
     ttsFxDetune = prefs.getDouble('ttsFxDetune') ?? 0.35;
     ttsFxMetallic = prefs.getDouble('ttsFxMetallic') ?? 0.22;
@@ -1937,6 +1948,13 @@ class AppState extends ChangeNotifier {
     _save();
     notifyListeners();
     unawaited(SidecarClient.instance.setVadAggressiveness(micVadAggr));
+  }
+
+  void setMicGain(double v) {
+    micGain = v.clamp(0.5, 4.0);
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setMicGain(micGain));
   }
 
   void setDenoiseMode(String v) {

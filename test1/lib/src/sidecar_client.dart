@@ -202,6 +202,7 @@ class SidecarClient {
     // transcription / model change).
     _send({'type': 'stt.config', 'model': _sttModel, 'vad': _vadAggr});
     if (_ttsFx != null) _send({'type': 'tts.config', 'fx': _ttsFx});
+    if (_micGain != 1.0) _send({'type': 'stt.config', 'gain': _micGain});
     if (_cloneEnabled) unawaited(_pushClone());
     if (_cosyEnabled) unawaited(_pushCosy());
     _ws!.listen((data) {
@@ -437,6 +438,14 @@ class SidecarClient {
   Future<void> setVadAggressiveness(int n) async {
     _vadAggr = n.clamp(0, 3);
     _send({'type': 'stt.config', 'vad': _vadAggr});
+  }
+
+  // Mic input gain (0.5..4.0), applied to captured frames before denoise/VAD/
+  // recognition. Retained so a reconnected sidecar gets it back.
+  double _micGain = 1.0;
+  Future<void> setMicGain(double g) async {
+    _micGain = g.clamp(0.5, 4.0);
+    _send({'type': 'stt.config', 'gain': _micGain});
   }
 
   Future<void> setTtsFx(Map<String, dynamic> fx) async {

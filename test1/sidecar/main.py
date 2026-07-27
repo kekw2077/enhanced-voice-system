@@ -192,6 +192,8 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                     stt.set_device(str(data.get("device")))
                 if "vad" in data:
                     stt.set_vad_aggressiveness(data.get("vad"))
+                if "gain" in data:
+                    stt.set_mic_gain(data.get("gain"))
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),

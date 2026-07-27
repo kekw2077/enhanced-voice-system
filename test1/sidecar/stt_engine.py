@@ -1002,6 +1002,32 @@ class SttEngine:
                         "message": f"multi-mic start failed: {e}"})
             return False
 
+    def set_mic_gain(self, g) -> None:
+        """Input gain (0.5..4.0) applied to every captured frame BEFORE the
+        denoiser, the VAD and the recognizer, so the whole chain sees one
+        consistent signal.
+
+        This is a different knob from the VAD aggressiveness: that one decides
+        how strictly a frame is judged to be speech, this one decides how loud
+        the frame is in the first place. It matters because the pipeline also
+        has an ABSOLUTE energy gate (RMS_GATE) — a genuinely quiet mic never
+        clears it no matter how permissive the VAD is set, and gain is the only
+        thing that fixes that. Note it lifts noise too, so raise it only as far
+        as needed."""
+        try:
+            self._mic_gain = max(0.5, min(4.0, float(g)))
+        except (TypeError, ValueError):
+            pass
+
+    def _apply_gain(self, np, raw: bytes) -> bytes:
+        g = getattr(self, "_mic_gain", 1.0)
+        if abs(g - 1.0) < 0.01:
+            return raw
+        s = np.frombuffer(raw, dtype=np.int16).astype(np.float32) * g
+        # Hard-clip rather than wrap: a wrapped int16 turns loud speech into
+        # noise that the recognizer cannot read at all.
+        return np.clip(s, -32768.0, 32767.0).astype(np.int16).tobytes()
+
     def set_vad_aggressiveness(self, n) -> None:
         """webrtcvad aggressiveness 0..3 (higher = stricter / LESS sensitive).
         Default 3. Applied when a capture thread (re)starts."""
@@ -1045,6 +1071,7 @@ class SttEngine:
                 continue
             if len(raw) != FRAME_BYTES:
                 continue
+            raw = self._apply_gain(np, raw)
             for frame in ch["denoiser"].process(np, raw):
                 samples = np.frombuffer(frame, dtype=np.int16)
                 rms = float(np.sqrt(np.mean((samples / 32768.0) ** 2)))
@@ -1134,6 +1161,7 @@ class SttEngine:
                 continue
             if len(raw) != FRAME_BYTES:
                 continue
+            raw = self._apply_gain(np, raw)
             if first_frame:
                 first_frame = False
                 log_stage("first audio frame processed")
