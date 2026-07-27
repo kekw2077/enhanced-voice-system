@@ -573,6 +573,11 @@ class AppUpdater {
     final exePath = io.Platform.resolvedExecutable;
     final runDir = io.File(exePath).parent.path;
     final scriptPath = await updateDownloadPath('evs_update.cmd');
+    // The .cmd does the work, but a scheduled task running `cmd /c` pops a
+    // console window in the user's session — visible for the whole update.
+    // wscript has no window of its own and Run(..., 0, False) starts the batch
+    // hidden, so the update happens silently. The .cmd deletes both files.
+    final vbsPath = await updateDownloadPath('evs_update.vbs');
     final installLog = await updateDownloadPath('update-install.log');
     final runnerLog = await updateDownloadPath('update-runner.log');
     // A SELF-CONTAINED updater that runs entirely OUTSIDE this process. The old
@@ -608,10 +613,15 @@ echo [%date% %time%] installer exit %errorlevel%, relaunching >> "%RLOG%"
 start "" "$exePath"
 echo [%date% %time%] done >> "%RLOG%"
 schtasks /Delete /TN "EVSSelfUpdate" /F >nul 2>&1
+del "$vbsPath" >nul 2>&1
 del "%~f0" >nul 2>&1
 ''';
     try {
       await io.File(scriptPath).writeAsString(script);
+    } catch (_) {}
+    try {
+      await io.File(vbsPath).writeAsString(
+          'CreateObject("WScript.Shell").Run "cmd /c ""$scriptPath""", 0, False\n');
     } catch (_) {}
     bool launched = false;
     // Preferred: a one-shot scheduled task detaches the script from this process
@@ -619,7 +629,8 @@ del "%~f0" >nul 2>&1
     try {
       await io.Process.run('schtasks', [
         '/Create', '/TN', 'EVSSelfUpdate',
-        '/TR', 'cmd /c "$scriptPath"',
+        // wscript keeps the whole update invisible (see vbsPath above).
+        '/TR', 'wscript.exe //B //nologo "$vbsPath"',
         '/SC', 'ONCE', '/ST', '23:59', '/F',
       ]);
       final r = await io.Process.run('schtasks', ['/Run', '/TN', 'EVSSelfUpdate']);
@@ -629,13 +640,26 @@ del "%~f0" >nul 2>&1
     // to the session and outlives us.
     if (!launched) {
       try {
+        // Same hidden path as the task, just started directly.
         await io.Process.start(
-          'cmd.exe',
-          ['/c', 'start', '""', '/min', 'cmd', '/c', scriptPath],
+          'wscript.exe',
+          ['//B', '//nologo', vbsPath],
           mode: io.ProcessStartMode.detached,
         );
         launched = true;
       } catch (_) {}
+      // wscript can be disabled by policy — fall back to the visible console
+      // rather than losing the update entirely.
+      if (!launched) {
+        try {
+          await io.Process.start(
+            'cmd.exe',
+            ['/c', 'start', '""', '/min', 'cmd', '/c', scriptPath],
+            mode: io.ProcessStartMode.detached,
+          );
+          launched = true;
+        } catch (_) {}
+      }
     }
     // Last resort: the installer's own /RELAUNCH (Restart Manager closes us).
     if (!launched) {
