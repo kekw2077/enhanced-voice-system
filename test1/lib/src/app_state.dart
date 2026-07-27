@@ -373,6 +373,9 @@ class AppState extends ChangeNotifier {
   double cloneGpuThrottle = 0.25; // 0..1 share of synth time spent idling
   String cloneGpuPrecision = 'auto'; // 'auto' | 'bf16' | 'fp16'
 
+  // Piper voices the user imported themselves (see importCustomVoice).
+  List<CustomVoice> customVoices = [];
+
   // Voice clone (XTTS-v2 on CPU) — a temporary local stand-in for GPU CosyVoice
   // while a graphics card is awaited. The engine ships as a separate downloaded
   // component (`clone`); `cloneSamplePath` is any WAV 6–10 s of the target
@@ -607,6 +610,17 @@ class AppState extends ChangeNotifier {
     cloneGpuIdleUnloadSec = prefs.getInt('cloneGpuIdleUnloadSec') ?? 120;
     cloneGpuThrottle = prefs.getDouble('cloneGpuThrottle') ?? 0.25;
     cloneGpuPrecision = prefs.getString('cloneGpuPrecision') ?? 'auto';
+    final cvRaw = prefs.getString('customVoices');
+    if (cvRaw != null) {
+      try {
+        final decoded = jsonDecode(cvRaw);
+        if (decoded is List) {
+          customVoices = decoded
+              .map((e) => CustomVoice.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } catch (_) {}
+    }
     // CPU-XTTS clone disabled: the CPU build was unintelligible, so the app no
     // longer runs it (UI hidden). Forced false regardless of the persisted pref
     // so a previously-enabled machine reverts to Piper on launch. GPU render
@@ -841,6 +855,8 @@ class AppState extends ChangeNotifier {
     await prefs.setInt('cloneGpuIdleUnloadSec', cloneGpuIdleUnloadSec);
     await prefs.setDouble('cloneGpuThrottle', cloneGpuThrottle);
     await prefs.setString('cloneGpuPrecision', cloneGpuPrecision);
+    await prefs.setString('customVoices',
+        jsonEncode(customVoices.map((e) => e.toJson()).toList()));
     await prefs.setBool('cloneEnabled', cloneEnabled);
     await prefs.setString('cloneSamplePath', cloneSamplePath);
     await prefs.setStringList('clonePhraseLib', clonePhraseLib);
@@ -1072,6 +1088,17 @@ class AppState extends ChangeNotifier {
     cloneGpuIdleUnloadSec = prefs.getInt('cloneGpuIdleUnloadSec') ?? 120;
     cloneGpuThrottle = prefs.getDouble('cloneGpuThrottle') ?? 0.25;
     cloneGpuPrecision = prefs.getString('cloneGpuPrecision') ?? 'auto';
+    final cvRaw = prefs.getString('customVoices');
+    if (cvRaw != null) {
+      try {
+        final decoded = jsonDecode(cvRaw);
+        if (decoded is List) {
+          customVoices = decoded
+              .map((e) => CustomVoice.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      } catch (_) {}
+    }
     // CPU-XTTS clone disabled: the CPU build was unintelligible, so the app no
     // longer runs it (UI hidden). Forced false regardless of the persisted pref
     // so a previously-enabled machine reverts to Piper on launch. GPU render
@@ -2182,11 +2209,162 @@ class AppState extends ChangeNotifier {
   }
 
   // Map a Piper voice id back to its <userdata>/models/<id> registry entry.
+  // Custom (user-imported) voices are checked too — they live in the same
+  // models dir and load through the same sidecar path.
   String _voiceModelId(String voiceId) {
     for (final s in kAssetModels) {
       if (s.family == 'tts-voice' && s.voiceId == voiceId) return s.id;
     }
+    for (final v in customVoices) {
+      if (v.voiceId == voiceId) return v.id;
+    }
     return '';
+  }
+
+  // ---- User-imported Piper voices --------------------------------------
+
+  // Where a bundle's shared pronunciation data can be borrowed from. A raw
+  // voice off HuggingFace is just <name>.onnx + <name>.onnx.json, but the
+  // sidecar needs tokens.txt AND espeak-ng-data/ beside the model — those ship
+  // only inside the packaged (sherpa) bundles. Any already-installed voice has
+  // them, and the data is voice-independent, so we reuse it.
+  Future<String?> _findEspeakData() async {
+    try {
+      final root = io.Directory(await modelsDirPath());
+      if (!await root.exists()) return null;
+      await for (final e in root.list(recursive: true, followLinks: false)) {
+        if (e is io.Directory && e.path.endsWith('espeak-ng-data')) {
+          return e.path;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<void> _copyDir(io.Directory src, io.Directory dst) async {
+    await dst.create(recursive: true);
+    await for (final e in src.list(recursive: false, followLinks: false)) {
+      final name = e.path.split(io.Platform.pathSeparator).last;
+      final target = '${dst.path}${io.Platform.pathSeparator}$name';
+      if (e is io.Directory) {
+        await _copyDir(e, io.Directory(target));
+      } else if (e is io.File) {
+        await e.copy(target);
+      }
+    }
+  }
+
+  // Build sherpa's tokens.txt ("<token> <id>" per line) from a Piper voice's
+  // .onnx.json phoneme_id_map. Returns false if the json isn't a Piper config.
+  static Future<bool> _writeTokensFromJson(io.File cfg, String outPath) async {
+    try {
+      final j = jsonDecode(await cfg.readAsString());
+      if (j is! Map) return false;
+      final map = j['phoneme_id_map'];
+      if (map is! Map || map.isEmpty) return false;
+      final lines = <String>[];
+      map.forEach((token, ids) {
+        final id = (ids is List && ids.isNotEmpty) ? ids.first : ids;
+        if (id is num) lines.add('$token ${id.toInt()}');
+      });
+      if (lines.isEmpty) return false;
+      await io.File(outPath).writeAsString('${lines.join('\n')}\n');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Import a Piper voice the user picked. Accepts either a packaged bundle
+  // (.tar.bz2 — the sidecar extracts it on first load) or a raw <name>.onnx
+  // (its .onnx.json sibling is used to generate tokens.txt, and espeak-ng-data
+  // is copied from an installed voice). If the picked .onnx already sits in a
+  // complete bundle folder, that whole folder is taken as-is.
+  // Returns null on success, or an i18n'd error message.
+  Future<String?> importCustomVoice(String srcPath) async {
+    try {
+      final sep = io.Platform.pathSeparator;
+      final src = io.File(srcPath);
+      if (!await src.exists()) return t('voiceImportNoFile');
+      final fileName = srcPath.split(RegExp(r'[\\/]')).last;
+      final lower = fileName.toLowerCase();
+      final isTar = lower.endsWith('.tar.bz2');
+      final isOnnx = lower.endsWith('.onnx');
+      if (!isTar && !isOnnx) return t('voiceImportBadType');
+
+      // Voice id / dir name from the file stem, kept filesystem-safe.
+      var stem = fileName
+          .replaceAll(RegExp(r'\.tar\.bz2$', caseSensitive: false), '')
+          .replaceAll(RegExp(r'\.onnx$', caseSensitive: false), '');
+      stem = stem.replaceAll(RegExp(r'[^A-Za-z0-9_.\-]'), '_');
+      if (stem.isEmpty) stem = 'voice';
+      var id = 'custom-$stem';
+      final models = await modelsDirPath();
+      var dir = io.Directory('$models$sep$id');
+      var n = 2;
+      while (await dir.exists()) {
+        id = 'custom-$stem-$n';
+        dir = io.Directory('$models$sep$id');
+        n++;
+      }
+      await dir.create(recursive: true);
+
+      if (isTar) {
+        await src.copy('${dir.path}$sep$fileName');
+      } else {
+        final srcDir = src.parent;
+        final hasTokens =
+            await io.File('${srcDir.path}${sep}tokens.txt').exists();
+        final hasData =
+            await io.Directory('${srcDir.path}${sep}espeak-ng-data').exists();
+        if (hasTokens && hasData) {
+          // Already a complete bundle — take the folder wholesale.
+          await _copyDir(srcDir, dir);
+        } else {
+          await src.copy('${dir.path}$sep$fileName');
+          final cfg = io.File('$srcPath.json');
+          final tokensOk = await cfg.exists()
+              ? await _writeTokensFromJson(cfg, '${dir.path}${sep}tokens.txt')
+              : false;
+          if (await cfg.exists()) {
+            await cfg.copy('${dir.path}$sep$fileName.json');
+          }
+          if (!tokensOk) {
+            await dir.delete(recursive: true);
+            return t('voiceImportNoTokens');
+          }
+          final espeak = await _findEspeakData();
+          if (espeak == null) {
+            await dir.delete(recursive: true);
+            return t('voiceImportNoEspeak');
+          }
+          await _copyDir(
+              io.Directory(espeak), io.Directory('${dir.path}${sep}espeak-ng-data'));
+        }
+      }
+
+      customVoices = [
+        ...customVoices,
+        CustomVoice(id: id, name: stem, voiceId: id),
+      ];
+      _save();
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return '${t('voiceImportFailed')}: $e';
+    }
+  }
+
+  Future<void> removeCustomVoice(CustomVoice v) async {
+    if (ttsPiperVoice == v.voiceId) setTtsPiperVoice('');
+    customVoices = customVoices.where((e) => e.id != v.id).toList();
+    _save();
+    notifyListeners();
+    try {
+      final sep = io.Platform.pathSeparator;
+      final d = io.Directory('${await modelsDirPath()}$sep${v.id}');
+      if (await d.exists()) await d.delete(recursive: true);
+    } catch (_) {}
   }
 
   // Play a fixed sample phrase in a downloaded Piper voice without changing the

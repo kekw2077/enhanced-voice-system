@@ -925,8 +925,73 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
               _voiceTile(spec),
               const SizedBox(height: 10),
             ],
+            for (final v in widget.app.customVoices) ...[
+              _customVoiceTile(v),
+              const SizedBox(height: 10),
+            ],
+            _importVoiceTile(),
           ],
         ),
+      ),
+    );
+  }
+
+  // A voice the user imported themselves. Selectable exactly like a catalogue
+  // voice (same models dir, same sidecar path); only removal differs — there is
+  // nothing to re-download, so deleting it is final.
+  Widget _customVoiceTile(CustomVoice v) {
+    final app = widget.app;
+    final active = app.ttsPiperVoice == v.voiceId;
+    return _shell(
+      active: active,
+      onSelect: () => app.setTtsPiperVoice(v.voiceId),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _titleRow(v.name, active ? app.t('mdlActive') : null),
+          const SizedBox(height: 4),
+          Text(app.t('voiceCustomHint'),
+              style: TextStyle(color: _sub(context), fontSize: 12.5)),
+          const SizedBox(height: 10),
+          Row(children: [
+            evsGhostButton(context, app.t('mdlDelete'), Icons.delete_outline,
+                onTap: () async {
+              await app.removeCustomVoice(v);
+              if (mounted) setState(() {});
+            }),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // Import a Piper voice from disk: a packaged .tar.bz2 bundle, or a raw
+  // <name>.onnx (tokens.txt is generated from its .onnx.json and the shared
+  // espeak-ng-data is copied from an installed voice).
+  Widget _importVoiceTile() {
+    final app = widget.app;
+    return _shell(
+      active: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _titleRow(app.t('voiceImportTitle'), null),
+          const SizedBox(height: 4),
+          Text(app.t('voiceImportHint'),
+              style: TextStyle(color: _sub(context), fontSize: 12.5)),
+          const SizedBox(height: 10),
+          evsGhostButton(context, app.t('voiceImportBtn'), Icons.file_open,
+              onTap: () async {
+            final res = await FilePicker.pickFiles();
+            final path = res?.files.single.path;
+            if (path == null || path.isEmpty) return;
+            final err = await app.importCustomVoice(path);
+            if (!mounted) return;
+            setState(() {});
+            showAppSnackBar(
+                context, err ?? app.t('voiceImportOk'));
+          }),
+        ],
       ),
     );
   }

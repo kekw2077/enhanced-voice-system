@@ -1483,6 +1483,26 @@ class AssetFile {
   const AssetFile(this.name, this.url, this.size);
 }
 
+// A Piper voice the user added themselves (not from the built-in catalog).
+// Lives in <userdata>/models/<id>/ exactly like a catalogue voice, so the
+// sidecar loads it through the same path; only the registry differs.
+class CustomVoice {
+  final String id; // dir under <userdata>/models/
+  final String name; // shown in the picker
+  final String voiceId; // key stored in ttsPiperVoice
+  const CustomVoice(
+      {required this.id, required this.name, required this.voiceId});
+
+  Map<String, dynamic> toJson() =>
+      {'id': id, 'name': name, 'voice': voiceId};
+
+  factory CustomVoice.fromJson(Map<String, dynamic> j) => CustomVoice(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        voiceId: j['voice'] as String? ?? '',
+      );
+}
+
 class AssetModelSpec {
   final String id; // dir under <userdata>/models/
   final String family; // 'stt' | 'denoise' | 'tts-voice'

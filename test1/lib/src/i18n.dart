@@ -619,6 +619,21 @@ const Map<String, Map<String, String>> _i18n = {
     'gpuPrecision': 'Точность',
     'gpuPrecisionDesc': 'bf16 — быстрее на новых картах, fp16 — совместимее.',
     'gpuPrecisionAuto': 'Авто',
+    'voiceCustomHint': 'Свой голос (добавлен вручную)',
+    'voiceImportTitle': 'Добавить свой голос',
+    'voiceImportHint':
+        'Голос Piper: архив .tar.bz2 либо файл .onnx (рядом должен лежать '
+            '.onnx.json). Недостающие данные произношения EVS доготовит сам.',
+    'voiceImportBtn': 'Выбрать файл',
+    'voiceImportOk': 'Голос добавлен',
+    'voiceImportNoFile': 'Файл не найден',
+    'voiceImportBadType': 'Нужен файл .onnx или .tar.bz2',
+    'voiceImportNoTokens':
+        'Не удалось прочитать .onnx.json — положите его рядом с .onnx',
+    'voiceImportNoEspeak':
+        'Нет общих данных произношения. Установите любой встроенный голос '
+            'один раз — из него они будут взяты.',
+    'voiceImportFailed': 'Не удалось добавить голос',
     'add': 'Добавить',
     'cardConnMode': 'Режим подключения',
     'modeOnDevice': 'Локально на устройстве (on-device)',
@@ -1704,6 +1719,21 @@ const Map<String, Map<String, String>> _i18n = {
     'gpuPrecision': 'Precision',
     'gpuPrecisionDesc': 'bf16 is faster on newer cards, fp16 is more compatible.',
     'gpuPrecisionAuto': 'Auto',
+    'voiceCustomHint': 'Your own voice (added manually)',
+    'voiceImportTitle': 'Add your own voice',
+    'voiceImportHint':
+        'A Piper voice: a .tar.bz2 bundle, or a .onnx file (keep its .onnx.json '
+            'next to it). EVS fills in the missing pronunciation data itself.',
+    'voiceImportBtn': 'Choose file',
+    'voiceImportOk': 'Voice added',
+    'voiceImportNoFile': 'File not found',
+    'voiceImportBadType': 'Need a .onnx or .tar.bz2 file',
+    'voiceImportNoTokens':
+        "Couldn't read the .onnx.json — keep it next to the .onnx",
+    'voiceImportNoEspeak':
+        'No shared pronunciation data. Install any built-in voice once — it '
+            'will be taken from there.',
+    'voiceImportFailed': 'Could not add the voice',
     'add': 'Add',
     'cardConnMode': 'Connection mode',
     'modeOnDevice': 'On-device (local)',
