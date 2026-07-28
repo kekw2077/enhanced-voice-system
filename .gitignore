@@ -1,2 +1,12 @@
 # Локальные инструменты Claude Code (устанавливаются на машине, не часть проекта).
 .claude/
+
+# Рабочие ТЗ и html-макеты, которые живут только на машине автора
+# (по «Ноктюрну» в репозитории лежит test1/genesis — там ТЗ и образец логотипа).
+/EVS_new_features_TZ.md
+/EVS_settings_TZ.md
+/tz-nexus-dorabotki.md
+/tz-ui-style-nexus.md
+/evs-redesign-1-nexus-sync.html
+/evs-redesign-1-nexus-sync11.html
+/test1/evs-animations.html

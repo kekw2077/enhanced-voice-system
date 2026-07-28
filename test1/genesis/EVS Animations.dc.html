@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:radial-gradient(120% 90% at 50% 0%, #12152E 0%, #0A0C18 55%);color:#E8EAF6;font-family:'Space Grotesk',system-ui,sans-serif;min-height:100vh}
+  a{color:#22D3EE;text-decoration:none}
+  a:hover{color:#7DE7F7}
+  @keyframes bhFlash{0%{transform:scale(.2);opacity:0}15%{opacity:1}100%{transform:scale(26);opacity:0}}
+  @keyframes bhNeb{from{opacity:0;transform:scale(.25)}to{opacity:1;transform:scale(1)}}
+  @keyframes bhRing{from{opacity:0;transform:scale(0) rotate(-120deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+  @keyframes bhDisk{from{transform:scale(0)}to{transform:scale(1)}}
+  @keyframes bhFade{from{opacity:0}to{opacity:.9}}
+  @keyframes bhDop{0%{stroke-dashoffset:360;opacity:0}30%{opacity:1}100%{stroke-dashoffset:0;opacity:1}}
+  @keyframes bhOrbA{from{opacity:0;transform:rotate(-130deg)}to{opacity:.55;transform:rotate(0)}}
+  @keyframes bhOrbB{from{opacity:0;transform:rotate(130deg)}to{opacity:.3;transform:rotate(0)}}
+  @keyframes bhSw{0%{stroke-dashoffset:1400;opacity:0}25%{opacity:.5}100%{stroke-dashoffset:0;opacity:.5}}
+  @keyframes bhPulse{0%,100%{opacity:0}50%{opacity:.32}}
+  @keyframes bhJit{0%,60%{transform:translate(0,0)}62%{transform:translate(9px,-4px)}64%{transform:translate(-7px,3px)}66%{transform:translate(4px,6px)}68%{transform:translate(-9px,-2px)}70%,74%{transform:translate(0,0)}76%{transform:translate(6px,2px)}78%{transform:translate(-5px,-3px)}80%,100%{transform:translate(0,0)}}
+  @keyframes bhFlick{0%,60%{opacity:1}62%{opacity:.5}64%{opacity:1}72%{opacity:.72}74%{opacity:1}100%{opacity:1}}
+  @keyframes bhChromA{0%,60%{opacity:0;transform:translate(0,0)}62%{opacity:.85;transform:translate(-16px,2px)}66%{opacity:.55;transform:translate(11px,-3px)}70%{opacity:.8;transform:translate(-9px,4px)}74%{opacity:.45;transform:translate(7px,0)}79%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhChromB{0%,60%{opacity:0;transform:translate(0,0)}62%{opacity:.85;transform:translate(16px,-2px)}66%{opacity:.55;transform:translate(-11px,3px)}70%{opacity:.8;transform:translate(9px,-4px)}74%{opacity:.45;transform:translate(-7px,0)}79%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhSlice{0%,60%{opacity:0;transform:translate(0,0)}61%{opacity:.9;transform:translate(-22px,0)}63%{opacity:0}67%{opacity:.75;transform:translate(18px,0)}69%{opacity:0}75%{opacity:.6;transform:translate(-12px,0)}77%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhBlip1{0%,5.9%{opacity:0;transform:translate(-170px,-250px)}6%{opacity:.7}7.2%{opacity:0}22.8%{opacity:0;transform:translate(215px,80px)}23%{opacity:.5}24%{opacity:0}47.8%{opacity:0;transform:translate(-60px,300px)}48%{opacity:.65}49.1%{opacity:0}76.8%{opacity:0;transform:translate(140px,-120px)}77%{opacity:.45}78%{opacity:0;transform:translate(140px,-120px)}100%{opacity:0}}
+  @keyframes bhBlip2{0%,11.9%{opacity:0;transform:translate(230px,-180px)}12%{opacity:.55}13.1%{opacity:0}34.8%{opacity:0;transform:translate(-240px,40px)}35%{opacity:.7}36%{opacity:0}58.8%{opacity:0;transform:translate(70px,250px)}59%{opacity:.4}60.2%{opacity:0}87.8%{opacity:0;transform:translate(-120px,-300px)}88%{opacity:.6}89%{opacity:0;transform:translate(-120px,-300px)}100%{opacity:0}}
+  @keyframes bhBlip3{0%,3.9%{opacity:0;transform:translate(-280px,150px)}4%{opacity:.5}5%{opacity:0}28.8%{opacity:0;transform:translate(90px,-320px)}29%{opacity:.75}30.1%{opacity:0}65.8%{opacity:0;transform:translate(260px,210px)}66%{opacity:.45}67%{opacity:0}90.8%{opacity:0;transform:translate(-40px,-60px)}91%{opacity:.6}92.2%{opacity:0;transform:translate(-40px,-60px)}100%{opacity:0}}
+  @keyframes bhBlip4{0%,16.9%{opacity:0;transform:translate(60px,330px)}17%{opacity:.65}18.1%{opacity:0}40.8%{opacity:0;transform:translate(-210px,-90px)}41%{opacity:.4}42%{opacity:0}70.8%{opacity:0;transform:translate(180px,20px)}71%{opacity:.7}72.1%{opacity:0}94.8%{opacity:0;transform:translate(-90px,-230px)}95%{opacity:.5}96%{opacity:0;transform:translate(-90px,-230px)}100%{opacity:0}}
+  @keyframes bhShake{0%,29.9%{transform:translate(0,0)}30%{transform:translate(10px,-4px)}30.7%{transform:translate(-8px,3px)}31.4%{transform:translate(5px,6px)}32.1%{transform:translate(-10px,-2px)}32.8%,71.9%{transform:translate(0,0)}72%{transform:translate(-11px,3px)}72.6%{transform:translate(7px,-5px)}73.3%{transform:translate(-5px,4px)}74%,100%{transform:translate(0,0)}}
+  @keyframes bhShake2{0%,43.9%{transform:translate(0,0)}44%{transform:translate(-9px,5px)}44.6%{transform:translate(8px,-3px)}45.3%{transform:translate(-6px,-5px)}46%,82.9%{transform:translate(0,0)}83%{transform:translate(11px,2px)}83.6%{transform:translate(-7px,-4px)}84.2%{transform:translate(4px,5px)}84.9%,100%{transform:translate(0,0)}}
+  @keyframes bhBigC{0%,43.9%{opacity:0;transform:translate(0,0)}44%{opacity:.8;transform:translate(24px,0)}44.8%{opacity:0}45.4%{opacity:.55;transform:translate(-18px,0)}46.1%{opacity:0;transform:translate(0,0)}82.9%{opacity:0}83%{opacity:.65;transform:translate(-22px,0)}83.7%{opacity:0}84.3%{opacity:.45;transform:translate(16px,0)}85%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhBigD{0%,44.2%{opacity:0;transform:translate(0,0)}44.3%{opacity:.6;transform:translate(-20px,0)}45%{opacity:0}45.7%{opacity:.4;transform:translate(14px,0)}46.3%{opacity:0;transform:translate(0,0)}83.2%{opacity:0}83.3%{opacity:.55;transform:translate(18px,0)}84%{opacity:0}84.6%{opacity:.35;transform:translate(-12px,0)}85.2%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhBigA{0%,29.9%{opacity:0;transform:translate(0,0)}30%{opacity:.85;transform:translate(-26px,0)}30.9%{opacity:0}31.6%{opacity:.6;transform:translate(20px,0)}32.4%{opacity:0;transform:translate(0,0)}71.9%{opacity:0}72%{opacity:.7;transform:translate(24px,0)}72.8%{opacity:0}73.4%{opacity:.5;transform:translate(-18px,0)}74%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhBigB{0%,30.2%{opacity:0;transform:translate(0,0)}30.3%{opacity:.7;transform:translate(22px,0)}31.2%{opacity:0}32%{opacity:.45;transform:translate(-16px,0)}32.8%{opacity:0;transform:translate(0,0)}72.2%{opacity:0}72.3%{opacity:.6;transform:translate(-20px,0)}73%{opacity:0}73.6%{opacity:.4;transform:translate(14px,0)}74.2%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes bhWarp{0%,29.9%{transform:none}30%{transform:skewX(-14deg) scaleX(1.06)}30.8%{transform:skewX(9deg) scaleX(.95)}31.6%{transform:none}43.9%{transform:none}44%{transform:skewX(11deg) scaleY(1.12)}44.7%{transform:skewX(-7deg)}45.4%,71.9%{transform:none}72%{transform:skewX(-10deg) scaleX(1.04)}72.7%{transform:skewX(6deg) scaleY(.9)}73.4%,82.9%{transform:none}83%{transform:skewX(13deg)}83.7%{transform:skewX(-8deg) scaleX(1.05)}84.4%,100%{transform:none}}
+  @keyframes bhLtr1{0%,11.8%{opacity:0;transform:none}11.9%{opacity:.95;transform:translateY(-3px) skewX(-16deg)}12.6%{opacity:.7;transform:translateY(2px) skewX(10deg)}13.3%{opacity:0;transform:none}56.8%{opacity:0}56.9%{opacity:.85;transform:translate(2px,3px) skewX(12deg)}57.7%{opacity:0;transform:none}100%{opacity:0}}
+  @keyframes bhLtr2{0%,27.8%{opacity:0;transform:none}27.9%{opacity:.9;transform:translateY(3px) skewX(14deg) scaleY(1.15)}28.7%{opacity:.6;transform:translateY(-2px)}29.4%{opacity:0;transform:none}74.8%{opacity:0}74.9%{opacity:.8;transform:translate(-3px,-2px) skewX(-11deg)}75.6%{opacity:0;transform:none}100%{opacity:0}}
+  @keyframes bhLtr3{0%,41.8%{opacity:0;transform:none}41.9%{opacity:.95;transform:translateY(-4px) skewX(9deg)}42.5%{opacity:.5;transform:translateY(1px) scaleX(1.2)}43.4%{opacity:0;transform:none}88.8%{opacity:0}88.9%{opacity:.75;transform:translate(3px,2px) skewX(-13deg)}89.8%{opacity:0;transform:none}100%{opacity:0}}
+  @keyframes bhLtr4{0%,6.8%{opacity:0;transform:none}6.9%{opacity:.85;transform:translateY(2px) skewX(-10deg) scaleY(.85)}7.6%{opacity:.6;transform:translateY(-3px) skewX(7deg)}8.4%{opacity:0;transform:none}63.8%{opacity:0}63.9%{opacity:.9;transform:translate(-2px,3px) skewX(15deg)}64.8%{opacity:0;transform:none}100%{opacity:0}}
+  @keyframes txJit{0%{transform:translate(0,0)}8%{transform:translate(7px,-3px)}16%{transform:translate(-6px,2px)}24%{transform:translate(4px,4px)}32%{transform:translate(-8px,-2px)}40%{transform:translate(3px,1px)}48%{transform:translate(-4px,2px)}56%,100%{transform:translate(0,0)}}
+  @keyframes txFlick{0%{opacity:0}6%{opacity:1}10%{opacity:.25}14%{opacity:1}26%{opacity:.4}30%{opacity:1}44%{opacity:.6}48%{opacity:1}100%{opacity:1}}
+  @keyframes txChromA{0%{opacity:0;transform:translate(0,0)}6%{opacity:.9;transform:translate(-13px,2px)}18%{opacity:.6;transform:translate(9px,-2px)}30%{opacity:.8;transform:translate(-7px,3px)}42%{opacity:.4;transform:translate(5px,0)}54%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes txChromB{0%{opacity:0;transform:translate(0,0)}6%{opacity:.9;transform:translate(13px,-2px)}18%{opacity:.6;transform:translate(-9px,2px)}30%{opacity:.8;transform:translate(7px,-3px)}42%{opacity:.4;transform:translate(-5px,0)}54%,100%{opacity:0;transform:translate(0,0)}}
+  @keyframes txShake{0%,37.9%{transform:translate(0,0)}38%{transform:translate(9px,-3px)}38.6%{transform:translate(-7px,3px)}39.3%{transform:translate(5px,4px)}40%,88.9%{transform:translate(0,0)}89%{transform:translate(-9px,2px)}89.7%{transform:translate(6px,-4px)}90.4%,100%{transform:translate(0,0)}}
+  @keyframes txShake2{0%,21.9%{transform:translate(0,0)}22%{transform:translate(-8px,4px)}22.7%{transform:translate(7px,-3px)}23.5%,66.9%{transform:translate(0,0)}67%{transform:translate(10px,2px)}67.8%{transform:translate(-6px,-4px)}68.6%,100%{transform:translate(0,0)}}
+  @keyframes txWarp{0%,37.9%{transform:none}38%{transform:skewX(-13deg) scaleX(1.05)}38.8%{transform:skewX(8deg) scaleY(.92)}39.6%,66.9%{transform:none}67%{transform:skewX(11deg)}67.8%{transform:skewX(-7deg) scaleX(1.04)}68.6%,88.9%{transform:none}89%{transform:skewX(-9deg) scaleY(1.1)}89.8%,100%{transform:none}}
+  @keyframes txBand1{0%,13.8%{opacity:0;transform:translate(0,0)}13.9%{opacity:.75;transform:translate(-14px,0)}14.7%{opacity:0}38.8%{opacity:0;transform:translate(11px,0)}38.9%{opacity:.6}39.7%{opacity:0}72.8%{opacity:0;transform:translate(-8px,0)}72.9%{opacity:.5}73.8%{opacity:0;transform:translate(0,0)}100%{opacity:0}}
+  @keyframes txBand2{0%,26.8%{opacity:0;transform:translate(0,0)}26.9%{opacity:.65;transform:translate(13px,0)}27.8%{opacity:0}55.8%{opacity:0;transform:translate(-10px,0)}55.9%{opacity:.5}56.8%{opacity:0}88.8%{opacity:0;transform:translate(7px,0)}88.9%{opacity:.45}89.9%{opacity:0;transform:translate(0,0)}100%{opacity:0}}
+  @keyframes bhFall{0%{transform:translateY(-352px) scale(1);opacity:0}12%{opacity:1}72%{opacity:.95}90%{transform:translateY(-203px) scale(.5);opacity:.6}100%{transform:translateY(-188px) scale(.12);opacity:0}}
+  @keyframes bhFall2{0%{transform:translateY(-410px) scale(1.1);opacity:0}15%{opacity:.85}80%{opacity:.75}92%{transform:translateY(-205px) scale(.45);opacity:.45}100%{transform:translateY(-189px) scale(.1);opacity:0}}
+  @keyframes bhSpin{to{transform:rotate(360deg)}}
+  @keyframes bhSpinRev{to{transform:rotate(-360deg)}}
+  @keyframes bhIn90{from{opacity:0}to{opacity:.9}}
+  @keyframes eqA{from{transform:scaleY(.55)}to{transform:scaleY(1.20)}}
+  @keyframes eqB{from{transform:scaleY(.68)}to{transform:scaleY(1.16)}}
+  @keyframes eqC{from{transform:scaleY(.78)}to{transform:scaleY(1.15)}}
+  @keyframes eqD{from{transform:scaleY(.60)}to{transform:scaleY(1.25)}}
+  @keyframes haloBr{from{opacity:.55}to{opacity:1}}
+  @keyframes poBg{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+  @keyframes poHalo{0%{opacity:0;transform:scale(.6)}45%{opacity:1;transform:scale(1.15)}100%{opacity:1;transform:scale(1)}}
+  @keyframes poPop{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  @keyframes poWave{0%{transform:scaleY(1)}50%{transform:scaleY(1.3)}100%{transform:scaleY(1)}}
+  @media (prefers-reduced-motion:reduce){*{animation:none !important}}
+</style>
+</helmet>
+
+<div style="padding:48px 20px 64px">
+  <div style="max-width:960px;margin:0 auto">
+    <div style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.22em;color:#8B90B0;text-transform:uppercase">EVS · Motion</div>
+    <h1 style="font-size:clamp(26px,5vw,38px);font-weight:600;margin:14px 0 6px">Три анимации</h1>
+    <p style="color:#8B90B0;font-size:15px;max-width:56ch;text-wrap:pretty">Твоё лого пересобрано с нуля (та же палитра, минус мусор Illustrator) + два состояния Pulse. Всё — чистый SVG + CSS, без JS в самой анимации.</p>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px;margin-top:36px">
+
+      <div ref="{{ bhRef }}" style="background:#10132A;border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;background:#07080F;border-radius:16px;padding:14px;overflow:hidden">
+          <svg viewBox="0 0 1024 1024" role="img" aria-label="Логотип: чёрная дыра" style="width:100%;max-width:320px;height:auto;display:block;animation:bhShake 13s 4.2s steps(1,end) infinite">
+            <defs>
+              <linearGradient id="ringG" gradientUnits="userSpaceOnUse" x1="330" y1="700" x2="700" y2="330">
+                <stop offset="0" stop-color="#c77be8"></stop>
+                <stop offset=".55" stop-color="#9ad9ff"></stop>
+                <stop offset="1" stop-color="#eaf6ff"></stop>
+              </linearGradient>
+              <radialGradient id="nebG" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stop-color="#6f58ea" stop-opacity=".5"></stop>
+                <stop offset=".55" stop-color="#8e45d8" stop-opacity=".22"></stop>
+                <stop offset="1" stop-color="#8e45d8" stop-opacity="0"></stop>
+              </radialGradient>
+              <filter id="fGlow" x="-70%" y="-70%" width="240%" height="240%">
+                <feGaussianBlur result="b" stdDeviation="20"></feGaussianBlur>
+                <feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+              </filter>
+              <filter id="fSoft" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="3"></feGaussianBlur>
+              </filter>
+              <filter id="fBlur" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="16"></feGaussianBlur>
+              </filter>
+              <filter id="fPart" x="-200%" y="-200%" width="500%" height="500%">
+                <feGaussianBlur stdDeviation="4"></feGaussianBlur>
+              </filter>
+              <filter id="fPart2" x="-200%" y="-200%" width="500%" height="500%">
+                <feGaussianBlur stdDeviation="7"></feGaussianBlur>
+              </filter>
+            </defs>
+
+            <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhShake2 9.4s 6.8s steps(1,end) infinite">
+            <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhJit 3.9s .3s steps(1,end) both, bhFlick 3.9s .3s steps(1,end) both">
+              <circle cx="512" cy="512" r="430" fill="url(#nebG)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhNeb .9s .25s ease-out both"></circle>
+              <path d="M151.4,804 A464,464 0 0 1 804,151.4" fill="none" stroke="url(#ringG)" stroke-width="7" stroke-linecap="round" opacity=".5" style="transform-box:view-box;transform-origin:50% 50%;stroke-dasharray:1400;animation:bhSw .8s 1.7s ease-in-out both"></path>
+              <path d="M872.6,220 A464,464 0 0 1 220,872.6" fill="none" stroke="url(#ringG)" stroke-width="7" stroke-linecap="round" opacity=".5" style="transform-box:view-box;transform-origin:50% 50%;stroke-dasharray:1400;animation:bhSw .8s 1.85s ease-in-out both"></path>
+              <g filter="url(#fSoft)">
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16s 2.25s linear infinite">
+                  <path d="M320,601.6 A212,212 0 0 0 704,601.6" fill="none" stroke="#b9e4ff" stroke-width="6" stroke-linecap="round" opacity=".55" style="transform-box:view-box;transform-origin:50% 50%;animation:bhOrbA .9s 1.35s cubic-bezier(.22,1,.36,1) both"></path>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 21s 2.4s linear infinite">
+                  <path d="M318,400 A224,224 0 0 1 706,400" fill="none" stroke="#b9e4ff" stroke-width="5" stroke-linecap="round" opacity=".3" style="transform-box:view-box;transform-origin:50% 50%;animation:bhOrbB .9s 1.5s cubic-bezier(.22,1,.36,1) both"></path>
+                </g>
+              </g>
+              <circle cx="512" cy="512" r="186" fill="none" stroke="url(#ringG)" stroke-width="13" filter="url(#fGlow)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhRing .75s .3s cubic-bezier(.22,1,.36,1) both"></circle>
+              <circle cx="512" cy="512" r="177" fill="#050509" style="transform-box:view-box;transform-origin:50% 50%;animation:bhDisk .6s .6s ease-out both"></circle>
+              <circle cx="512" cy="512" r="181" fill="none" stroke="url(#ringG)" stroke-width="4" opacity=".9" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFade .4s .95s ease-out both"></circle>
+              <path d="M365.5,614.8 A179,179 0 0 0 658.5,614.8" fill="none" stroke="#f2faff" stroke-width="9" stroke-linecap="round" filter="url(#fGlow)" style="transform-box:view-box;transform-origin:50% 50%;stroke-dasharray:360;animation:bhDop .7s 1.1s ease-in-out both"></path>
+              <circle cx="512" cy="512" r="186" fill="none" stroke="#ff4fd8" stroke-width="9" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:screen;opacity:0;animation:bhChromA 3.9s .3s steps(1,end) both"></circle>
+              <circle cx="512" cy="512" r="186" fill="none" stroke="#22D3EE" stroke-width="9" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:screen;opacity:0;animation:bhChromB 3.9s .3s steps(1,end) both"></circle>
+              <rect x="300" y="452" width="424" height="26" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhSlice 3.9s .3s steps(1,end) both"></rect>
+              <rect x="300" y="600" width="424" height="14" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhSlice 3.9s .45s steps(1,end) both"></rect>
+              <rect x="300" y="446" width="424" height="26" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigA 13s 4.2s steps(1,end) infinite"></rect>
+              <rect x="300" y="478" width="424" height="22" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigC 9.4s 6.8s steps(1,end) infinite"></rect>
+              <rect x="306" y="558" width="412" height="10" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigD 9.4s 6.8s steps(1,end) infinite"></rect>
+              <rect x="316" y="642" width="392" height="14" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigC 9.4s 6.8s steps(1,end) infinite"></rect>
+              <rect x="300" y="592" width="424" height="16" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigB 13s 4.2s steps(1,end) infinite"></rect>
+              <rect x="318" y="352" width="388" height="11" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigB 13s 4.2s steps(1,end) infinite"></rect>
+              <rect x="312" y="694" width="400" height="9" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigA 13s 4.2s steps(1,end) infinite"></rect>
+
+              <rect x="292" y="268" width="104" height="3" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip1 7.4s 3.40s steps(1,end) infinite"></rect>
+              <rect x="214" y="402" width="96" height="18" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip2 9.1s 3.77s steps(1,end) infinite"></rect>
+              <rect x="336" y="512" width="108" height="6" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip3 6.6s 4.14s steps(1,end) infinite"></rect>
+              <rect x="262" y="618" width="92" height="22" fill="#b9e4ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip4 10.4s 4.51s steps(1,end) infinite"></rect>
+              <rect x="318" y="726" width="100" height="9" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip1 8.3s 4.88s steps(1,end) infinite"></rect>
+              <rect x="388" y="352" width="88" height="4" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip2 11.7s 5.25s steps(1,end) infinite"></rect>
+              <rect x="240" y="566" width="112" height="14" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip3 9.8s 5.62s steps(1,end) infinite"></rect>
+              <rect x="300" y="468" width="96" height="7" fill="#b9e4ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip4 7.9s 5.99s steps(1,end) infinite"></rect>
+              <rect x="356" y="672" width="84" height="11" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip1 12.6s 6.36s steps(1,end) infinite"></rect>
+              <rect x="268" y="318" width="100" height="2" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip2 6.9s 6.73s steps(1,end) infinite"></rect>
+
+              <g style="opacity:0;animation:bhIn90 1.2s 3.3s ease-out both">
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 9.2s -1.9s linear infinite">
+                  <ellipse cx="512" cy="512" rx="5.6" ry="2.2" fill="#c77be8" filter="url(#fPart2)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.2s -5.7s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 9.7s -7.1s linear infinite">
+                  <ellipse cx="512" cy="512" rx="4.9" ry="2.2" fill="#eaf6ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 7.7s -7.8s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 11.9s -12.4s linear infinite">
+                  <ellipse cx="512" cy="512" rx="4.8" ry="1.8" fill="#c77be8" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.3s -2.2s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 9.2s -13.8s linear infinite">
+                  <ellipse cx="512" cy="512" rx="10.5" ry="5.0" fill="#b9e4ff" filter="url(#fPart2)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 3.9s -2.5s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16.0s -0.9s linear infinite">
+                  <ellipse cx="512" cy="512" rx="6.5" ry="2.1" fill="#c77be8" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.8s -1.7s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 13.6s -1.7s linear infinite">
+                  <ellipse cx="512" cy="512" rx="7.3" ry="3.3" fill="#9ad9ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.8s -3.9s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 10.4s -5.7s linear infinite">
+                  <ellipse cx="512" cy="512" rx="6.2" ry="2.1" fill="#eaf6ff" filter="url(#fPart2)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 6.8s -0.0s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 15.5s -9.5s linear infinite">
+                  <ellipse cx="512" cy="512" rx="4.5" ry="1.9" fill="#b9e4ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.3s -2.3s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 15.4s -12.3s linear infinite">
+                  <ellipse cx="512" cy="512" rx="5.3" ry="2.0" fill="#9ad9ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 6.1s -1.0s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16.8s -9.0s linear infinite">
+                  <ellipse cx="512" cy="512" rx="6.5" ry="2.8" fill="#b9e4ff" filter="url(#fPart2)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 5.6s -1.2s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 7.2s -12.9s linear infinite">
+                  <ellipse cx="512" cy="512" rx="4.7" ry="2.1" fill="#eaf6ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.0s -0.8s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 8.3s -2.7s linear infinite">
+                  <ellipse cx="512" cy="512" rx="6.8" ry="2.2" fill="#b9e4ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.1s -1.2s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16.9s -1.4s linear infinite">
+                  <ellipse cx="512" cy="512" rx="5.6" ry="2.1" fill="#9ad9ff" filter="url(#fPart2)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 6.7s -4.8s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 9.2s -1.8s linear infinite">
+                  <ellipse cx="512" cy="512" rx="5.0" ry="1.8" fill="#eaf6ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 5.8s -3.1s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 14.3s -8.1s linear infinite">
+                  <ellipse cx="512" cy="512" rx="6.7" ry="3.0" fill="#9ad9ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 8.1s -5.2s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 13.3s -7.5s linear infinite">
+                  <ellipse cx="512" cy="512" rx="5.9" ry="2.4" fill="#9ad9ff" filter="url(#fPart2)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.0s -0.0s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 11.5s -0.6s linear infinite">
+                  <ellipse cx="512" cy="512" rx="4.9" ry="1.6" fill="#9ad9ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 7.8s -1.4s linear infinite"></ellipse>
+                </g>
+                <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 15.5s -12.3s linear infinite">
+                  <ellipse cx="512" cy="512" rx="4.3" ry="2.0" fill="#eaf6ff" filter="url(#fPart)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 6.6s -4.8s linear infinite"></ellipse>
+                </g>
+              </g>
+
+              <sc-if value="{{ breathing }}" hint-placeholder-val="{{ true }}">
+                <circle cx="512" cy="512" r="186" fill="none" stroke="#9ad9ff" stroke-width="14" filter="url(#fBlur)" style="transform-box:view-box;transform-origin:50% 50%;opacity:0;animation:bhPulse 3.6s 3.2s ease-in-out infinite"></circle>
+              </sc-if>
+              <circle cx="512" cy="512" r="8" fill="#ffffff" style="transform-box:view-box;transform-origin:50% 50%;opacity:0;animation:bhFlash .8s .15s ease-out both"></circle>
+            </g>
+            </g>
+          </svg>
+          <div style="animation:txShake 11.3s 5.4s steps(1,end) infinite;padding-bottom:10px">
+            <div style="animation:txShake2 7.7s 6.1s steps(1,end) infinite">
+              <div style="animation:txWarp 11.3s 5.4s steps(1,end) infinite">
+              <div style="position:relative;opacity:0;animation:txJit 1.5s 3.5s steps(1,end) both, txFlick 1.5s 3.5s steps(1,end) both">
+                <div style="position:absolute;inset:0;font:600 12.5px 'Space Grotesk',sans-serif;letter-spacing:.14em;white-space:nowrap;text-align:center;text-transform:uppercase;color:#ff4fd8;mix-blend-mode:screen;opacity:0;animation:txChromA 1.5s 3.5s steps(1,end) both">Enhanced Voice System</div>
+                <div style="position:absolute;inset:0;font:600 12.5px 'Space Grotesk',sans-serif;letter-spacing:.14em;white-space:nowrap;text-align:center;text-transform:uppercase;color:#22D3EE;mix-blend-mode:screen;opacity:0;animation:txChromB 1.5s 3.5s steps(1,end) both">Enhanced Voice System</div>
+                <div style="position:absolute;inset:0;font:600 12.5px 'Space Grotesk',sans-serif;letter-spacing:.14em;white-space:nowrap;text-align:center;text-transform:uppercase;color:transparent;mix-blend-mode:screen"><span style="display:inline-block;opacity:0">E</span><span style="display:inline-block;color:#9ad9ff;opacity:0;animation:bhLtr2 7.5s 5.9s steps(1,end) infinite">n</span><span style="display:inline-block;opacity:0">h</span><span style="display:inline-block;opacity:0">a</span><span style="display:inline-block;color:#c77be8;opacity:0;animation:bhLtr3 8.8s 6.5s steps(1,end) infinite">n</span><span style="display:inline-block;opacity:0">c</span><span style="display:inline-block;color:#b9e4ff;opacity:0;animation:bhLtr4 10.2s 7.1s steps(1,end) infinite">e</span><span style="display:inline-block;opacity:0">d</span> <span style="display:inline-block;color:#eaf6ff;opacity:0;animation:bhLtr1 11.6s 7.7s steps(1,end) infinite">V</span><span style="display:inline-block;opacity:0">o</span><span style="display:inline-block;opacity:0">i</span><span style="display:inline-block;color:#9ad9ff;opacity:0;animation:bhLtr2 12.9s 8.3s steps(1,end) infinite">c</span><span style="display:inline-block;opacity:0">e</span> <span style="display:inline-block;opacity:0">S</span><span style="display:inline-block;opacity:0">y</span><span style="display:inline-block;color:#c77be8;opacity:0;animation:bhLtr3 14.3s 9.0s steps(1,end) infinite">s</span><span style="display:inline-block;opacity:0">t</span><span style="display:inline-block;color:#b9e4ff;opacity:0;animation:bhLtr4 15.7s 9.6s steps(1,end) infinite">e</span><span style="display:inline-block;opacity:0">m</span></div>
+                <div style="font:600 12.5px 'Space Grotesk',sans-serif;letter-spacing:.14em;white-space:nowrap;text-align:center;text-transform:uppercase;background:linear-gradient(100deg,#c77be8 0%,#9ad9ff 55%,#eaf6ff 100%);-webkit-background-clip:text;background-clip:text;color:transparent;animation:bhFade .3s 3.5s ease-out both">Enhanced Voice System</div>
+                <div style="position:absolute;left:6%;top:22%;width:22%;height:4px;background:#eaf6ff;mix-blend-mode:overlay;opacity:0;animation:txBand1 8.3s 5.2s steps(1,end) infinite"></div>
+                <div style="position:absolute;left:42%;top:58%;width:18%;height:3px;background:#9ad9ff;mix-blend-mode:overlay;opacity:0;animation:txBand2 6.9s 5.6s steps(1,end) infinite"></div>
+                <div style="position:absolute;left:64%;top:34%;width:26%;height:5px;background:#c77be8;mix-blend-mode:overlay;opacity:0;animation:txBand1 10.1s 6.0s steps(1,end) infinite"></div>
+                <div style="position:absolute;left:22%;top:72%;width:20%;height:3px;background:#b9e4ff;mix-blend-mode:overlay;opacity:0;animation:txBand2 12.4s 6.5s steps(1,end) infinite"></div>
+                <div style="position:absolute;left:50%;top:8%;width:24%;height:4px;background:#eaf6ff;mix-blend-mode:overlay;opacity:0;animation:txBand1 14.7s 7.1s steps(1,end) infinite"></div>
+              </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#22D3EE">01</span>
+            <h2 style="font-size:18px;font-weight:600">Genesis</h2>
+          </div>
+          <button onClick="{{ replayBh }}" style="font:500 11px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#E8EAF6;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 16px;cursor:pointer;transition:border-color .2s, background .2s" style-hover="border-color:#22D3EE;background:rgba(34,211,238,.08)">↻ Replay</button>
+        </div>
+        <sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}">
+          <p style="color:#8B90B0;font-size:13.5px;line-height:1.55;text-wrap:pretty">Рождение из сингулярности: вспышка → кольцо раскручивается → горизонт событий «съедает» свет → доплеровский блик прорисовывается → орбиты и свуш прилетают → глитч-полосы прошивают весь круг. Кольцо остаётся цельным, без разрыва. Дальше — вечный луп: размытые частицы по спирали падают на горизонт событий и гаснут в нём.</p>
+        </sc-if>
+      </div>
+
+      <div style="background:#10132A;border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:center;background:#07080F;border-radius:16px;padding:14px;overflow:hidden">
+          <svg viewBox="0 0 512 512" role="img" aria-label="Иконка Pulse, зацикленная" style="width:100%;max-width:320px;height:auto;display:block">
+            <defs>
+              <radialGradient id="bg2" cx="50%" cy="30%" r="90%">
+                <stop offset="0%" stop-color="#1B2048"></stop><stop offset="100%" stop-color="#0A0C1E"></stop>
+              </radialGradient>
+              <linearGradient id="bars2" gradientUnits="userSpaceOnUse" x1="119" y1="0" x2="393" y2="0">
+                <stop offset="0%" stop-color="#22D3EE"></stop><stop offset="50%" stop-color="#3B82F6"></stop><stop offset="100%" stop-color="#8B5CF6"></stop>
+              </linearGradient>
+              <radialGradient id="halo2" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#3B82F6" stop-opacity=".35"></stop>
+                <stop offset="65%" stop-color="#3B82F6" stop-opacity=".12"></stop>
+                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"></stop>
+              </radialGradient>
+            </defs>
+            <rect width="512" height="512" rx="115" fill="url(#bg2)"></rect>
+            <ellipse cx="256" cy="256" rx="215" ry="185" fill="url(#halo2)" style="animation:haloBr 2.6s ease-in-out infinite alternate"></ellipse>
+            <g fill="url(#bars2)">
+              <rect x="119" y="208" width="52" height="96" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;will-change:transform;animation:eqA 1.05s -0.20s ease-in-out infinite alternate"></rect>
+              <rect x="193" y="160" width="52" height="192" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;will-change:transform;animation:eqB 1.35s -0.65s ease-in-out infinite alternate"></rect>
+              <rect x="267" y="112" width="52" height="288" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;will-change:transform;animation:eqC 0.95s -0.10s ease-in-out infinite alternate"></rect>
+              <rect x="341" y="176" width="52" height="160" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;will-change:transform;animation:eqD 1.25s -0.45s ease-in-out infinite alternate"></rect>
+            </g>
+          </svg>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#22D3EE">02</span>
+            <h2 style="font-size:18px;font-weight:600">Pulse · Loop</h2>
+          </div>
+          <span style="font:400 11px 'JetBrains Mono',monospace;color:#8B90B0;border:1px solid rgba(255,255,255,.07);border-radius:999px;padding:7px 14px">∞ loop</span>
+        </div>
+        <sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}">
+          <p style="color:#8B90B0;font-size:13.5px;line-height:1.55;text-wrap:pretty">Живой эквалайзер: у каждого бара свой период и фаза, поэтому паттерн никогда не повторяется в лоб. Состояние «ассистент слушает» — для оверлея или трея.</p>
+        </sc-if>
+      </div>
+
+      <div ref="{{ ploRef }}" style="background:#10132A;border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:center;background:#07080F;border-radius:16px;padding:14px;overflow:hidden">
+          <svg viewBox="0 0 512 512" role="img" aria-label="Иконка Pulse, запуск" style="width:100%;max-width:320px;height:auto;display:block">
+            <defs>
+              <radialGradient id="bg3" cx="50%" cy="30%" r="90%">
+                <stop offset="0%" stop-color="#1B2048"></stop><stop offset="100%" stop-color="#0A0C1E"></stop>
+              </radialGradient>
+              <linearGradient id="bars3" gradientUnits="userSpaceOnUse" x1="119" y1="0" x2="393" y2="0">
+                <stop offset="0%" stop-color="#22D3EE"></stop><stop offset="50%" stop-color="#3B82F6"></stop><stop offset="100%" stop-color="#8B5CF6"></stop>
+              </linearGradient>
+              <radialGradient id="halo3" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#3B82F6" stop-opacity=".35"></stop>
+                <stop offset="65%" stop-color="#3B82F6" stop-opacity=".12"></stop>
+                <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"></stop>
+              </radialGradient>
+            </defs>
+            <g style="transform-box:fill-box;transform-origin:50% 50%;animation:poBg .45s ease-out both">
+              <rect width="512" height="512" rx="115" fill="url(#bg3)"></rect>
+            </g>
+            <ellipse cx="256" cy="256" rx="215" ry="185" fill="url(#halo3)" style="transform-box:fill-box;transform-origin:50% 50%;animation:poHalo .9s .2s ease-out both"></ellipse>
+            <g fill="url(#bars3)">
+              <rect x="119" y="208" width="52" height="96" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;animation:poPop .55s .25s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.15s ease-in-out"></rect>
+              <rect x="193" y="160" width="52" height="192" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;animation:poPop .55s .34s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.27s ease-in-out"></rect>
+              <rect x="267" y="112" width="52" height="288" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;animation:poPop .55s .43s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.39s ease-in-out"></rect>
+              <rect x="341" y="176" width="52" height="160" rx="26" style="transform-box:fill-box;transform-origin:50% 50%;animation:poPop .55s .52s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.51s ease-in-out"></rect>
+            </g>
+          </svg>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#22D3EE">03</span>
+            <h2 style="font-size:18px;font-weight:600">Pulse · Launch</h2>
+          </div>
+          <button onClick="{{ replayPlo }}" style="font:500 11px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#E8EAF6;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 16px;cursor:pointer;transition:border-color .2s, background .2s" style-hover="border-color:#22D3EE;background:rgba(34,211,238,.08)">↻ Replay</button>
+        </div>
+        <sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}">
+          <p style="color:#8B90B0;font-size:13.5px;line-height:1.55;text-wrap:pretty">Одноразовый сплеш (~2 сек): фон проявляется, бары выпрыгивают из центра с пружиной, слева направо пробегает одна волна — и иконка застывает в финальной форме.</p>
+        </sc-if>
+      </div>
+
+      <div style="background:#10132A;border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;align-items:center;justify-content:center;gap:22px;background:#07080F;border-radius:16px;padding:34px 20px;overflow:hidden">
+          <svg viewBox="0 0 1024 1024" role="img" aria-label="Знак EVS" style="width:96px;height:96px;flex:none;display:block">
+            <defs>
+              <linearGradient id="ringG4" gradientUnits="userSpaceOnUse" x1="330" y1="700" x2="700" y2="330">
+                <stop offset="0" stop-color="#c77be8"></stop>
+                <stop offset=".55" stop-color="#9ad9ff"></stop>
+                <stop offset="1" stop-color="#eaf6ff"></stop>
+              </linearGradient>
+              <radialGradient id="nebG4" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stop-color="#6f58ea" stop-opacity=".5"></stop>
+                <stop offset=".55" stop-color="#8e45d8" stop-opacity=".22"></stop>
+                <stop offset="1" stop-color="#8e45d8" stop-opacity="0"></stop>
+              </radialGradient>
+              <filter id="fGlow4" x="-70%" y="-70%" width="240%" height="240%">
+                <feGaussianBlur result="b4" stdDeviation="20"></feGaussianBlur>
+                <feMerge><feMergeNode in="b4"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+              </filter>
+            </defs>
+            <circle cx="512" cy="512" r="430" fill="url(#nebG4)"></circle>
+            <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16s linear infinite">
+              <path d="M320,601.6 A212,212 0 0 0 704,601.6" fill="none" stroke="#b9e4ff" stroke-width="6" stroke-linecap="round" opacity=".5"></path>
+            </g>
+            <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 21s linear infinite">
+              <path d="M318,400 A224,224 0 0 1 706,400" fill="none" stroke="#b9e4ff" stroke-width="5" stroke-linecap="round" opacity=".28"></path>
+            </g>
+            <circle cx="512" cy="512" r="186" fill="none" stroke="url(#ringG4)" stroke-width="13" filter="url(#fGlow4)"></circle>
+            <circle cx="512" cy="512" r="177" fill="#050509"></circle>
+            <path d="M365.5,614.8 A179,179 0 0 0 658.5,614.8" fill="none" stroke="#f2faff" stroke-width="9" stroke-linecap="round" filter="url(#fGlow4)"></path>
+          </svg>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <div style="font-size:46px;font-weight:600;letter-spacing:-.01em;line-height:1">EVS</div>
+            <div style="font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.2em;color:#8B90B0;text-transform:uppercase">Enhanced Voice System</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#22D3EE">04</span>
+            <h2 style="font-size:18px;font-weight:600">Lockup</h2>
+          </div>
+          <span style="font:400 11px 'JetBrains Mono',monospace;color:#8B90B0;border:1px solid rgba(255,255,255,.07);border-radius:999px;padding:7px 14px">signature</span>
+        </div>
+        <sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}">
+          <p style="color:#8B90B0;font-size:13.5px;line-height:1.55;text-wrap:pretty">Горизонтальный локап: знак + «EVS» тем же гротеском, расшифровка моноширинным капсом в разрядку под ним. Знак живёт — дуги медленно вращаются навстречу.</p>
+        </sc-if>
+      </div>
+
+      <div ref="{{ bh5Ref }}" style="background:#10132A;border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:center;background:#07080F;border-radius:16px;padding:14px;overflow:hidden">
+            <svg viewBox="0 0 1024 1024" role="img" aria-label="Логотип EVS без текста" style="width:100%;max-width:300px;height:auto;display:block;animation:bhShake 13s 4.2s steps(1,end) infinite">
+              <defs>
+                <linearGradient id="ringG5" gradientUnits="userSpaceOnUse" x1="330" y1="700" x2="700" y2="330">
+                  <stop offset="0" stop-color="#c77be8"></stop>
+                  <stop offset=".55" stop-color="#9ad9ff"></stop>
+                  <stop offset="1" stop-color="#eaf6ff"></stop>
+                </linearGradient>
+                <radialGradient id="nebG5" cx="50%" cy="50%" r="50%">
+                  <stop offset="0" stop-color="#6f58ea" stop-opacity=".5"></stop>
+                  <stop offset=".55" stop-color="#8e45d8" stop-opacity=".22"></stop>
+                  <stop offset="1" stop-color="#8e45d8" stop-opacity="0"></stop>
+                </radialGradient>
+                <filter id="fGlow5" x="-70%" y="-70%" width="240%" height="240%">
+                  <feGaussianBlur result="b5" stdDeviation="20"></feGaussianBlur>
+                  <feMerge><feMergeNode in="b5"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                </filter>
+                <filter id="fSoft5" x="-40%" y="-40%" width="180%" height="180%">
+                  <feGaussianBlur stdDeviation="3"></feGaussianBlur>
+                </filter>
+                <filter id="fBlur5" x="-60%" y="-60%" width="220%" height="220%">
+                  <feGaussianBlur stdDeviation="16"></feGaussianBlur>
+                </filter>
+                <filter id="fPart5" x="-200%" y="-200%" width="500%" height="500%">
+                  <feGaussianBlur stdDeviation="4"></feGaussianBlur>
+                </filter>
+                <filter id="fPart25" x="-200%" y="-200%" width="500%" height="500%">
+                  <feGaussianBlur stdDeviation="7"></feGaussianBlur>
+                </filter>
+              </defs>
+  
+              <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhShake2 9.4s 6.8s steps(1,end) infinite">
+              <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhJit 3.9s .3s steps(1,end) both, bhFlick 3.9s .3s steps(1,end) both">
+                <circle cx="512" cy="512" r="430" fill="url(#nebG5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhNeb .9s .25s ease-out both"></circle>
+                <path d="M151.4,804 A464,464 0 0 1 804,151.4" fill="none" stroke="url(#ringG5)" stroke-width="7" stroke-linecap="round" opacity=".5" style="transform-box:view-box;transform-origin:50% 50%;stroke-dasharray:1400;animation:bhSw .8s 1.7s ease-in-out both"></path>
+                <path d="M872.6,220 A464,464 0 0 1 220,872.6" fill="none" stroke="url(#ringG5)" stroke-width="7" stroke-linecap="round" opacity=".5" style="transform-box:view-box;transform-origin:50% 50%;stroke-dasharray:1400;animation:bhSw .8s 1.85s ease-in-out both"></path>
+                <g filter="url(#fSoft5)">
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16s 2.25s linear infinite">
+                    <path d="M320,601.6 A212,212 0 0 0 704,601.6" fill="none" stroke="#b9e4ff" stroke-width="6" stroke-linecap="round" opacity=".55" style="transform-box:view-box;transform-origin:50% 50%;animation:bhOrbA .9s 1.35s cubic-bezier(.22,1,.36,1) both"></path>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 21s 2.4s linear infinite">
+                    <path d="M318,400 A224,224 0 0 1 706,400" fill="none" stroke="#b9e4ff" stroke-width="5" stroke-linecap="round" opacity=".3" style="transform-box:view-box;transform-origin:50% 50%;animation:bhOrbB .9s 1.5s cubic-bezier(.22,1,.36,1) both"></path>
+                  </g>
+                </g>
+                <circle cx="512" cy="512" r="186" fill="none" stroke="url(#ringG5)" stroke-width="13" filter="url(#fGlow5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhRing .75s .3s cubic-bezier(.22,1,.36,1) both"></circle>
+                <circle cx="512" cy="512" r="177" fill="#050509" style="transform-box:view-box;transform-origin:50% 50%;animation:bhDisk .6s .6s ease-out both"></circle>
+                <circle cx="512" cy="512" r="181" fill="none" stroke="url(#ringG5)" stroke-width="4" opacity=".9" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFade .4s .95s ease-out both"></circle>
+                <path d="M365.5,614.8 A179,179 0 0 0 658.5,614.8" fill="none" stroke="#f2faff" stroke-width="9" stroke-linecap="round" filter="url(#fGlow5)" style="transform-box:view-box;transform-origin:50% 50%;stroke-dasharray:360;animation:bhDop .7s 1.1s ease-in-out both"></path>
+                <circle cx="512" cy="512" r="186" fill="none" stroke="#ff4fd8" stroke-width="9" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:screen;opacity:0;animation:bhChromA 3.9s .3s steps(1,end) both"></circle>
+                <circle cx="512" cy="512" r="186" fill="none" stroke="#22D3EE" stroke-width="9" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:screen;opacity:0;animation:bhChromB 3.9s .3s steps(1,end) both"></circle>
+                <rect x="300" y="452" width="424" height="26" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhSlice 3.9s .3s steps(1,end) both"></rect>
+                <rect x="300" y="600" width="424" height="14" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhSlice 3.9s .45s steps(1,end) both"></rect>
+                <rect x="300" y="446" width="424" height="26" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigA 13s 4.2s steps(1,end) infinite"></rect>
+                <rect x="300" y="478" width="424" height="22" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigC 9.4s 6.8s steps(1,end) infinite"></rect>
+                <rect x="306" y="558" width="412" height="10" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigD 9.4s 6.8s steps(1,end) infinite"></rect>
+                <rect x="316" y="642" width="392" height="14" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigC 9.4s 6.8s steps(1,end) infinite"></rect>
+                <rect x="300" y="592" width="424" height="16" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigB 13s 4.2s steps(1,end) infinite"></rect>
+                <rect x="318" y="352" width="388" height="11" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigB 13s 4.2s steps(1,end) infinite"></rect>
+                <rect x="312" y="694" width="400" height="9" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBigA 13s 4.2s steps(1,end) infinite"></rect>
+  
+                <rect x="292" y="268" width="104" height="3" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip1 7.4s 3.40s steps(1,end) infinite"></rect>
+                <rect x="214" y="402" width="96" height="18" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip2 9.1s 3.77s steps(1,end) infinite"></rect>
+                <rect x="336" y="512" width="108" height="6" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip3 6.6s 4.14s steps(1,end) infinite"></rect>
+                <rect x="262" y="618" width="92" height="22" fill="#b9e4ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip4 10.4s 4.51s steps(1,end) infinite"></rect>
+                <rect x="318" y="726" width="100" height="9" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip1 8.3s 4.88s steps(1,end) infinite"></rect>
+                <rect x="388" y="352" width="88" height="4" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip2 11.7s 5.25s steps(1,end) infinite"></rect>
+                <rect x="240" y="566" width="112" height="14" fill="#c77be8" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip3 9.8s 5.62s steps(1,end) infinite"></rect>
+                <rect x="300" y="468" width="96" height="7" fill="#b9e4ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip4 7.9s 5.99s steps(1,end) infinite"></rect>
+                <rect x="356" y="672" width="84" height="11" fill="#eaf6ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip1 12.6s 6.36s steps(1,end) infinite"></rect>
+                <rect x="268" y="318" width="100" height="2" fill="#9ad9ff" style="transform-box:view-box;transform-origin:50% 50%;mix-blend-mode:overlay;opacity:0;animation:bhBlip2 6.9s 6.73s steps(1,end) infinite"></rect>
+  
+                <g style="opacity:0;animation:bhIn90 1.2s 3.3s ease-out both">
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 9.2s -1.9s linear infinite">
+                    <ellipse cx="512" cy="512" rx="5.6" ry="2.2" fill="#c77be8" filter="url(#fPart25)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.2s -5.7s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 9.7s -7.1s linear infinite">
+                    <ellipse cx="512" cy="512" rx="4.9" ry="2.2" fill="#eaf6ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 7.7s -7.8s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 11.9s -12.4s linear infinite">
+                    <ellipse cx="512" cy="512" rx="4.8" ry="1.8" fill="#c77be8" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.3s -2.2s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 9.2s -13.8s linear infinite">
+                    <ellipse cx="512" cy="512" rx="10.5" ry="5.0" fill="#b9e4ff" filter="url(#fPart25)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 3.9s -2.5s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16.0s -0.9s linear infinite">
+                    <ellipse cx="512" cy="512" rx="6.5" ry="2.1" fill="#c77be8" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.8s -1.7s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 13.6s -1.7s linear infinite">
+                    <ellipse cx="512" cy="512" rx="7.3" ry="3.3" fill="#9ad9ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.8s -3.9s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 10.4s -5.7s linear infinite">
+                    <ellipse cx="512" cy="512" rx="6.2" ry="2.1" fill="#eaf6ff" filter="url(#fPart25)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 6.8s -0.0s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 15.5s -9.5s linear infinite">
+                    <ellipse cx="512" cy="512" rx="4.5" ry="1.9" fill="#b9e4ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.3s -2.3s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 15.4s -12.3s linear infinite">
+                    <ellipse cx="512" cy="512" rx="5.3" ry="2.0" fill="#9ad9ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 6.1s -1.0s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16.8s -9.0s linear infinite">
+                    <ellipse cx="512" cy="512" rx="6.5" ry="2.8" fill="#b9e4ff" filter="url(#fPart25)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 5.6s -1.2s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 7.2s -12.9s linear infinite">
+                    <ellipse cx="512" cy="512" rx="4.7" ry="2.1" fill="#eaf6ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 5.0s -0.8s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 8.3s -2.7s linear infinite">
+                    <ellipse cx="512" cy="512" rx="6.8" ry="2.2" fill="#b9e4ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.1s -1.2s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 16.9s -1.4s linear infinite">
+                    <ellipse cx="512" cy="512" rx="5.6" ry="2.1" fill="#9ad9ff" filter="url(#fPart25)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 6.7s -4.8s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 9.2s -1.8s linear infinite">
+                    <ellipse cx="512" cy="512" rx="5.0" ry="1.8" fill="#eaf6ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 5.8s -3.1s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 14.3s -8.1s linear infinite">
+                    <ellipse cx="512" cy="512" rx="6.7" ry="3.0" fill="#9ad9ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 8.1s -5.2s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpinRev 13.3s -7.5s linear infinite">
+                    <ellipse cx="512" cy="512" rx="5.9" ry="2.4" fill="#9ad9ff" filter="url(#fPart25)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 4.0s -0.0s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 11.5s -0.6s linear infinite">
+                    <ellipse cx="512" cy="512" rx="4.9" ry="1.6" fill="#9ad9ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall 7.8s -1.4s linear infinite"></ellipse>
+                  </g>
+                  <g style="transform-box:view-box;transform-origin:50% 50%;animation:bhSpin 15.5s -12.3s linear infinite">
+                    <ellipse cx="512" cy="512" rx="4.3" ry="2.0" fill="#eaf6ff" filter="url(#fPart5)" style="transform-box:view-box;transform-origin:50% 50%;animation:bhFall2 6.6s -4.8s linear infinite"></ellipse>
+                  </g>
+                </g>
+  
+                <sc-if value="{{ breathing }}" hint-placeholder-val="{{ true }}">
+                  <circle cx="512" cy="512" r="186" fill="none" stroke="#9ad9ff" stroke-width="14" filter="url(#fBlur5)" style="transform-box:view-box;transform-origin:50% 50%;opacity:0;animation:bhPulse 3.6s 3.2s ease-in-out infinite"></circle>
+                </sc-if>
+                <circle cx="512" cy="512" r="8" fill="#ffffff" style="transform-box:view-box;transform-origin:50% 50%;opacity:0;animation:bhFlash .8s .15s ease-out both"></circle>
+              </g>
+              </g>
+            </svg>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font:500 11px 'JetBrains Mono',monospace;color:#22D3EE">05</span>
+            <h2 style="font-size:18px;font-weight:600">Genesis · знак</h2>
+          </div>
+          <button onClick="{{ replayBh5 }}" style="font:500 11px 'JetBrains Mono',monospace;letter-spacing:.08em;color:#E8EAF6;background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:7px 16px;cursor:pointer;transition:border-color .2s, background .2s" style-hover="border-color:#22D3EE;background:rgba(34,211,238,.08)">↻ Replay</button>
+        </div>
+        <sc-if value="{{ showCaptions }}" hint-placeholder-val="{{ true }}">
+          <p style="color:#8B90B0;font-size:13.5px;line-height:1.55;text-wrap:pretty">Тот же Genesis, но чистый знак — без подписи. Версия для иконки приложения, favicon и сплеша, где текст даётся отдельно.</p>
+        </sc-if>
+      </div>
+
+    </div>
+
+    <footer style="margin-top:36px;color:#8B90B0;font-size:13px">Genesis и Launch перезапускаются кнопкой ↻. Для Flutter это переносится в Rive/Lottie или CustomPainter — хронометраж уже готов.</footer>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;breathing&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;genesisLoop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;showCaptions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.bhRef = React.createRef();
+    this.ploRef = React.createRef();
+    this.bh5Ref = React.createRef();
+  }
+  restart(ref) {
+    const el = ref.current;
+    if (!el || !el.getAnimations) return;
+    el.getAnimations({ subtree: true }).forEach(a => { a.cancel(); a.play(); });
+  }
+  componentDidMount() { this.syncLoop(); }
+  componentDidUpdate() { this.syncLoop(); }
+  componentWillUnmount() { clearInterval(this.timer); }
+  syncLoop() {
+    const on = this.props.genesisLoop ?? false;
+    if (on && !this.timer) this.timer = setInterval(() => this.restart(this.bhRef), 6500);
+    if (!on && this.timer) { clearInterval(this.timer); this.timer = null; }
+  }
+  renderVals() {
+    return {
+      bhRef: this.bhRef,
+      ploRef: this.ploRef,
+      bh5Ref: this.bh5Ref,
+      replayBh5: () => this.restart(this.bh5Ref),
+      breathing: this.props.breathing ?? true,
+      showCaptions: this.props.showCaptions ?? true,
+      replayBh: () => this.restart(this.bhRef),
+      replayPlo: () => this.restart(this.ploRef)
+    };
+  }
+}
+</script>
+</body>
+</html>

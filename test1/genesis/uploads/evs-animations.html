@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EVS · анимации</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0C18; --card:#10132A; --line:rgba(255,255,255,.07);
+    --txt:#E8EAF6; --dim:#8B90B0; --cyan:#22D3EE;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:radial-gradient(120% 90% at 50% 0%, #12152E 0%, var(--bg) 55%);
+    color:var(--txt); font-family:'Space Grotesk',system-ui,sans-serif;
+    min-height:100vh; padding:48px 20px 64px;
+  }
+  .wrap{max-width:960px;margin:0 auto}
+  .eyebrow{font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.22em;color:var(--dim);text-transform:uppercase}
+  h1{font-size:clamp(26px,5vw,38px);font-weight:600;margin:14px 0 6px}
+  .sub{color:var(--dim);font-size:15px;max-width:56ch}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:20px;margin-top:36px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:14px}
+  .stage{display:flex;justify-content:center;background:#07080F;border-radius:16px;padding:14px;overflow:hidden}
+  .stage svg{width:100%;max-width:320px;height:auto;display:block}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .name{display:flex;align-items:baseline;gap:10px}
+  .num{font:500 11px 'JetBrains Mono',monospace;color:var(--cyan)}
+  .name h2{font-size:18px;font-weight:600}
+  .desc{color:var(--dim);font-size:13.5px;line-height:1.55}
+  .btn{
+    font:500 11px 'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--txt);
+    background:transparent;border:1px solid rgba(255,255,255,.18);border-radius:999px;
+    padding:7px 16px;cursor:pointer;transition:border-color .2s, background .2s;
+  }
+  .btn:hover{border-color:var(--cyan);background:rgba(34,211,238,.08)}
+  .btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .tag{font:400 11px 'JetBrains Mono',monospace;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:7px 14px}
+
+  /* ---------- 01 · GENESIS (black hole) ---------- */
+  #bh .a{transform-box:view-box;transform-origin:50% 50%}
+  /* базовые стили = финальный кадр; keyframes задают начало */
+  .play .bh-flash{animation:bhFlash .8s .15s ease-out both}
+  .bh-flash{opacity:0}
+  @keyframes bhFlash{0%{transform:scale(.2);opacity:0}15%{opacity:1}100%{transform:scale(26);opacity:0}}
+  .play .bh-neb{animation:bhNeb .9s .25s ease-out both}
+  @keyframes bhNeb{from{opacity:0;transform:scale(.25)}to{opacity:1;transform:scale(1)}}
+  .play .bh-ring{animation:bhRing .75s .3s cubic-bezier(.22,1,.36,1) both}
+  @keyframes bhRing{from{opacity:0;transform:scale(0) rotate(-120deg)}to{opacity:1;transform:scale(1) rotate(0)}}
+  .play .bh-disk{animation:bhDisk .6s .6s ease-out both}
+  @keyframes bhDisk{from{transform:scale(0)}to{transform:scale(1)}}
+  .play .bh-ring2{animation:bhFade .4s .95s ease-out both}
+  @keyframes bhFade{from{opacity:0}to{opacity:.9}}
+  .bh-dop{stroke-dasharray:360}
+  .play .bh-dop{animation:bhDop .7s 1.1s ease-in-out both}
+  @keyframes bhDop{0%{stroke-dashoffset:360;opacity:0}30%{opacity:1}100%{stroke-dashoffset:0;opacity:1}}
+  .play .bh-orb1{animation:bhOrbA .9s 1.35s cubic-bezier(.22,1,.36,1) both}
+  @keyframes bhOrbA{from{opacity:0;transform:rotate(-130deg)}to{opacity:.55;transform:rotate(0)}}
+  .play .bh-orb2{animation:bhOrbB .9s 1.5s cubic-bezier(.22,1,.36,1) both}
+  @keyframes bhOrbB{from{opacity:0;transform:rotate(130deg)}to{opacity:.3;transform:rotate(0)}}
+  .bh-sw{stroke-dasharray:1400}
+  .play .bh-sw1{animation:bhSw .8s 1.7s ease-in-out both}
+  .play .bh-sw2{animation:bhSw .8s 1.85s ease-in-out both}
+  @keyframes bhSw{0%{stroke-dashoffset:1400;opacity:0}25%{opacity:.5}100%{stroke-dashoffset:0;opacity:.5}}
+  /* глитч-сплит: половины разъезжаются в самом конце */
+  .bh-hA{transform:translate(7px,7px)} .bh-hB{transform:translate(-7px,-7px)}
+  .play .bh-hA{animation:bhGA 3s steps(1,end) both}
+  .play .bh-hB{animation:bhGB 3s steps(1,end) both}
+  @keyframes bhGA{0%,79%{transform:translate(0,0)}82%{transform:translate(10px,10px)}86%{transform:translate(2px,2px)}90%{transform:translate(11px,11px)}94%,100%{transform:translate(7px,7px)}}
+  @keyframes bhGB{0%,79%{transform:translate(0,0)}82%{transform:translate(-10px,-10px)}86%{transform:translate(-2px,-2px)}90%{transform:translate(-11px,-11px)}94%,100%{transform:translate(-7px,-7px)}}
+  /* дыхание после появления */
+  .bh-pulse{opacity:0}
+  .play .bh-pulse{animation:bhPulse 3.6s 3.2s ease-in-out infinite}
+  @keyframes bhPulse{0%,100%{opacity:0}50%{opacity:.32}}
+
+  /* ---------- 02 · PULSE LOOP ---------- */
+  .pl .b{transform-box:fill-box;transform-origin:50% 50%;will-change:transform}
+  .pl .b1{animation:eqA 1.05s -0.20s ease-in-out infinite alternate}
+  .pl .b2{animation:eqB 1.35s -0.65s ease-in-out infinite alternate}
+  .pl .b3{animation:eqC 0.95s -0.10s ease-in-out infinite alternate}
+  .pl .b4{animation:eqD 1.25s -0.45s ease-in-out infinite alternate}
+  @keyframes eqA{from{transform:scaleY(.55)}to{transform:scaleY(1.20)}}
+  @keyframes eqB{from{transform:scaleY(.68)}to{transform:scaleY(1.16)}}
+  @keyframes eqC{from{transform:scaleY(.78)}to{transform:scaleY(1.15)}}
+  @keyframes eqD{from{transform:scaleY(.60)}to{transform:scaleY(1.25)}}
+  .pl .halo{animation:haloBr 2.6s ease-in-out infinite alternate}
+  @keyframes haloBr{from{opacity:.55}to{opacity:1}}
+
+  /* ---------- 03 · PULSE LAUNCH (one-shot) ---------- */
+  #plo .a{transform-box:fill-box;transform-origin:50% 50%}
+  .play .po-bg{animation:poBg .45s ease-out both}
+  @keyframes poBg{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+  .play .po-halo{animation:poHalo .9s .2s ease-out both}
+  @keyframes poHalo{0%{opacity:0;transform:scale(.6)}45%{opacity:1;transform:scale(1.15)}100%{opacity:1;transform:scale(1)}}
+  .play .po1{animation:poPop .55s .25s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.15s ease-in-out}
+  .play .po2{animation:poPop .55s .34s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.27s ease-in-out}
+  .play .po3{animation:poPop .55s .43s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.39s ease-in-out}
+  .play .po4{animation:poPop .55s .52s cubic-bezier(.34,1.56,.64,1) both, poWave .4s 1.51s ease-in-out}
+  @keyframes poPop{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+  @keyframes poWave{0%{transform:scaleY(1)}50%{transform:scaleY(1.3)}100%{transform:scaleY(1)}}
+
+  footer{margin-top:36px;color:var(--dim);font-size:13px}
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">EVS · Motion</div>
+  <h1>Три анимации</h1>
+  <p class="sub">Твоё лого пересобрано с нуля (та же палитра и сплит, минус мусор Illustrator) + два состояния Pulse. Всё — чистый SVG + CSS, без JS в самой анимации.</p>
+
+  <div class="grid">
+
+    <!-- 01 · GENESIS -->
+    <div class="card play" id="bh">
+      <div class="stage">
+        <svg viewBox="0 0 1024 1024" role="img" aria-label="Логотип: чёрная дыра">
+          <defs>
+            <linearGradient id="ringG" gradientUnits="userSpaceOnUse" x1="330" y1="700" x2="700" y2="330">
+              <stop offset="0" stop-color="#c77be8"/>
+              <stop offset=".55" stop-color="#9ad9ff"/>
+              <stop offset="1" stop-color="#eaf6ff"/>
+            </linearGradient>
+            <radialGradient id="nebG" cx="50%" cy="50%" r="50%">
+              <stop offset="0" stop-color="#6f58ea" stop-opacity=".5"/>
+              <stop offset=".55" stop-color="#8e45d8" stop-opacity=".22"/>
+              <stop offset="1" stop-color="#8e45d8" stop-opacity="0"/>
+            </radialGradient>
+            <filter id="fGlow" x="-70%" y="-70%" width="240%" height="240%">
+              <feGaussianBlur result="b" stdDeviation="20"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="fSoft" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="3"/>
+            </filter>
+            <filter id="fBlur" x="-60%" y="-60%" width="220%" height="220%">
+              <feGaussianBlur stdDeviation="16"/>
+            </filter>
+            <clipPath id="cutA"><path d="M0,1024 L1024,0 L1024,1024 Z"/></clipPath>
+            <clipPath id="cutB"><path d="M0,1024 L1024,0 L0,0 Z"/></clipPath>
+          </defs>
+
+          <!-- половина A (низ-право) -->
+          <g clip-path="url(#cutA)">
+            <g class="bh-hA">
+              <circle class="a bh-neb" cx="512" cy="512" r="430" fill="url(#nebG)"/>
+              <path class="a bh-sw bh-sw1" d="M151.4,804 A464,464 0 0 1 804,151.4" fill="none" stroke="url(#ringG)" stroke-width="7" stroke-linecap="round" opacity=".5"/>
+              <path class="a bh-sw bh-sw2" d="M872.6,220 A464,464 0 0 1 220,872.6" fill="none" stroke="url(#ringG)" stroke-width="7" stroke-linecap="round" opacity=".5"/>
+              <g filter="url(#fSoft)">
+                <path class="a bh-orb1" d="M320,601.6 A212,212 0 0 0 704,601.6" fill="none" stroke="#b9e4ff" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+                <path class="a bh-orb2" d="M318,400 A224,224 0 0 1 706,400" fill="none" stroke="#b9e4ff" stroke-width="5" stroke-linecap="round" opacity=".3"/>
+              </g>
+              <circle class="a bh-ring" cx="512" cy="512" r="186" fill="none" stroke="url(#ringG)" stroke-width="13" filter="url(#fGlow)"/>
+              <circle class="a bh-disk" cx="512" cy="512" r="177" fill="#050509"/>
+              <circle class="a bh-ring2" cx="512" cy="512" r="181" fill="none" stroke="url(#ringG)" stroke-width="4" opacity=".9"/>
+              <path class="a bh-dop" d="M365.5,614.8 A179,179 0 0 0 658.5,614.8" fill="none" stroke="#f2faff" stroke-width="9" stroke-linecap="round" filter="url(#fGlow)"/>
+              <circle class="a bh-pulse" cx="512" cy="512" r="186" fill="none" stroke="#9ad9ff" stroke-width="14" filter="url(#fBlur)"/>
+              <circle class="a bh-flash" cx="512" cy="512" r="8" fill="#ffffff"/>
+            </g>
+          </g>
+
+          <!-- половина B (верх-лево) -->
+          <g clip-path="url(#cutB)">
+            <g class="bh-hB">
+              <circle class="a bh-neb" cx="512" cy="512" r="430" fill="url(#nebG)"/>
+              <path class="a bh-sw bh-sw1" d="M151.4,804 A464,464 0 0 1 804,151.4" fill="none" stroke="url(#ringG)" stroke-width="7" stroke-linecap="round" opacity=".5"/>
+              <path class="a bh-sw bh-sw2" d="M872.6,220 A464,464 0 0 1 220,872.6" fill="none" stroke="url(#ringG)" stroke-width="7" stroke-linecap="round" opacity=".5"/>
+              <g filter="url(#fSoft)">
+                <path class="a bh-orb1" d="M320,601.6 A212,212 0 0 0 704,601.6" fill="none" stroke="#b9e4ff" stroke-width="6" stroke-linecap="round" opacity=".55"/>
+                <path class="a bh-orb2" d="M318,400 A224,224 0 0 1 706,400" fill="none" stroke="#b9e4ff" stroke-width="5" stroke-linecap="round" opacity=".3"/>
+              </g>
+              <circle class="a bh-ring" cx="512" cy="512" r="186" fill="none" stroke="url(#ringG)" stroke-width="13" filter="url(#fGlow)"/>
+              <circle class="a bh-disk" cx="512" cy="512" r="177" fill="#050509"/>
+              <circle class="a bh-ring2" cx="512" cy="512" r="181" fill="none" stroke="url(#ringG)" stroke-width="4" opacity=".9"/>
+              <path class="a bh-dop" d="M365.5,614.8 A179,179 0 0 0 658.5,614.8" fill="none" stroke="#f2faff" stroke-width="9" stroke-linecap="round" filter="url(#fGlow)"/>
+              <circle class="a bh-pulse" cx="512" cy="512" r="186" fill="none" stroke="#9ad9ff" stroke-width="14" filter="url(#fBlur)"/>
+              <circle class="a bh-flash" cx="512" cy="512" r="8" fill="#ffffff"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="row">
+        <div class="name"><span class="num">01</span><h2>Genesis</h2></div>
+        <button class="btn" data-replay="bh">↻ Replay</button>
+      </div>
+      <p class="desc">Рождение из сингулярности: вспышка → кольцо раскручивается → горизонт событий «съедает» свет → доплеровский блик прорисовывается → орбиты и свуш прилетают → glitch-сплит фиксирует финал. После — тихое дыхание кольца.</p>
+    </div>
+
+    <!-- 02 · PULSE LOOP -->
+    <div class="card pl">
+      <div class="stage">
+        <svg viewBox="0 0 512 512" role="img" aria-label="Иконка Pulse, зацикленная">
+          <defs>
+            <radialGradient id="bg2" cx="50%" cy="30%" r="90%">
+              <stop offset="0%" stop-color="#1B2048"/><stop offset="100%" stop-color="#0A0C1E"/>
+            </radialGradient>
+            <linearGradient id="bars2" gradientUnits="userSpaceOnUse" x1="119" y1="0" x2="393" y2="0">
+              <stop offset="0%" stop-color="#22D3EE"/><stop offset="50%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#8B5CF6"/>
+            </linearGradient>
+            <radialGradient id="halo2" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#3B82F6" stop-opacity=".35"/>
+              <stop offset="65%" stop-color="#3B82F6" stop-opacity=".12"/>
+              <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <rect width="512" height="512" rx="115" fill="url(#bg2)"/>
+          <ellipse class="halo" cx="256" cy="256" rx="215" ry="185" fill="url(#halo2)"/>
+          <g fill="url(#bars2)">
+            <rect class="b b1" x="119" y="208" width="52" height="96"  rx="26"/>
+            <rect class="b b2" x="193" y="160" width="52" height="192" rx="26"/>
+            <rect class="b b3" x="267" y="112" width="52" height="288" rx="26"/>
+            <rect class="b b4" x="341" y="176" width="52" height="160" rx="26"/>
+          </g>
+        </svg>
+      </div>
+      <div class="row">
+        <div class="name"><span class="num">02</span><h2>Pulse · Loop</h2></div>
+        <span class="tag">∞ loop</span>
+      </div>
+      <p class="desc">Живой эквалайзер: у каждого бара свой период и фаза, поэтому паттерн никогда не повторяется в лоб. Состояние «ассистент слушает» — для оверлея или трея.</p>
+    </div>
+
+    <!-- 03 · PULSE LAUNCH -->
+    <div class="card play" id="plo">
+      <div class="stage">
+        <svg viewBox="0 0 512 512" role="img" aria-label="Иконка Pulse, запуск">
+          <defs>
+            <radialGradient id="bg3" cx="50%" cy="30%" r="90%">
+              <stop offset="0%" stop-color="#1B2048"/><stop offset="100%" stop-color="#0A0C1E"/>
+            </radialGradient>
+            <linearGradient id="bars3" gradientUnits="userSpaceOnUse" x1="119" y1="0" x2="393" y2="0">
+              <stop offset="0%" stop-color="#22D3EE"/><stop offset="50%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#8B5CF6"/>
+            </linearGradient>
+            <radialGradient id="halo3" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#3B82F6" stop-opacity=".35"/>
+              <stop offset="65%" stop-color="#3B82F6" stop-opacity=".12"/>
+              <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <g class="a po-bg">
+            <rect width="512" height="512" rx="115" fill="url(#bg3)"/>
+          </g>
+          <ellipse class="a po-halo" cx="256" cy="256" rx="215" ry="185" fill="url(#halo3)"/>
+          <g fill="url(#bars3)">
+            <rect class="a po1" x="119" y="208" width="52" height="96"  rx="26"/>
+            <rect class="a po2" x="193" y="160" width="52" height="192" rx="26"/>
+            <rect class="a po3" x="267" y="112" width="52" height="288" rx="26"/>
+            <rect class="a po4" x="341" y="176" width="52" height="160" rx="26"/>
+          </g>
+        </svg>
+      </div>
+      <div class="row">
+        <div class="name"><span class="num">03</span><h2>Pulse · Launch</h2></div>
+        <button class="btn" data-replay="plo">↻ Replay</button>
+      </div>
+      <p class="desc">Одноразовый сплеш (~2 сек): фон проявляется, бары выпрыгивают из центра с пружиной, слева направо пробегает одна волна — и иконка застывает в финальной форме.</p>
+    </div>
+
+  </div>
+
+  <footer>Genesis и Launch перезапускаются кнопкой ↻. Для Flutter это переносится в Rive/Lottie или CustomPainter — хронометраж уже готов.</footer>
+</div>
+
+<script>
+  document.querySelectorAll('[data-replay]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const el = document.getElementById(btn.dataset.replay);
+      el.classList.remove('play');
+      void el.offsetWidth;           // reflow — сброс анимаций
+      el.classList.add('play');
+    });
+  });
+</script>
+</body>
+</html>
