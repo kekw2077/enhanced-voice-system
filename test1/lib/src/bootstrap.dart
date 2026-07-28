@@ -571,5 +571,281 @@ class _VizOverlayAppState extends State<VizOverlayApp> with WindowListener {
   }
 }
 
+/* ==================== ПРОЦЕСС ЗАСТАВКИ ОБНОВЛЕНИЯ ==================== */
+
+// Точка входа окна-заставки (`evs_updating.exe --update-splash --version=X
+// --lang=ru`): пока приложение закрыто и инсталлятор молча перезаписывает файлы
+// в папке программы, на экране остаётся логотип Genesis.
+//
+// Почему отдельный процесс и отдельная копия сборки:
+//  * evs.exe жить не может — скрипт обновления ждёт закрытия ВСЕХ evs.exe и
+//    добивает их, иначе инсталлятор не заменит залоченные файлы;
+//  * копия лежит в userdata\update-splash (эту папку инсталлятор не трогает) и
+//    называется evs_updating.exe, поэтому не попадает под kill-list скрипта;
+//  * запускает её сам скрипт обновления, а не мы: наши дочерние процессы висят
+//    в Job Object с KILL_ON_JOB_CLOSE (ProcessJob) и умерли бы вместе с нами.
+// Ни prefs, ни трей, ни хоткеи, ни сайдкар здесь не поднимаются: окно живёт
+// ровно до `taskkill` в конце скрипта, плюс собственные предохранители ниже.
+Future<void> _updateSplashMain(List<String> args) async {
+  var lang = 'ru';
+  var statusPath = '';
+  var logPath = '';
+  for (final a in args) {
+    if (a.startsWith('--lang=')) lang = a.substring(7);
+    if (a.startsWith('--status=')) statusPath = a.substring(9);
+    if (a.startsWith('--log=')) logPath = a.substring(6);
+  }
+  await windowManager.ensureInitialized();
+  // Окно прозрачное (тот же путь, что у процесса плавающего виджета), а сама
+  // заставка — карточка со скруглением и тенью внутри него: скруглить углы и
+  // отбросить тень можно только когда за пределами карточки пикселей нет.
+  try {
+    await acrylic.Window.initialize();
+  } catch (_) {}
+  const opts = WindowOptions(
+    size: Size(_kUpdateSplashWin, _kUpdateSplashWin * 0.97),
+    center: true,
+    title: 'EVS',
+    titleBarStyle: TitleBarStyle.hidden,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+  );
+  unawaited(windowManager.waitUntilReadyToShow(opts, () async {
+    await windowManager.setAsFrameless();
+    try {
+      await acrylic.Window.setEffect(
+        effect: acrylic.WindowEffect.transparent,
+        color: const Color(0x00000000),
+        dark: true,
+      );
+    } catch (_) {}
+    await windowManager.setResizable(false);
+    await windowManager.show();
+  }));
+  runApp(UpdateSplashApp(lang: lang, statusPath: statusPath, logPath: logPath));
+}
+
+// Габариты: окно заметно больше карточки — за её краями лежит тень.
+const double _kUpdateSplashWin = 660;
+const double _kUpdateSplashCard = 560;
+const double _kUpdateSplashLogo = 300;
+
+class UpdateSplashApp extends StatefulWidget {
+  final String lang;
+  final String statusPath;
+  final String logPath;
+  const UpdateSplashApp({
+    super.key,
+    required this.lang,
+    this.statusPath = '',
+    this.logPath = '',
+  });
+  @override
+  State<UpdateSplashApp> createState() => _UpdateSplashAppState();
+}
+
+class _UpdateSplashAppState extends State<UpdateSplashApp> {
+  Timer? _watchdog;
+  Timer? _alive;
+  Timer? _status;
+  Timer? _tick;
+  final _started = DateTime.now();
+
+  // Реальное состояние обновления, а не декоративная бегущая полоса: фазы
+  // (wait/install/relaunch/done) пишет в общий файл сам скрипт обновления,
+  // проценты скачивания — приложение, пока качает (см. AppUpdater). Внутри
+  // установки Inno о прогрессе не сообщает ничего, поэтому единственный честный
+  // сигнал — рост его собственного лога: полоса подтягивается к 0.86 по мере
+  // того, как лог пишется, и никогда не идёт назад.
+  double _target = 0.03;
+  double _shown = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Обычно нас закрывает сам скрипт обновления (`taskkill` сразу после
+    // перезапуска приложения). Два предохранителя на случай, когда до него не
+    // дошло: увидели снова живой evs.exe — уходим; и жёсткий лимит по времени,
+    // чтобы окно не осталось висеть навсегда при провалившейся установке.
+    _alive = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (DateTime.now().difference(_started) < const Duration(seconds: 15)) {
+        return; // главное приложение может быть ещё в процессе выхода
+      }
+      try {
+        final r = await io.Process.run(
+            'tasklist', ['/FI', 'IMAGENAME eq evs.exe', '/NH']);
+        if ((r.stdout as String).toLowerCase().contains('evs.exe')) io.exit(0);
+      } catch (_) {}
+    });
+    _watchdog = Timer(const Duration(minutes: 6), () => io.exit(0));
+    _status = Timer.periodic(const Duration(milliseconds: 250), (_) => _read());
+    // Полоса догоняет цель плавно — 30 кадров в секунду тут достаточно.
+    _tick = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      final next = _shown + (_target - _shown) * 0.12;
+      if ((next - _shown).abs() < 0.0005) return;
+      if (mounted) setState(() => _shown = next);
+    });
+    unawaited(_read());
+  }
+
+  Future<void> _read() async {
+    if (widget.statusPath.isEmpty) return;
+    try {
+      final f = io.File(widget.statusPath);
+      if (!await f.exists()) return;
+      final parts = (await f.readAsString()).trim().split(RegExp(r'\s+'));
+      if (parts.isEmpty) return;
+      double t;
+      switch (parts.first) {
+        case 'download':
+          final done = parts.length > 1 ? (double.tryParse(parts[1]) ?? 0) : 0.0;
+          t = 0.02 + done.clamp(0.0, 1.0) * 0.10;
+        case 'wait':
+          t = 0.14;
+        case 'install':
+          t = 0.22 + 0.64 * (1 - math.exp(-(await _logBytes()) / 50000));
+        case 'relaunch':
+          t = 0.94;
+        case 'done':
+          t = 1.0;
+        default:
+          return;
+      }
+      // Только вперёд: откат полосы читается как сбой, которого не было.
+      if (t > _target && mounted) setState(() => _target = t);
+    } catch (_) {}
+  }
+
+  Future<int> _logBytes() async {
+    if (widget.logPath.isEmpty) return 0;
+    try {
+      final f = io.File(widget.logPath);
+      return await f.exists() ? await f.length() : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _alive?.cancel();
+    _status?.cancel();
+    _tick?.cancel();
+    _watchdog?.cancel();
+    super.dispose();
+  }
+
+  String _t(String key) => _i18n[widget.lang]?[key] ?? _i18n['ru']?[key] ?? key;
+
+  @override
+  Widget build(BuildContext context) {
+    const capSize = _kUpdateSplashLogo * 12.5 / 320;
+    const grad = LinearGradient(
+      begin: Alignment(-1.0, -0.17),
+      end: Alignment(1.0, 0.17),
+      colors: [_genRing1, _genRing2, _genRing3],
+      stops: [0.0, 0.55, 1.0],
+    );
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      color: Colors.transparent,
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.transparent,
+        fontFamily: 'Nunito',
+      ),
+      // Material нужен явно: без него Flutter рисует под текстом отладочное
+      // подчёркивание («нет Material-предка»), и оно видно на заставке.
+      home: Material(
+        type: MaterialType.transparency,
+        child: Center(
+          child: Container(
+            width: _kUpdateSplashCard,
+            height: _kUpdateSplashCard * 0.93,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: genesisBackdrop.gradient,
+              border: Border.all(color: const Color(0x14FFFFFF)),
+              // Объём вокруг окна: карточка приподнята над обоями.
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x8C000000),
+                    blurRadius: 46,
+                    spreadRadius: 2,
+                    offset: Offset(0, 18)),
+                BoxShadow(
+                    color: Color(0x40000000),
+                    blurRadius: 14,
+                    offset: Offset(0, 4)),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              children: [
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 52,
+                  child: Center(
+                    child: GenesisLogo(
+                      size: _kUpdateSplashLogo,
+                      withText: true,
+                      ambientGated: false,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 46,
+                  child: Column(
+                    children: [
+                      // Полоса реального прогресса обновления.
+                      SizedBox(
+                        width: 300,
+                        height: 3,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              const ColoredBox(color: Color(0x1AFFFFFF)),
+                              FractionallySizedBox(
+                                alignment: Alignment.centerLeft,
+                                widthFactor: _shown.clamp(0.0, 1.0),
+                                child: const DecoratedBox(
+                                    decoration: BoxDecoration(gradient: grad)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      ShaderMask(
+                        blendMode: BlendMode.srcIn,
+                        shaderCallback: grad.createShader,
+                        child: Text(
+                          _t('updSplashKicker'),
+                          style: const TextStyle(
+                            fontSize: capSize,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: capSize * 0.14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /* ============================ ЛОКАЛИЗАЦИЯ ============================ */
 

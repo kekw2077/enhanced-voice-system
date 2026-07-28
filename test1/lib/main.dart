@@ -10,6 +10,9 @@ import 'package:flutter/cupertino.dart' show CupertinoSwitch;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// Ticker: неограниченный по времени такт для вечного лупа логотипа Genesis
+// (AnimationController требует фиксированной длительности).
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:http/http.dart' as http;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
@@ -47,10 +50,12 @@ part 'src/models.dart';
 part 'src/llm_services.dart';
 part 'src/app_state.dart';
 part 'src/theme_widgets.dart';
+part 'src/genesis_logo.dart';
 part 'src/desktop_integration.dart';
 part 'src/updater_and_web.dart';
 part 'src/sidecar_client.dart';
 part 'src/desktop_home.dart';
+part 'src/noctur_shell.dart';
 part 'src/remote_input.dart';
 part 'src/voice_viz.dart';
 part 'src/desktop_settings.dart';
@@ -70,6 +75,16 @@ void main(List<String> args) async {
   // (frameless/transparent/topmost/drag) is just this process's main window.
   if (isWindows && args.contains('--viz-overlay')) {
     await _vizOverlayMain(args);
+    return;
+  }
+
+  // Third-process mode: the update splash (`evs_updating.exe --update-splash`),
+  // a copy of this binary run by the update script from userdata\update-splash
+  // while the installer replaces the program files and the app itself is closed.
+  // Must stay ahead of the single-instance guard and of any prefs/tray/hotkey
+  // setup — it only draws the Genesis logo and exits (see _updateSplashMain).
+  if (isWindows && args.contains('--update-splash')) {
+    await _updateSplashMain(args);
     return;
   }
 
@@ -130,6 +145,10 @@ void main(List<String> args) async {
       titleBarStyle: TitleBarStyle.hidden,
     );
     final startHidden = prefs.getBool('overlayMode') ?? true;
+    // The window boots hidden with the floating widget on: tell MotionPolicy so
+    // ambient loops don't repaint an invisible window, and so the startup splash
+    // waits for the first real show instead of playing to nobody.
+    if (startHidden) MotionPolicy.setWindowVisible(false);
     unawaited(windowManager.waitUntilReadyToShow(windowOptions, () async {
       // Restore saved geometry before the first paint (no jump from the default
       // size to the saved one). Applied even while hidden, so a later show from

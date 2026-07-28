@@ -87,12 +87,14 @@ class MiraiApp extends StatelessWidget {
   }
 }
 
-// Animated startup transition: the particle sphere (same one shown on the
-// empty chat screen) swells toward the viewer and dissolves smoothly as the
-// chat reveals behind it — "flying into" the sphere. Plays once per cold
-// launch; a tap anywhere skips straight to the chat. The native static-orb
-// splash is the instant first frame before this; ChatScreen is mounted under
-// the overlay the whole time so it's already warm when the overlay clears.
+// Animated startup transition: the Genesis logo (variant 01 of
+// genesis/EVS Animations.dc.html — the sign plus the "Enhanced Voice System"
+// signature) is born out of the singularity on the sample's own backdrop, then
+// cross-fades into the app. Plays once per cold launch; a tap anywhere skips
+// straight to the app. The overlay only STARTS once the main window is really on
+// screen — with the floating widget enabled (default) the window boots hidden, so
+// an unconditional start would play the whole thing to nobody. _RootHome is
+// mounted under the overlay the whole time so it's already warm when it clears.
 class ImmersiveSplash extends StatefulWidget {
   const ImmersiveSplash({super.key});
   @override
@@ -101,33 +103,58 @@ class ImmersiveSplash extends StatefulWidget {
 
 class _ImmersiveSplashState extends State<ImmersiveSplash>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
+  // Sample timing: the sign is assembled by 3.5 s, the signature finishes
+  // glitching in by ~4.8 s — that's when the cross-fade starts.
+  static const Duration _hold = Duration(milliseconds: 4800);
+
+  late final AnimationController _fade; // 0 → 1 = overlay dissolves
   bool _done = false;
+  bool _started = false;
+  Timer? _holdTimer;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
+    _fade = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 550),
     )..addStatusListener((s) {
-      if (s == AnimationStatus.completed && mounted) {
-        setState(() => _done = true);
-      }
+        if (s == AnimationStatus.completed && mounted) {
+          setState(() => _done = true);
+        }
+      });
+    if (MotionPolicy.windowShown.value) {
+      _begin();
+    } else {
+      MotionPolicy.windowShown.addListener(_onShown);
+    }
+  }
+
+  void _onShown() {
+    if (!MotionPolicy.windowShown.value) return;
+    MotionPolicy.windowShown.removeListener(_onShown);
+    if (mounted) setState(_begin);
+  }
+
+  void _begin() {
+    _started = true;
+    _holdTimer = Timer(_hold, () {
+      if (mounted) _fade.forward();
     });
-    _ctrl.forward();
+  }
+
+  void _skip() {
+    if (_done || !_started) return;
+    _holdTimer?.cancel();
+    if (!_fade.isAnimating) _fade.forward();
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    MotionPolicy.windowShown.removeListener(_onShown);
+    _holdTimer?.cancel();
+    _fade.dispose();
     super.dispose();
-  }
-
-  void _skip() {
-    if (_done) return;
-    _ctrl.stop();
-    setState(() => _done = true);
   }
 
   @override
@@ -140,31 +167,33 @@ class _ImmersiveSplashState extends State<ImmersiveSplash>
           child: GestureDetector(
             onTap: _skip,
             child: AnimatedBuilder(
-              animation: _ctrl,
-              builder: (context, _) {
-                final t = _ctrl.value;
-                // Brief hold, then ramp immersion; the whole overlay fades
-                // out over the last third so the chat shows through.
-                final immerse = t < 0.15 ? 0.0 : ((t - 0.15) / 0.85);
-                final fade = (1 - ((t - 0.7) / 0.3)).clamp(0.0, 1.0);
-                return Opacity(
-                  opacity: fade,
-                  child: Container(
-                    color: _bg(context),
-                    alignment: Alignment.center,
-                    child: ParticleSphere(
-                      size: 240,
-                      dense: true,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : const Color(0xFF2F6BFF),
-                      immerse: Curves.easeIn.transform(
-                        immerse.clamp(0.0, 1.0),
+              animation: _fade,
+              builder: (context, child) => Opacity(
+                opacity: (1 - _fade.value).clamp(0.0, 1.0),
+                child: child,
+              ),
+              child: DecoratedBox(
+                decoration: genesisBackdrop,
+                child: !_started
+                    // Window still hidden: hold the plain brand backdrop so the
+                    // logo starts from its very first frame when it appears.
+                    ? const SizedBox.expand()
+                    : Center(
+                        child: LayoutBuilder(
+                          builder: (context, c) {
+                            final s = math.min(
+                              math.min(c.maxWidth * 0.42, c.maxHeight * 0.56),
+                              460.0,
+                            );
+                            return GenesisLogo(
+                              size: s,
+                              withText: true,
+                              ambientGated: false,
+                            );
+                          },
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
+              ),
             ),
           ),
         ),
@@ -296,6 +325,12 @@ class EvsSkin {
   final bool glow; // soft glows on dots/statuses (dark themes only)
   final double glowIntensity; // 1.0 = reference (Nexus dark); 0.6 = Claude dark
   final List<RadialGradient> bgGlows; // decorative window-background spots
+  // «Ноктюрн» (Noctur TZ §3.3): tabs on top instead of a rail, a fixed-height
+  // header and a monospace telemetry strip along the bottom. Zero/false in the
+  // other styles, so nothing reserves space for them there.
+  final double topBarHeight; // 52 (noctur) / 0
+  final double statusBarHeight; // 34 (noctur) / 0
+  final bool tabsNav; // true → text tabs replace the nav rail
   const EvsSkin({
     // ignore: library_private_types_in_public_api
     required this.pal,
@@ -306,6 +341,9 @@ class EvsSkin {
     required this.glow,
     this.glowIntensity = 1.0,
     this.bgGlows = const [],
+    this.topBarHeight = 0,
+    this.statusBarHeight = 0,
+    this.tabsNav = false,
   });
 }
 
@@ -394,8 +432,67 @@ const List<RadialGradient> _kNexusClaudeDarkGlows = [
   ),
 ];
 
+// ---- «Ноктюрн» palettes (Noctur TZ §4) ------------------------------------
+// Flat background (no radial spots — that's Nexus), low-chroma semantic slots
+// sitting on one perceptual lightness with the accent: colour tells the ROLE
+// apart, it doesn't shout. surface = bg + 4 % text, line/line2 = text @ 9/17 %.
+const _Palette _kNocturDark = _Palette(
+  bg: Color(0xFF161826),
+  card: Color(0xFF1E202E), // bg + 4 % text
+  card2: Color(0xFF252734), // elevated surface (bg + 7 % text)
+  txt: Color(0xFFE9E9ED),
+  sub: Color(0xFF9397AB), // dim
+  accent: Color(0xFF9184D9),
+  stroke: Color(0x17E9E9ED), // text @ 9 %
+  body: Color(0xFFC9CBD7),
+  faint: Color(0xFF75798C),
+  success: Color(0xFF7BB489),
+  danger: Color(0xFFCC7F7F),
+  info: Color(0xFF6FB3C9), // «говорю»
+  warn: Color(0xFFC9A15F), // «слушаю»
+  brightness: Brightness.dark,
+);
+
+// The neutral light «Ноктюрн» palette of TZ §4.2 (bg #f1f1f6 · accent #6f61c0 …)
+// is NOT defined here: the theme axis has no neutral light theme — the only light
+// one is Claude, and §4.3 says Claude keeps its own palette under Noctur
+// geometry. It goes in the moment a neutral light theme is added.
+//
+// «Ноктюрн» × Claude (TZ §4.3): the geometry is Noctur's, the palette stays the
+// existing Claude one, slot for slot by role — no separate values introduced.
+const _Palette _kNocturClaude = _kNexusClaude;
+const _Palette _kNocturClaudeDark = _kNexusClaudeDark;
+
+// Shared «Ноктюрн» metrics (TZ §4.4): window 14 · card 10 · control 8–10 ·
+// header 52 · telemetry 34. No rail — the tabs in the header do the navigating.
+EvsSkin _nocturSkin(_Palette pal, {required Color accent2, required bool glow}) =>
+    EvsSkin(
+      pal: pal,
+      accent2: accent2,
+      radiusCard: 10,
+      radiusControl: 9,
+      railWidth: 0,
+      glow: glow,
+      topBarHeight: 52,
+      statusBarHeight: 34,
+      tabsNav: true,
+    );
+
 // Resolve the active (style × theme) skin. Classic wraps `_palFor` unchanged.
 EvsSkin skinFor(AppStyle style, AppThemeMode theme) {
+  if (style == AppStyle.noctur) {
+    switch (theme) {
+      case AppThemeMode.dark:
+        return _nocturSkin(_kNocturDark,
+            accent2: const Color(0xFF6FB3C9), glow: true);
+      case AppThemeMode.claude:
+        return _nocturSkin(_kNocturClaude,
+            accent2: const Color(0xFFE0956B), glow: false);
+      case AppThemeMode.claudeDark:
+        return _nocturSkin(_kNocturClaudeDark,
+            accent2: const Color(0xFFE0B24A), glow: true);
+    }
+  }
   if (style == AppStyle.nexus) {
     switch (theme) {
       case AppThemeMode.dark:
@@ -453,6 +550,12 @@ EvsSkin _skin(BuildContext c) {
 // helpers apply Nexus geometry (surface-lift segments, accent→accent2 toggles,
 // info-tinted actives) while the classic style stays byte-for-byte the same.
 bool _isNexus(BuildContext c) => c.read<AppState>().appStyle == AppStyle.nexus;
+
+// True in «Ноктюрн». Deliberately NOT folded into `_isNexus`: Nexus paints card
+// headers / actives in the info (cyan) accent, while Noctur keeps everything on
+// the single accent (TZ §5.3 — colour marks the state, nothing else), so the
+// shared evs* helpers must be able to tell the two apart.
+bool _isNoctur(BuildContext c) => c.read<AppState>().appStyle == AppStyle.noctur;
 
 _Palette _pal(BuildContext c) => _skin(c).pal;
 
@@ -1702,6 +1805,12 @@ class MotionPolicy {
   /// Whether ambient loops may run right now.
   static final ValueNotifier<bool> ambient = ValueNotifier<bool>(true);
 
+  /// Whether the main window is really on screen. With the floating widget
+  /// enabled (default) the app boots with the window HIDDEN, so anything that
+  /// must be *seen* to make sense — the startup splash above all — waits for
+  /// this instead of starting at process start.
+  static final ValueNotifier<bool> windowShown = ValueNotifier<bool>(true);
+
   static String _mode = 'balanced';
   static bool _visible = true;
   static bool _active = false;
@@ -1716,6 +1825,7 @@ class MotionPolicy {
   static void setWindowVisible(bool v) {
     if (_visible == v) return;
     _visible = v;
+    windowShown.value = v;
     _recompute();
   }
 
@@ -1808,6 +1918,10 @@ Color _shade(Color base, double amount) => amount >= 0
 // the whole shell reads as light instead of a dark plate.
 BoxDecoration _evsShellBg(BuildContext c) {
   final p = _pal(c);
+  // «Ноктюрн» differs from Nexus by the LAYOUT, not the palette, and its
+  // background is deliberately flat — no radial highlight, no glow spots
+  // (Noctur TZ §4.1).
+  if (_isNoctur(c)) return BoxDecoration(color: p.bg);
   if (p.brightness != Brightness.dark) return BoxDecoration(color: p.bg);
   return BoxDecoration(
     gradient: RadialGradient(
@@ -1836,64 +1950,18 @@ BoxDecoration _evsRailBg(BuildContext c) {
   );
 }
 
-// The conic-gradient "bead" logo used across desktop screens.
-// The brand mark: the new logo (assets/icon/icon.png) with a one-shot entrance
-// animation that replays each time the widget mounts (fade + scale-overshoot +
-// slight spin-settle), then holds static. Keeps a `const` constructor so the
-// existing `const _EvsLogoMark(...)` call sites stay valid unchanged.
-class _EvsLogoMark extends StatefulWidget {
+// The brand mark: the Genesis sign (variant 05 of genesis/EVS Animations.dc.html)
+// — a live CustomPainter, not a bitmap. Every mount replays the sign's own
+// entrance (flash → ring → event horizon → doppler flare → orbits → swooshes →
+// glitch), then it keeps breathing with the sample's endless loop for as long as
+// MotionPolicy allows ambient motion. Keeps a `const` constructor so the existing
+// `const _EvsLogoMark(...)` call sites stay valid unchanged.
+class _EvsLogoMark extends StatelessWidget {
   final double size;
   const _EvsLogoMark({this.size = 30});
-  @override
-  State<_EvsLogoMark> createState() => _EvsLogoMarkState();
-}
-
-class _EvsLogoMarkState extends State<_EvsLogoMark>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<double> _fade;
-  late final Animation<double> _scale;
-  late final Animation<double> _spin;
 
   @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 720));
-    _fade = CurvedAnimation(
-        parent: _ctrl, curve: const Interval(0.0, 0.6, curve: Curves.easeOut));
-    _scale = Tween<double>(begin: 0.55, end: 1.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
-    _spin = Tween<double>(begin: -0.45, end: 0.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _ctrl.forward();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) => Opacity(
-        opacity: _fade.value.clamp(0.0, 1.0),
-        child: Transform.rotate(
-          angle: _spin.value,
-          child: Transform.scale(scale: _scale.value, child: child),
-        ),
-      ),
-      child: Image.asset(
-        'assets/icon/icon.png',
-        width: widget.size,
-        height: widget.size,
-        filterQuality: FilterQuality.medium,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => GenesisLogo(size: size);
 }
 
 
@@ -2112,6 +2180,34 @@ Widget evsSegmented<T>(
 
 Widget evsToggle(BuildContext context, bool value, ValueChanged<bool> onChanged) {
   final skin = _skin(context);
+  // «Ноктюрн» (§5.9): плоский тумблер 36×20 — контур accent и заливка accent
+  // @ 22 % во включённом, без градиента и белой шайбы. Инструмент, не iOS.
+  if (_isNoctur(context)) {
+    final a = skin.pal.accent;
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 36,
+        height: 20,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: value ? a.withValues(alpha: 0.22) : Colors.transparent,
+          border: Border.all(color: value ? a : skin.pal.stroke),
+        ),
+        alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: value ? a : skin.pal.faint,
+          ),
+        ),
+      ),
+    );
+  }
   // Nexus (§5.4): the "on" fill is an accent→accent2 gradient; classic keeps its
   // accent→light-accent one.
   final onGradient = _isNexus(context)
@@ -2282,9 +2378,11 @@ Widget evsNamedSlider(BuildContext context, {
                 style: TextStyle(fontSize: 11.5, color: _faint(context))),
           ),
         SliderTheme(
-          data: const SliderThemeData(
-            trackHeight: 4,
-            overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+          // «Ноктюрн» (§4.4): дорожка слайдера 3 px против обычных 4.
+          data: SliderThemeData(
+            trackHeight: _isNoctur(context) ? 3 : 4,
+            overlayShape:
+                const RoundSliderOverlayShape(overlayRadius: 14),
           ),
           child: Slider(
             value: value.clamp(min, max),

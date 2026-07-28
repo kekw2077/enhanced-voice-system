@@ -216,6 +216,8 @@ class AppUpdater {
   }
 
   // Downloaded installers are one-shot; drop leftovers from previous updates.
+  // The staged update-splash copy (~50 MB) goes with them: it only has to exist
+  // between "apply" and the relaunch, and it's re-staged for the next update.
   Future<void> _cleanupOldInstallers() async {
     try {
       final dir = io.File(await updateDownloadPath('x')).parent;
@@ -229,6 +231,10 @@ class AppUpdater {
           } catch (_) {} // pending installer may be locked — fine, keep it
         }
       }
+    } catch (_) {}
+    try {
+      final splash = io.Directory(await updateDownloadPath(_kUpdateSplashDir));
+      if (await splash.exists()) await splash.delete(recursive: true);
     } catch (_) {}
   }
 
@@ -325,8 +331,18 @@ class AppUpdater {
         status.value = UpdateStatus.downloading;
         progress.value = 0;
         debugPrint('EVS_UPDATER downloading ${item.version}');
+        var lastReported = -1;
         await downloadFileWithProgress(item.url, dest, (r, t) {
           progress.value = t > 0 ? r / t : 0;
+          // Mirror the real download progress into the shared status file
+          // (throttled to whole percents) so the update splash can show the
+          // whole lifecycle, not just the install half.
+          final pct = (progress.value * 100).floor();
+          if (pct != lastReported) {
+            lastReported = pct;
+            unawaited(_writeUpdateStatus(
+                'download ${progress.value.toStringAsFixed(3)}'));
+          }
         }, () => false);
         if (!await _validFile(dest, item)) {
           try {
@@ -553,6 +569,83 @@ class AppUpdater {
     );
   }
 
+  // Staged copy of the running build, from which the update splash runs while
+  // the installer works and the app itself is closed. Lives under the app data
+  // root (portable: <exeDir>\userdata) — a folder the installer never touches,
+  // unlike everything in the program directory. See _updateSplashMain.
+  static const String _kUpdateSplashDir = 'update-splash';
+  static const String _kUpdateSplashExe = 'evs_updating.exe';
+
+  // Single source of truth for "where is the update right now", shared between
+  // the three parties that each only know their own piece: this app while it
+  // downloads, the update script while it waits/installs/relaunches, and the
+  // splash process that draws the progress bar. One line, `<phase> [value]`:
+  //   download <0..1> · wait · install · relaunch · done
+  // A plain file, because the splash runs in another process started by a batch
+  // script — nothing fancier survives that boundary.
+  static const String _kUpdateStatusFile = 'update-status.txt';
+
+  Future<void> _writeUpdateStatus(String line) async {
+    try {
+      await io.File(await updateDownloadPath(_kUpdateStatusFile))
+          .writeAsString(line);
+    } catch (_) {}
+  }
+
+  // Copy the build next to the app data root under a different exe name.
+  // Different name matters twice: the update script waits for every evs.exe to
+  // close and then force-kills the leftovers, so a splash called evs.exe would
+  // both hang the wait loop and get shot; and Task Manager shows what it is.
+  // Returns the exe path, or null if staging failed (then the update just runs
+  // without a splash, exactly as before).
+  Future<String?> _stageUpdateSplash() async {
+    try {
+      final src = io.File(io.Platform.resolvedExecutable).parent;
+      final dstPath = await updateDownloadPath(_kUpdateSplashDir);
+      final dst = io.Directory(dstPath);
+      if (await dst.exists()) await dst.delete(recursive: true);
+      await dst.create(recursive: true);
+      final sep = io.Platform.pathSeparator;
+      await for (final e in src.list(followLinks: false)) {
+        final name = e.uri.pathSegments.where((s) => s.isNotEmpty).last;
+        final low = name.toLowerCase();
+        // userdata is our own data root (and holds this very copy); the widget
+        // and sidecar exes aren't needed to draw a logo; unins* belongs to Setup.
+        if (low == 'userdata' ||
+            low == 'evs_widget.exe' ||
+            low == 'evs_sidecar.exe' ||
+            low.startsWith('unins')) {
+          continue;
+        }
+        if (e is io.Directory) {
+          await _copyDirInto(e, io.Directory('$dstPath$sep$name'));
+        } else if (e is io.File) {
+          // The runner finds its data\ folder next to the exe whatever the exe
+          // is called, so renaming the copy is safe.
+          final target = low == 'evs.exe' ? _kUpdateSplashExe : name;
+          await e.copy('$dstPath$sep$target');
+        }
+      }
+      final exe = io.File('$dstPath$sep$_kUpdateSplashExe');
+      return await exe.exists() ? exe.path : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _copyDirInto(io.Directory src, io.Directory dst) async {
+    await dst.create(recursive: true);
+    final sep = io.Platform.pathSeparator;
+    await for (final e in src.list(followLinks: false)) {
+      final name = e.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (e is io.Directory) {
+        await _copyDirInto(e, io.Directory('${dst.path}$sep$name'));
+      } else if (e is io.File) {
+        await e.copy('${dst.path}$sep$name');
+      }
+    }
+  }
+
   // Launch the verified installer silently (detached, so it survives our exit)
   // and quit; the installer swaps the files and relaunches the new version.
   Future<void> applyAndRestart() async {
@@ -592,10 +685,33 @@ class AppUpdater {
     //  3) relaunches the freshly-installed evs.exe,
     //  4) removes the task and deletes itself.
     // Every step is written to update-runner.log so a failure is diagnosable.
+    //
+    // The Genesis splash is started BY THE SCRIPT, not by us: our own children
+    // live in a Job Object with KILL_ON_JOB_CLOSE (ProcessJob) and would die
+    // with us, while the script already runs detached via the scheduled task.
+    // Starting it first (before the wait loop) means the logo is up before our
+    // window disappears — no black gap. The taskkill after the relaunch takes it
+    // down again; the splash also has its own watchdogs (see _updateSplashMain).
+    final splashExe = await _stageUpdateSplash();
+    final lang = _app?.lang ?? 'ru';
+    final statusPath = await updateDownloadPath(_kUpdateStatusFile);
+    // The splash gets BOTH paths explicitly: it runs from the staged copy
+    // inside userdata, so resolving the data root itself would land one level
+    // too deep. The install log doubles as the only real progress signal Inno
+    // gives us — the splash watches it grow.
+    final splashStart = splashExe == null
+        ? ''
+        : 'start "" "$splashExe" --update-splash --lang=$lang '
+            '--status="$statusPath" --log="$installLog"\n';
+    final splashKill = splashExe == null
+        ? ''
+        : 'taskkill /F /IM $_kUpdateSplashExe >nul 2>&1\n';
     final script = '''@echo off
 setlocal enableextensions
 set "RLOG=$runnerLog"
+set "USTAT=$statusPath"
 echo [%date% %time%] updater started > "%RLOG%"
+${splashStart}echo wait> "%USTAT%"
 :waitloop
 set "RUNNING="
 tasklist /FI "IMAGENAME eq evs.exe" 2>nul | find /I "evs.exe" >nul && set "RUNNING=1"
@@ -608,10 +724,14 @@ echo [%date% %time%] evs closed, killing leftovers >> "%RLOG%"
 taskkill /F /IM evs.exe /IM evs_widget.exe /IM evs_sidecar.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 echo [%date% %time%] launching installer >> "%RLOG%"
+echo install> "%USTAT%"
 "$path" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="$runDir" /LOG="$installLog"
 echo [%date% %time%] installer exit %errorlevel%, relaunching >> "%RLOG%"
+echo relaunch> "%USTAT%"
 start "" "$exePath"
-echo [%date% %time%] done >> "%RLOG%"
+timeout /t 2 /nobreak >nul
+echo done> "%USTAT%"
+${splashKill}echo [%date% %time%] done >> "%RLOG%"
 schtasks /Delete /TN "EVSSelfUpdate" /F >nul 2>&1
 del "$vbsPath" >nul 2>&1
 del "%~f0" >nul 2>&1

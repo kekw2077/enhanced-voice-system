@@ -40,9 +40,12 @@ class DesktopHome extends StatelessWidget {
     // Nexus interface style swaps in a parallel shell (rail + stage + chat); the
     // classic layout below is untouched. The two shells crossfade on a style
     // switch (TZ §7) via the AnimatedSwitcher keyed on the style.
-    final nexus =
-        context.select<AppState, AppStyle>((a) => a.appStyle) == AppStyle.nexus;
-    final Widget shell = nexus
+    // «Ноктюрн» is a third shell of its own (noctur_shell.dart): tabs header,
+    // full-window ring stage, telemetry strip.
+    final style = context.select<AppState, AppStyle>((a) => a.appStyle);
+    final Widget shell = style == AppStyle.noctur
+        ? const _NocturHome()
+        : style == AppStyle.nexus
         ? const _NexusHome()
         : Scaffold(
             backgroundColor: _bg(context),
@@ -70,7 +73,7 @@ class DesktopHome extends StatelessWidget {
           );
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
-      child: KeyedSubtree(key: ValueKey(nexus), child: shell),
+      child: KeyedSubtree(key: ValueKey(style), child: shell),
     );
   }
 }
@@ -517,6 +520,11 @@ class NexusPipeline extends ChangeNotifier {
   bool ttsActive = false;
   double level = 0.0; // sampled by the orb ticker; never triggers notify
   String _sig = '';
+  // Duration of the last model reply (thinking → answer), in seconds. Nothing
+  // stored it before — «Ноктюрн»'s telemetry line shows it (Noctur TZ §5.4), and
+  // it's measured right here off the existing stage transitions.
+  double? lastReplySec;
+  DateTime? _replyStart;
 
   void bind(AppState app) {
     if (_bound) return;
@@ -609,7 +617,15 @@ class NexusPipeline extends ChangeNotifier {
       }
     }
     stage = s;
-    llmActive = (_app?.isGenerating ?? false) || (_app?.isModelLoading ?? false);
+    final llm = (_app?.isGenerating ?? false) || (_app?.isModelLoading ?? false);
+    if (llm && !llmActive) {
+      _replyStart = DateTime.now();
+    } else if (!llm && llmActive && _replyStart != null) {
+      lastReplySec =
+          DateTime.now().difference(_replyStart!).inMilliseconds / 1000.0;
+      _replyStart = null;
+    }
+    llmActive = llm;
     if (s == 'idle') {
       // Idle self-heals cosmetic latches (a VAD event with no trailing false).
       level = 0.0;
@@ -977,35 +993,17 @@ class _NexusRail extends StatelessWidget {
   }
 }
 
-// The rail logo: the conic brand bead with a small warn accent dot (TZ §6.1).
+// The rail logo: the Genesis mark, filling the bead. The small warn dot that
+// used to sit on its corner (TZ §6.1) is gone — it read as a status indicator
+// while meaning nothing, and the live mark carries the brand on its own.
 class _NexusLogoBead extends StatelessWidget {
   const _NexusLogoBead();
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const _EvsLogoMark(),
-          Positioned(
-            right: -1,
-            top: -1,
-            child: Container(
-              width: 9,
-              height: 9,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _warn(context),
-                border: Border.all(color: _pal(context).bg, width: 1.5),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const SizedBox(
+        width: 40,
+        height: 40,
+        child: Center(child: _EvsLogoMark(size: 38)),
+      );
 }
 
 // Central stage: status pill + activation hint, the canvas visualizer with a
@@ -1485,8 +1483,30 @@ class _NexusSubsystemCards extends StatelessWidget {
 // The Nexus home: rail → stage → chat column (360). The chat column is a
 // bespoke compact panel (_NexusChatColumn) matching the concept mockup. A
 // Scaffold hosts the conversations drawer opened from the rail's Dialog icon.
-class _NexusHome extends StatelessWidget {
+class _NexusHome extends StatefulWidget {
   const _NexusHome();
+  @override
+  State<_NexusHome> createState() => _NexusHomeState();
+}
+
+class _NexusHomeState extends State<_NexusHome> {
+  @override
+  void initState() {
+    super.initState();
+    // «Что нового» после обновления: диалог жил внутри ChatScreen, которого в
+    // этой оболочке нет, поэтому Nexus после обновления молчал (см. тот же
+    // вызов в _NocturHomeState).
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final app = context.read<AppState>();
+      final entry = await app.consumeWhatsNew();
+      if (!mounted || entry == null) return;
+      unawaited(showDialog<void>(
+        context: context,
+        builder: (_) => _NocturWhatsNew(entry),
+      ));
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

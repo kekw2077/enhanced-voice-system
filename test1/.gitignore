@@ -57,6 +57,8 @@ dsaparam.pem
 # (The frozen evs_sidecar.exe is ~95 MB; the venv is huge. Source stays,
 # artifacts don't.)
 sidecar/**/.venv/
+# ...и любые другие окружения рядом (.venv-gpu и т.п.) — их тысячи файлов.
+sidecar/**/.venv*/
 sidecar/**/build/
 sidecar/**/dist/
 sidecar/**/*.spec

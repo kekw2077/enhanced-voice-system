@@ -1918,14 +1918,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         // Nexus: Esc closes settings (the header advertises it). Classic keeps
         // the plain back/close behaviour it always had.
         body: CallbackShortcuts(
-          bindings: app.appStyle == AppStyle.nexus
+          bindings: app.appStyle != AppStyle.standard
               ? {
                   const SingleActivator(LogicalKeyboardKey.escape): () =>
                       _handleExit(app),
                 }
               : const {},
           child: Focus(
-            autofocus: app.appStyle == AppStyle.nexus,
+            autofocus: app.appStyle != AppStyle.standard,
             child: Container(
               decoration: _evsShellBg(context),
               // Same shell shape as DesktopHome: the nav rail spans the FULL window
@@ -1972,7 +1972,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     // Nexus style shows no floating "unsaved changes" bar (TZ §6.3): the exit
     // dialog (PopScope → _handleExit) stays the single confirmation point. The
     // settingsDirty / settingsApplying state itself is left untouched.
-    if (app.appStyle == AppStyle.nexus) {
+    if (app.appStyle != AppStyle.standard) {
       return const SizedBox(width: double.infinity);
     }
     final show = app.settingsDirty || app.settingsApplying;
@@ -2161,8 +2161,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // -------- left nav rail --------
   Widget _nav(AppState app) {
     // Nexus widens the rail slightly and adds a per-section subtitle + a version
-    // chip at the bottom (TZ §6.3). Classic keeps its exact current look.
-    final nexus = app.appStyle == AppStyle.nexus;
+    // chip at the bottom (TZ §6.3); «Ноктюрн» uses the same 252 px navigation
+    // with subtitles (Noctur TZ §5.9). Classic keeps its exact current look.
+    final nexus = app.appStyle != AppStyle.standard;
     return Container(
       width: nexus ? 252 : 244,
       decoration: _evsRailBg(context),
@@ -2432,6 +2433,38 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             padding: const EdgeInsets.fromLTRB(28, 4, 28, 14),
             child: Row(
               children: [
+                // «Ноктюрн» (§5.9): у настроек своя шапка — контурная кнопка
+                // «Назад» и заголовок. Рейла, который в Nexus служит выходом,
+                // в этом стиле нет, а Esc-подсказки в шапке тоже нет.
+                if (_isNoctur(context)) ...[
+                  InkWell(
+                    borderRadius:
+                        BorderRadius.circular(_skin(context).radiusControl),
+                    onTap: () => _handleExit(app),
+                    child: Container(
+                      height: 30,
+                      padding: const EdgeInsets.symmetric(horizontal: 11),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(
+                            _skin(context).radiusControl),
+                        border: Border.all(color: _stroke(context)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.arrow_back,
+                              size: 14, color: _sub(context)),
+                          const SizedBox(width: 6),
+                          Text(app.t('ncBack'),
+                              style: TextStyle(
+                                  fontSize: 12.5, color: _body(context))),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                ],
                 Text(title,
                     style: TextStyle(
                         fontSize: 21,
@@ -4483,8 +4516,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             padding: const EdgeInsets.fromLTRB(18, 24, 18, 18),
             child: Column(
               children: [
-                const _EvsLogoMark(size: 60),
-                const SizedBox(height: 10),
+                // Genesis (вариант 05) — знак живой, с интро при каждом входе
+                // на страницу; под ним локап, как в варианте 04 образца.
+                const _EvsLogoMark(size: 96),
+                const SizedBox(height: 12),
                 Text('EVS',
                     style: TextStyle(
                         fontSize: 22,
@@ -6487,12 +6522,28 @@ class _StylePicker extends StatelessWidget {
       );
     }
 
-    return Wrap(
-      spacing: 14,
-      runSpacing: 12,
+    // Под плитками — одна строка про ВЫБРАННЫЙ стиль: три описания рядом
+    // читаются как список требований, а не как подсказка.
+    final desc = switch (app.appStyle) {
+      AppStyle.standard => app.t('uiStyleClassicDesc'),
+      AppStyle.nexus => app.t('uiStyleNexusDesc'),
+      AppStyle.noctur => app.t('uiStyleNocturDesc'),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        tile(AppStyle.standard, app.t('uiStyleClassic')),
-        tile(AppStyle.nexus, app.t('uiStyleNexus')),
+        Wrap(
+          spacing: 14,
+          runSpacing: 12,
+          children: [
+            tile(AppStyle.standard, app.t('uiStyleClassic')),
+            tile(AppStyle.nexus, app.t('uiStyleNexus')),
+            tile(AppStyle.noctur, app.t('uiStyleNoctur')),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(desc,
+            style: TextStyle(fontSize: 11.5, color: _faint(context))),
       ],
     );
   }
@@ -6558,6 +6609,44 @@ class _StylePreviewPainter extends CustomPainter {
             ..strokeWidth = 1.4
             ..color = skin.accent2.withValues(alpha: 0.75));
       bar(stageX + stageR * 0.15, h - 12, stageR * 0.7, 4, p.faint, 2);
+    } else if (style == AppStyle.noctur) {
+      // «Ноктюрн»: header strip with tabs, the ring across the whole window,
+      // one telemetry line along the bottom (Noctur TZ §5.10).
+      final headH = h * 0.17;
+      bar(0, 0, w, headH, p.card, 0);
+      bar(5, headH * 0.36, 9, headH * 0.28, p.accent, 1.5); // марка
+      for (var i = 0; i < 4; i++) {
+        bar(20.0 + i * 13, headH * 0.38, 9, headH * 0.24,
+            i == 0 ? p.txt : p.faint, 1.5);
+      }
+      bar(20, headH - 1.6, 9, 1.6, p.accent, 0); // штрих под активной вкладкой
+      // Кольцо по центру оставшейся площади.
+      final cy = headH + (h - headH - h * 0.14) / 2;
+      final r = math.min(h * 0.24, w * 0.18);
+      canvas.drawCircle(
+          Offset(w / 2, cy),
+          r,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.4
+            ..color = p.accent.withValues(alpha: 0.8));
+      canvas.drawCircle(
+          Offset(w / 2, cy),
+          r * 0.62,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 0.8
+            ..color = p.txt.withValues(alpha: 0.22));
+      canvas.drawCircle(
+          Offset(w / 2, cy), 1.6, Paint()..color = p.accent);
+      // Строка телеметрии.
+      final stripH = h * 0.14;
+      bar(0, h - stripH, w, stripH, p.card, 0);
+      for (var i = 0; i < 3; i++) {
+        bar(6.0 + i * 22, h - stripH / 2 - 1, 16, 2,
+            i == 0 ? p.warn : p.faint, 1);
+      }
+      bar(w - 22, h - stripH / 2 - 1, 16, 2, p.faint, 1);
     } else {
       // Classic: wide left sidebar + content area with a header + list rows.
       final sideW = w * 0.30;
