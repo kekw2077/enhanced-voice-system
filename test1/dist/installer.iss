@@ -220,7 +220,12 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; The Python sidecar (evs_sidecar.exe, ~95 MB) is NOT bundled — it's downloaded
 ; on demand into the app data folder (see ComponentManager / dist/components.json),
 ; keeping the installer small.
-Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Excludes: "evs_sidecar.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
+; userdata ИСКЛЮЧАЕТСЯ обязательно: если запустить собранный evs.exe прямо из
+; папки сборки (обычная проверка перед релизом), он создаёт рядом userdata со
+; своими настройками, логами, чатами и скачанными компонентами. Без этого
+; исключения всё это уезжает в установщик — однажды дало 1 ГБ вместо 17 МБ, а
+; вместе с prefs.json уехали бы ключи API и токены привязанных телефонов.
+Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Excludes: "evs_sidecar.exe,userdata,userdata\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
