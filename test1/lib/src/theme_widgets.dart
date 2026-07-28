@@ -188,7 +188,7 @@ class _ImmersiveSplashState extends State<ImmersiveSplash>
                             return GenesisLogo(
                               size: s,
                               withText: true,
-                              ambientGated: false,
+                              gate: MotionGate.none,
                             );
                           },
                         ),
@@ -1805,6 +1805,14 @@ class MotionPolicy {
   /// Whether ambient loops may run right now.
   static final ValueNotifier<bool> ambient = ValueNotifier<bool>(true);
 
+  /// Гейт для анимаций ПЕРЕДНЕГО ПЛАНА — тех, что сами по себе являются
+  /// содержимым экрана, а не украшением фона: кольцо-визуализатор «Ноктюрна»
+  /// и знак Genesis на странице «О программе». Они идут, пока окно на экране,
+  /// и не ждут активности ассистента: замереть в упор на смысловом центре
+  /// экрана — это выглядит поломкой, а не экономией. Гасит их только «Экономная»
+  /// и скрытое окно.
+  static final ValueNotifier<bool> foreground = ValueNotifier<bool>(true);
+
   /// Whether the main window is really on screen. With the floating widget
   /// enabled (default) the app boots with the window HIDDEN, so anything that
   /// must be *seen* to make sense — the startup splash above all — waits for
@@ -1881,27 +1889,48 @@ class MotionPolicy {
       _ => _visible && _active,
     };
     if (ambient.value != v) ambient.value = v;
+    final f = _mode == 'saver' ? false : _visible;
+    if (foreground.value != f) foreground.value = f;
   }
 }
 
-/// Binds an [AnimationController] to [MotionPolicy]: repeats while ambient
-/// motion is allowed, holds the current frame otherwise. Dispose with the State.
+/// Какой гейт [MotionPolicy] держит анимацию.
+enum MotionGate {
+  /// Фоновое украшение: только пока движение разрешено целиком
+  /// ([MotionPolicy.ambient]) — по умолчанию это «пока ассистент активен».
+  ambient,
+
+  /// Содержимое экрана ([MotionPolicy.foreground]): идёт, пока окно видно;
+  /// гасит только «Экономная».
+  foreground,
+
+  /// Ничем не гасится (заставка запуска, окно установки обновления).
+  none,
+}
+
+/// Binds an [AnimationController] to [MotionPolicy]: repeats while its gate
+/// allows motion, holds the current frame otherwise. Dispose with the State.
 class AmbientMotion {
-  AmbientMotion(this._c) {
-    MotionPolicy.ambient.addListener(_sync);
+  AmbientMotion(this._c, {this.gate = MotionGate.ambient}) {
+    _flag.addListener(_sync);
     _sync();
   }
   final AnimationController _c;
+  final MotionGate gate;
+
+  ValueNotifier<bool> get _flag => gate == MotionGate.foreground
+      ? MotionPolicy.foreground
+      : MotionPolicy.ambient;
 
   void _sync() {
-    if (MotionPolicy.ambient.value) {
+    if (gate == MotionGate.none || _flag.value) {
       if (!_c.isAnimating) _c.repeat();
     } else if (_c.isAnimating) {
       _c.stop();
     }
   }
 
-  void dispose() => MotionPolicy.ambient.removeListener(_sync);
+  void dispose() => _flag.removeListener(_sync);
 }
 
 // Tint a colour toward white (positive) or black (negative) by `amount`.
@@ -1954,14 +1983,19 @@ BoxDecoration _evsRailBg(BuildContext c) {
 // — a live CustomPainter, not a bitmap. Every mount replays the sign's own
 // entrance (flash → ring → event horizon → doppler flare → orbits → swooshes →
 // glitch), then it keeps breathing with the sample's endless loop for as long as
-// MotionPolicy allows ambient motion. Keeps a `const` constructor so the existing
+// MotionPolicy allows it. Keeps a `const` constructor so the existing
 // `const _EvsLogoMark(...)` call sites stay valid unchanged.
+//
+// [gate] — чем гасится вечный луп. Марка в углу окна остаётся фоновым
+// украшением (MotionGate.ambient), а знак на странице «О программе» — это сам
+// экран, туда идёт MotionGate.foreground: страницу открывают ради него.
 class _EvsLogoMark extends StatelessWidget {
   final double size;
-  const _EvsLogoMark({this.size = 30});
+  final MotionGate gate;
+  const _EvsLogoMark({this.size = 30, this.gate = MotionGate.ambient});
 
   @override
-  Widget build(BuildContext context) => GenesisLogo(size: size);
+  Widget build(BuildContext context) => GenesisLogo(size: size, gate: gate);
 }
 
 

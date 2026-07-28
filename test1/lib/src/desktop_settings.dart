@@ -1133,6 +1133,230 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
   }
 }
 
+// Журнал работы приложения (страница _Pages.appLog). Читает те же файлы и тем
+// же кодом, что вкладка «Журнал» в «Ноктюрне» — EvsLogFeed; отличается только
+// подача: здесь она карточная, как остальные настройки.
+class _AppLogCard extends StatefulWidget {
+  const _AppLogCard();
+  @override
+  State<_AppLogCard> createState() => _AppLogCardState();
+}
+
+class _AppLogCardState extends State<_AppLogCard> {
+  final TextEditingController _search = TextEditingController();
+  String _filter = 'all';
+  List<EvsLogLine> _lines = const [];
+  bool _loading = true;
+
+  static const List<(String, String)> _filters = [
+    ('all', 'ncAll'),
+    ('voice', 'ncLogVoice'),
+    ('model', 'ncLogModel'),
+    ('commands', 'ncTabCommands'),
+    ('remote', 'ncLogRemote'),
+    ('updates', 'ncLogUpdates'),
+    ('errors', 'ncLogErrors'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final out = await EvsLogFeed.load();
+    if (!mounted) return;
+    setState(() {
+      _lines = out;
+      _loading = false;
+    });
+  }
+
+  Color _levelColor(String level) => switch (level) {
+        'danger' => _danger(context),
+        'warn' => _warn(context),
+        'accent' => _accent(context),
+        _ => _success(context),
+      };
+
+  Widget _chip(AppState app, String id, String labelKey, int? count) {
+    final active = _filter == id;
+    final color = id == 'errors' ? _danger(context) : _accent(context);
+    return GestureDetector(
+      onTap: () => setState(() => _filter = id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: active ? color.withValues(alpha: 0.12) : Colors.transparent,
+          border: Border.all(color: active ? color : _stroke(context)),
+        ),
+        child: Text(
+          count == null ? app.t(labelKey) : '${app.t(labelKey)}  $count',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: active ? color : _sub(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(AppState app, EvsLogLine l) {
+    // Строки ошибок красятся целиком; у остальных цветом уровня — только штрих.
+    final text = l.level == 'danger' ? _danger(context) : _sub(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 58,
+            child: Text(EvsLogFeed.clock(l.time),
+                style: EvsType.mono.copyWith(
+                    fontSize: 12, height: 1.9, color: _faint(context))),
+          ),
+          Container(
+            width: 3,
+            height: 15,
+            margin: const EdgeInsets.only(top: 4, right: 10),
+            decoration: BoxDecoration(
+              color: _levelColor(l.level),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(
+            width: 82,
+            child: Text(app.t(EvsLogFeed.labelKey(l.source)),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: EvsType.mono.copyWith(
+                    fontSize: 12, height: 1.9, color: _faint(context))),
+          ),
+          Expanded(
+            child: SelectableText(l.text,
+                style: EvsType.mono
+                    .copyWith(fontSize: 12, height: 1.9, color: text)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final q = _search.text.trim().toLowerCase();
+    final visible = _lines.where((l) {
+      if (_filter != 'all' && l.source != _filter) return false;
+      return q.isEmpty || l.text.toLowerCase().contains(q);
+    }).toList();
+    final errors = _lines.where((l) => l.source == 'errors').length;
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 34,
+                  child: TextField(
+                    controller: _search,
+                    onChanged: (_) => setState(() {}),
+                    style: TextStyle(fontSize: 13, color: _txt(context)),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      prefixIcon:
+                          Icon(Icons.search, size: 15, color: _faint(context)),
+                      prefixIconConstraints:
+                          const BoxConstraints(minWidth: 32, minHeight: 32),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 9),
+                      hintText: app.t('ncSearch'),
+                      hintStyle:
+                          TextStyle(fontSize: 13, color: _faint(context)),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: _stroke(context)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: _accent(context)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              evsGhostButton(context, app.t('ncCopy'), Icons.copy_all_outlined,
+                  onTap: () {
+                Clipboard.setData(
+                    ClipboardData(text: EvsLogFeed.asText(visible)));
+                showAppSnackBar(context, app.t('ncCopied'));
+              }),
+              const SizedBox(width: 8),
+              evsGhostButton(
+                  context, app.t('ncLogFolder'), Icons.folder_open_outlined,
+                  onTap: () => unawaited(EvsLogFeed.openFolder())),
+              const SizedBox(width: 8),
+              evsGhostButton(context, app.t('ncRefresh'), Icons.refresh,
+                  onTap: () => unawaited(_load())),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (id, key) in _filters)
+                _chip(app, id, key, id == 'errors' ? errors : null),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 420,
+            decoration: BoxDecoration(
+              color: _card2(context),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: _stroke(context)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _loading
+                ? const Center(
+                    child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2)))
+                : visible.isEmpty
+                    ? Center(
+                        child: Text(app.t('ncLogEmpty'),
+                            style: TextStyle(
+                                fontSize: 13, color: _faint(context))))
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: visible.length,
+                        itemBuilder: (_, i) => _row(app, visible[i]),
+                      ),
+          ),
+          const SizedBox(height: 8),
+          Text('${visible.length} / ${_lines.length}',
+              style: EvsType.mono
+                  .copyWith(fontSize: 11, color: _faint(context))),
+        ],
+      ),
+    );
+  }
+}
+
 class _AssetModelsCard extends StatefulWidget {
   final AppState app;
   const _AssetModelsCard(this.app);
@@ -1683,6 +1907,7 @@ class _Pages {
   static const personaMemory = 'persona.memory';
   static const privAccess = 'privacy.access';
   static const privData = 'privacy.data';
+  static const appLog = 'log';
   static const about = 'about.info';
   static const changelog = 'about.changelog';
 }
@@ -1746,6 +1971,12 @@ const List<_NavGroup> _kNav = [
   _NavGroup(Icons.lock_outline, 'navPrivacy', 'navPrivacySub', [
     _NavPage(_Pages.privAccess, 'pgPrivAccess'),
     _NavPage(_Pages.privData, 'pgPrivData'),
+  ]),
+  // Журнал работы приложения. Своя группа, а не пункт внутри «О программе»:
+  // рейл Nexus подсвечивается по группе (_inGroup), и внутри «О программе»
+  // кнопка журнала загоралась бы заодно на версии и списке изменений.
+  _NavGroup(Icons.receipt_long_outlined, 'navLog', 'navLogSub', [
+    _NavPage(_Pages.appLog, 'navLog'),
   ]),
   _NavGroup(Icons.info_outline, 'navAbout', 'navAboutSub', [
     _NavPage(_Pages.about, 'pgAboutInfo'),
@@ -2641,6 +2872,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'cardModels': _Pages.llmModels,
     'cardConnMode': _Pages.llmConn,
     'cardGenParams': _Pages.llmParams,
+    'navLog': _Pages.appLog,
   };
 
   List<(String key, String page)> _matches(AppState app) {
@@ -2907,6 +3139,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         return _privacyDataCards(app);
       case _Pages.about:
         return [..._aboutInfoCards(app), ..._aboutUpdateCards(app)];
+      case _Pages.appLog:
+        return _appLogCards(app);
       case _Pages.changelog:
         return _changelogCards(app);
       default:
@@ -4518,7 +4752,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               children: [
                 // Genesis (вариант 05) — знак живой, с интро при каждом входе
                 // на страницу; под ним локап, как в варианте 04 образца.
-                const _EvsLogoMark(size: 96),
+                // Гейт переднего плана: страницу открывают, чтобы посмотреть
+                // именно на знак, поэтому луп идёт бесконечно, пока окно видно,
+                // и не ждёт активности ассистента.
+                const _EvsLogoMark(size: 96, gate: MotionGate.foreground),
                 const SizedBox(height: 12),
                 Text('EVS',
                     style: TextStyle(
@@ -4540,6 +4777,23 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               style: TextStyle(
                   fontSize: 13, fontWeight: FontWeight.w600, color: _body(context)))),
         ]),
+        full: true,
+      ),
+    ];
+  }
+
+  // =================== ЖУРНАЛ ===================
+  // Тот же журнал, что на вкладке «Журнал» в «Ноктюрне», и те же файлы: читает
+  // EvsLogFeed. Отсюда его берут классический стиль и Nexus (кнопка «Журнал» в
+  // рейле раньше открывала список изменений — то есть журнал патчей вместо
+  // журнала работы).
+  List<_CardSpec> _appLogCards(AppState app) {
+    return [
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.receipt_long_outlined,
+            title: app.t('navLog'),
+            rows: [const _AppLogCard()]),
         full: true,
       ),
     ];

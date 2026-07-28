@@ -975,14 +975,19 @@ class _NexusRail extends StatelessWidget {
             _navIcon(context, Icons.memory, app.t('nxNavModels'),
                 active: _inGroup(_Pages.llmConn),
                 onTap: () => _openSettings(context, _Pages.llmConn)),
+            // «Журнал» — журнал работы приложения (те же файлы, что на вкладке
+            // «Журнал» в «Ноктюрне»), а не список патчей: раньше эта кнопка
+            // открывала историю изменений. Сама история никуда не делась —
+            // Настройки → О приложении → История изменений.
             _navIcon(context, Icons.receipt_long_outlined, app.t('nxNavLog'),
-                active: _inGroup(_Pages.about),
-                onTap: () => _openSettings(context, _Pages.changelog)),
+                active: _inGroup(_Pages.appLog),
+                onTap: () => _openSettings(context, _Pages.appLog)),
             const Spacer(),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
                 active: activePage != null &&
                     !_inGroup(_Pages.cmdExec) &&
                     !_inGroup(_Pages.llmConn) &&
+                    !_inGroup(_Pages.appLog) &&
                     !_inGroup(_Pages.about),
                 onTap: () => _openSettings(context, _Pages.basics)),
             const SizedBox(height: 10),

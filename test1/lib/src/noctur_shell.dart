@@ -11,8 +11,17 @@ part of '../main.dart';
    Данные — те же, что у Nexus: NexusPipeline (этапы конвейера и уровень),
    SidecarClient, SystemMonitor, AppState. Ничего нового не считается. */
 
-// Вкладки шапки (ТЗ §5.1). Открывают экраны, а не разделы настроек.
-enum NocturTab { dialog, commands, models, log }
+// Вкладки шапки (ТЗ §5.1) — собственные экраны стиля.
+//
+// «Модели» сюда не входит: это ссылка на раздел настроек (см. _openModels в
+// NocturTopBar), а не экран «Ноктюрна». Раньше вкладка рисовала свой каталог
+// GGUF-моделей «на устройстве» — единственное место во всём десктопе, где он
+// вообще был: в подключении есть только «локальный сервер» и «удалённый»,
+// on-device-режима у десктопной версии нет. То есть вкладка предлагала качать
+// модели, которыми приложение потом не смогло бы воспользоваться. Теперь она
+// ведёт в тот же «Выбор модели», что и рейл Nexus, — модели, которые
+// подтягиваются с подключённого сервера.
+enum NocturTab { dialog, commands, log }
 
 // Цвет-слот состояния (ТЗ §5.3). Красит: точку в пилюле шапки, точку и название
 // состояния, кольцо, активные узлы цепочки и соответствующий сегмент
@@ -84,6 +93,12 @@ class NocturTopBar extends StatelessWidget {
     context,
   ).push(MaterialPageRoute(builder: (_) => const DesktopSettings()));
 
+  // «Модели» — тот же раздел настроек, который открывает рейл Nexus.
+  void _openModels(BuildContext context) =>
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const DesktopSettings(initialPage: _Pages.llmConn),
+      ));
+
   Widget _divider(BuildContext context) => Container(
     width: 1,
     height: 18,
@@ -91,10 +106,17 @@ class NocturTopBar extends StatelessWidget {
     color: _stroke(context),
   );
 
-  Widget _tab(BuildContext context, NocturTab id, String label) {
-    final active = id == tab;
+  Widget _tab(BuildContext context, NocturTab id, String label) =>
+      _tabLabel(context, label, active: id == tab, onTap: () => onTab(id));
+
+  Widget _tabLabel(
+    BuildContext context,
+    String label, {
+    required bool active,
+    required VoidCallback onTap,
+  }) {
     return InkWell(
-      onTap: () => onTab(id),
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Stack(
@@ -201,7 +223,13 @@ class NocturTopBar extends StatelessWidget {
           _divider(context),
           _tab(context, NocturTab.dialog, app.t('nxNavDialog')),
           _tab(context, NocturTab.commands, app.t('ncTabCommands')),
-          _tab(context, NocturTab.models, app.t('nxNavModels')),
+          // Не вкладка, а ссылка в настройки — подсветиться ей нечем.
+          _tabLabel(
+            context,
+            app.t('nxNavModels'),
+            active: false,
+            onTap: () => _openModels(context),
+          ),
           _tab(context, NocturTab.log, app.t('nxNavLog')),
           // Распорка тянет окно за шапку.
           const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
@@ -477,9 +505,12 @@ class _NocturRingVizState extends State<NocturRingViz>
       vsync: this,
       duration: const Duration(seconds: 8),
     );
-    // Вечные вращения — только через политику движения: balanced в простое и
-    // saver держат статичный кадр (ТЗ §6).
-    _ambient = AmbientMotion(_ctrl);
+    // Кольцо — смысловой центр главного экрана, а не фоновое украшение: по
+    // макету оно вращается само по себе. Поэтому гейт переднего плана —
+    // вращение идёт, пока окно на экране, и не ждёт активности ассистента
+    // (раньше кольцо оживало только от нажатия, потому что нажатие запускало
+    // ассистента). Замирает по-прежнему в «Экономной» и при скрытом окне.
+    _ambient = AmbientMotion(_ctrl, gate: MotionGate.foreground);
     _anim = Listenable.merge([_ctrl, NexusPipeline.instance]);
   }
 
@@ -967,26 +998,7 @@ class _NocturStageState extends State<_NocturStage> {
           ),
         ),
         const SizedBox(width: 10),
-        Tooltip(
-          message: app.t('vaListening'),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(skin.radiusControl),
-            onTap: () => VoiceAssistant.instance.promptOnce(),
-            child: Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(skin.radiusControl),
-                border: Border.all(color: _accent(context)),
-              ),
-              child: Icon(
-                Icons.mic_none_rounded,
-                size: 18,
-                color: _accent(context),
-              ),
-            ),
-          ),
-        ),
+        const _NocturChatToggle(),
       ],
     );
   }
@@ -1064,20 +1076,14 @@ class _NocturHomeState extends State<_NocturHome> {
   // «EVS» слева, поэтому пока мы на нём, ни одна вкладка не подсвечена.
   bool _home = true;
 
-  // У всех четырёх вкладок свои экраны; настройки открываются шестерёнкой
-  // поверх окна, как в макете.
+  // У каждой вкладки свой экран; настройки (и «Модели») открываются поверх
+  // окна отдельным маршрутом, как в макете.
   void _openTab(NocturTab t) {
     if (t == _tab && !_home) return;
-    switch (t) {
-      case NocturTab.dialog:
-      case NocturTab.commands:
-      case NocturTab.log:
-      case NocturTab.models:
-        setState(() {
-          _tab = t;
-          _home = false;
-        });
-    }
+    setState(() {
+      _tab = t;
+      _home = false;
+    });
   }
 
   @override
@@ -1127,7 +1133,6 @@ class _NocturHomeState extends State<_NocturHome> {
                       NocturTab.dialog => const _NocturDialogTab(),
                       NocturTab.commands => const _NocturCommandsTab(),
                       NocturTab.log => const _NocturLogTab(),
-                      NocturTab.models => const _NocturModelsTab(),
                     },
             ),
             const NocturStatusStrip(),
@@ -1616,10 +1621,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
           ),
         ),
         const SizedBox(width: 10),
-        _NocturIconBtn(
-          icon: Icons.mic_none_rounded,
-          onTap: () => VoiceAssistant.instance.promptOnce(),
-        ),
+        const _NocturChatToggle(),
         const SizedBox(width: 8),
         _NocturIconBtn(
           icon: Icons.arrow_upward_rounded,
@@ -1686,15 +1688,17 @@ class _NocturIconBtn extends StatelessWidget {
     required this.icon,
     required this.onTap,
     this.accent = false,
+    this.tooltip,
   });
   final IconData icon;
   final VoidCallback onTap;
   final bool accent;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final color = accent ? _accent(context) : _sub(context);
-    return InkWell(
+    final btn = InkWell(
       borderRadius: BorderRadius.circular(_skin(context).radiusControl),
       onTap: onTap,
       child: Container(
@@ -1708,6 +1712,34 @@ class _NocturIconBtn extends StatelessWidget {
         ),
         child: Icon(icon, size: 18, color: color),
       ),
+    );
+    return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);
+  }
+}
+
+// Включение/отключение чата — та же настройка, что в «Команды → Разрешить
+// чат» (app.chatEnabled), выведенная в композер. Стоит на месте кнопки
+// микрофона: микрофон слушает постоянно сам, и кнопка «нажми, чтобы сказать»
+// рядом с полем ввода ничего не добавляла. Классический стиль ту кнопку так
+// же заменил (см. _chatToggleBtn в desktop_home.dart) — «Ноктюрн» повторяет
+// то же поведение, а не заводит своё.
+class _NocturChatToggle extends StatelessWidget {
+  const _NocturChatToggle();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final on = app.chatEnabled;
+    return _NocturIconBtn(
+      icon: on
+          ? Icons.chat_bubble_outline_rounded
+          : Icons.speaker_notes_off_outlined,
+      accent: on,
+      tooltip: on ? app.t('chatToggleOff') : app.t('chatToggleOn'),
+      onTap: () {
+        app.buzz();
+        app.setChatEnabled(!on);
+      },
     );
   }
 }
@@ -2280,16 +2312,10 @@ class _NocturButton extends StatelessWidget {
 /* ====================== ВКЛАДКА «ЖУРНАЛ» (§5.8) ======================
    Моноширинный поток по реальным файлам из <app-data>/logs: время · штрих
    уровня · источник · сообщение. Уровень выводится из источника, как он и
-   пишется в коде (appendLog): голосовой тракт, команды, телефон, ошибки. */
+   пишется в коде (appendLog): голосовой тракт, команды, телефон, ошибки.
 
-// Одна строка журнала, разобранная из файла `<iso>  <текст>`.
-class _NocturLogLine {
-  const _NocturLogLine(this.time, this.source, this.text, this.level);
-  final DateTime? time;
-  final String source; // ключ i18n группы
-  final String text;
-  final String level; // success | warn | accent | danger
-}
+   Сами файлы читает EvsLogFeed (desktop_integration.dart) — тот же источник,
+   что у страницы «Журнал» в настройках, которую открывает рейл Nexus. */
 
 class _NocturLogTab extends StatefulWidget {
   const _NocturLogTab();
@@ -2300,20 +2326,8 @@ class _NocturLogTab extends StatefulWidget {
 class _NocturLogTabState extends State<_NocturLogTab> {
   final TextEditingController _search = TextEditingController();
   String _filter = 'all';
-  List<_NocturLogLine> _lines = const [];
-  String _dir = '';
+  List<EvsLogLine> _lines = const [];
   bool _loading = true;
-
-  // Файл → (группа фильтра, уровень). Ровно те имена, которыми пишет
-  // appendLog(...) по всему проекту, плюс лог установщика обновления.
-  static const Map<String, (String, String)> _sources = {
-    'sidecar': ('voice', 'warn'),
-    'commands': ('commands', 'success'),
-    'remote': ('remote', 'accent'),
-    'chat': ('model', 'accent'),
-    'errors': ('errors', 'danger'),
-    'update-runner': ('updates', 'accent'),
-  };
 
   @override
   void initState() {
@@ -2328,37 +2342,7 @@ class _NocturLogTabState extends State<_NocturLogTab> {
   }
 
   Future<void> _load() async {
-    final out = <_NocturLogLine>[];
-    try {
-      final root = await appDataRoot();
-      final sep = io.Platform.pathSeparator;
-      _dir = '$root${sep}logs';
-      for (final e in _sources.entries) {
-        // update-runner лежит в корне данных, остальные — в logs/.
-        final path = e.key == 'update-runner'
-            ? '$root$sep${e.key}.log'
-            : '$_dir$sep${e.key}.log';
-        final f = io.File(path);
-        if (!await f.exists()) continue;
-        final all = await f.readAsLines();
-        // Хвост: файлы дописываются вечно, а на экране нужен свежий срез.
-        final tail = all.length > 400 ? all.sublist(all.length - 400) : all;
-        for (final raw in tail) {
-          if (raw.trim().isEmpty) continue;
-          DateTime? ts;
-          var text = raw;
-          final sp = raw.indexOf('  ');
-          if (sp > 0) {
-            ts = DateTime.tryParse(raw.substring(0, sp));
-            if (ts != null) text = raw.substring(sp + 2);
-          }
-          out.add(_NocturLogLine(ts, e.value.$1, text, e.value.$2));
-        }
-      }
-    } catch (_) {}
-    out.sort(
-      (a, b) => (b.time ?? DateTime(0)).compareTo(a.time ?? DateTime(0)),
-    );
+    final out = await EvsLogFeed.load();
     if (mounted) {
       setState(() {
         _lines = out;
@@ -2373,12 +2357,6 @@ class _NocturLogTabState extends State<_NocturLogTab> {
     'accent' => _accent(c),
     _ => _success(c),
   };
-
-  String _clock(DateTime? t) => t == null
-      ? '--:--:--'
-      : '${t.hour.toString().padLeft(2, '0')}:'
-            '${t.minute.toString().padLeft(2, '0')}:'
-            '${t.second.toString().padLeft(2, '0')}';
 
   Widget _tag(
     BuildContext context,
@@ -2460,13 +2438,7 @@ class _NocturLogTabState extends State<_NocturLogTab> {
                 label: app.t('ncCopy'),
                 onTap: () {
                   Clipboard.setData(
-                    ClipboardData(
-                      text: visible
-                          .map(
-                            (l) => '${_clock(l.time)}  ${l.source}  ${l.text}',
-                          )
-                          .join('\n'),
-                    ),
+                    ClipboardData(text: EvsLogFeed.asText(visible)),
                   );
                   showAppSnackBar(context, app.t('ncCopied'));
                 },
@@ -2474,10 +2446,7 @@ class _NocturLogTabState extends State<_NocturLogTab> {
               const SizedBox(width: 8),
               _NocturButton(
                 label: app.t('ncLogFolder'),
-                onTap: () {
-                  if (_dir.isEmpty) return;
-                  unawaited(io.Process.run('explorer', [_dir]));
-                },
+                onTap: () => unawaited(EvsLogFeed.openFolder()),
               ),
               const SizedBox(width: 8),
               _NocturButton(
@@ -2591,7 +2560,7 @@ class _NocturLogTabState extends State<_NocturLogTab> {
     );
   }
 
-  Widget _logRow(BuildContext context, AppState app, _NocturLogLine l) {
+  Widget _logRow(BuildContext context, AppState app, EvsLogLine l) {
     final color = _levelColor(context, l.level);
     // Строки ошибок целиком красятся danger; у остальных цветом уровня —
     // только вертикальный штрих.
@@ -2604,7 +2573,7 @@ class _NocturLogTabState extends State<_NocturLogTab> {
           SizedBox(
             width: 58,
             child: Text(
-              _clock(l.time),
+              EvsLogFeed.clock(l.time),
               style: EvsType.mono.copyWith(
                 fontSize: 12,
                 height: 1.9,
@@ -2624,7 +2593,7 @@ class _NocturLogTabState extends State<_NocturLogTab> {
           SizedBox(
             width: 78,
             child: Text(
-              app.t(_sourceLabelKey(l.source)),
+              app.t(EvsLogFeed.labelKey(l.source)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: EvsType.mono.copyWith(
@@ -2649,485 +2618,6 @@ class _NocturLogTabState extends State<_NocturLogTab> {
     );
   }
 
-  String _sourceLabelKey(String source) => switch (source) {
-    'voice' => 'ncLogVoice',
-    'model' => 'ncLogModel',
-    'commands' => 'ncTabCommands',
-    'remote' => 'ncLogRemote',
-    'updates' => 'ncLogUpdates',
-    _ => 'ncLogErrors',
-  };
-}
-
-/* ====================== ВКЛАДКА «МОДЕЛИ» (§5.7) ======================
-   Подключение сверху (локально / удалённый сервер), ниже — каталог по тирам.
-   Всё живое: тот же каталог kLocalModels, те же загрузки и тот же выбор
-   модели, что и на экране локальных моделей. */
-
-class _NocturModelsTab extends StatefulWidget {
-  const _NocturModelsTab();
-  @override
-  State<_NocturModelsTab> createState() => _NocturModelsTabState();
-}
-
-class _NocturModelsTabState extends State<_NocturModelsTab> {
-  late final TextEditingController _url;
-  LocalModelTier _tier = LocalModelTier.mid;
-
-  @override
-  void initState() {
-    super.initState();
-    _url = TextEditingController(text: context.read<AppState>().serverUrl);
-  }
-
-  @override
-  void dispose() {
-    _url.dispose();
-    super.dispose();
-  }
-
-  String _gb(int bytes) => (bytes / (1024 * 1024 * 1024)).toStringAsFixed(1);
-
-  Widget _card(BuildContext context, {required Widget child}) => Container(
-    padding: const EdgeInsets.fromLTRB(16, 14, 16, 15),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(_skin(context).radiusCard),
-      border: Border.all(color: _stroke(context)),
-    ),
-    child: child,
-  );
-
-  // Сегмент режима подключения (§5.7). Ось у приложения ровно одна —
-  // inferenceMode: локальный сервер (Ollama/LAN) или удалённый
-  // OpenAI-совместимый. Модели «на устройстве» живут не здесь, а в каталоге
-  // ниже, поэтому третьей кнопки в сегменте нет.
-  Widget _modeSegment(BuildContext context, AppState app) {
-    return Row(
-      children: [
-        for (final (id, label) in [
-          ('localServer', app.t('modeLocalServer')),
-          ('remote', app.t('modeRemote')),
-        ])
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(_skin(context).radiusControl),
-              onTap: () => app.setInferenceMode(id),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  borderRadius:
-                      BorderRadius.circular(_skin(context).radiusControl),
-                  color: app.inferenceMode == id
-                      ? _accent(context).withValues(alpha: 0.12)
-                      : Colors.transparent,
-                  border: Border.all(
-                      color: app.inferenceMode == id
-                          ? _accent(context)
-                          : _stroke(context)),
-                ),
-                child: Text(label,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: app.inferenceMode == id
-                            ? _accent(context)
-                            : _sub(context))),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  // Карточка активной модели + карточка адреса сервера.
-  Widget _connection(BuildContext context, AppState app) {
-    final connected = app.connectionStatus == ConnectionStatus.connected;
-    final dot = switch (app.connectionStatus) {
-      ConnectionStatus.connected => _success(context),
-      ConnectionStatus.connecting => _warn(context),
-      ConnectionStatus.noModel => _warn(context),
-      _ => _danger(context),
-    };
-    final active = app.selectedModel;
-    final spec = app.localSpecFor(active);
-    final sub = spec != null
-        ? '${_gb(spec.sizeBytes)} ${app.t('ncGb')} · '
-              '${spec.maxLocalContextSize} ${app.t('ncTokens')} · GGUF'
-        : (active.isEmpty
-              ? '—'
-              : '${app.t('ncRemote')} · ${app.models.length} ${app.t('connModelsCount')}');
-    // IntrinsicHeight обязателен: Row со stretch внутри Column не имеет
-    // ограниченной высоты, и верстка падает (обе карточки должны быть равной
-    // высоты — как в карточках подсистем Nexus).
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            child: _card(
-              context,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          app.t('ncActiveModel').toUpperCase(),
-                          style: EvsType.mono.copyWith(
-                            fontSize: 10.5,
-                            letterSpacing: 10.5 * 0.2,
-                            color: _faint(context),
-                          ),
-                        ),
-                      ),
-                      _NocturDot(color: dot, size: 6),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    active.isEmpty
-                        ? app.t('noModelsAvailable')
-                        : (spec?.shortName ?? active),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: _txt(context),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    sub,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: EvsType.mono.copyWith(
-                      fontSize: 11,
-                      color: _sub(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: _card(
-              context,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    app.t('ncServerAddress').toUpperCase(),
-                    style: EvsType.mono.copyWith(
-                      fontSize: 10.5,
-                      letterSpacing: 10.5 * 0.2,
-                      color: _faint(context),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 34,
-                          child: TextField(
-                            controller: _url,
-                              onSubmitted: (v) =>
-                                app.setServer(v.trim(), app.apiKey),
-                            style: EvsType.mono.copyWith(
-                              fontSize: 12,
-                              color: _txt(context),
-                            ),
-                            decoration: InputDecoration(
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 9,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  _skin(context).radiusControl,
-                                ),
-                                borderSide: BorderSide(color: _stroke(context)),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  _skin(context).radiusControl,
-                                ),
-                                borderSide: BorderSide(color: _accent(context)),
-                              ),
-                              disabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                  _skin(context).radiusControl,
-                                ),
-                                borderSide: BorderSide(color: _stroke(context)),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _NocturButton(
-                        label: app.t('ncCheck'),
-                        onTap: () =>
-                            app.setServer(_url.text.trim(), app.apiKey),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    app.loadingModels
-                        ? app.t('connChecking')
-                        : ((app.modelsError ?? '').isNotEmpty
-                              ? app.modelsError!
-                              : (connected
-                                    ? '${app.t('connOnline')} · ${app.models.length} ${app.t('connModelsCount')}'
-                                    : app.t('connOffline'))),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: EvsType.mono.copyWith(
-                      fontSize: 11,
-                      color: (app.modelsError ?? '').isNotEmpty
-                          ? _danger(context)
-                          : _faint(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tierSegment(BuildContext context, AppState app) {
-    String label(LocalModelTier t) => switch (t) {
-      LocalModelTier.light => app.t('tierLight'),
-      LocalModelTier.mid => app.t('tierMid'),
-      LocalModelTier.high => app.t('tierHigh'),
-      LocalModelTier.roleplay => app.t('tierRoleplay'),
-    };
-    return Row(
-      children: [
-        for (final t in LocalModelTier.values)
-          if (kLocalModels.any((m) => m.tier == t))
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(
-                  _skin(context).radiusControl,
-                ),
-                onTap: () => setState(() => _tier = t),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(
-                      _skin(context).radiusControl,
-                    ),
-                    color: _tier == t
-                        ? _accent(context).withValues(alpha: 0.12)
-                        : Colors.transparent,
-                    border: Border.all(
-                      color: _tier == t ? _accent(context) : _stroke(context),
-                    ),
-                  ),
-                  child: Text(
-                    label(t),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _tier == t ? _accent(context) : _sub(context),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-      ],
-    );
-  }
-
-  Widget _modelCard(BuildContext context, AppState app, LocalModelSpec m) {
-    final installed = app.downloadedLocalModelIds.contains(m.id);
-    final progress = app.localDownloadProgress[m.id];
-    final active = app.selectedModel == m.modelKey;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(_skin(context).radiusCard),
-        border: Border.all(color: active ? _accent(context) : _stroke(context)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  m.shortName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w500,
-                    color: _txt(context),
-                  ),
-                ),
-              ),
-              if (installed)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    color: _accent(context).withValues(alpha: 0.12),
-                    border: Border.all(
-                      color: _accent(context).withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Text(
-                    app.t('ncInstalled'),
-                    style: TextStyle(fontSize: 10.5, color: _accent(context)),
-                  ),
-                )
-              else if (progress != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: _stroke(context)),
-                  ),
-                  child: Text(
-                    '${(progress * 100).round()} %',
-                    style: EvsType.mono.copyWith(
-                      fontSize: 10.5,
-                      color: _sub(context),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Q4_K_M · ${_gb(m.sizeBytes)} ${app.t('ncGb')} · GGUF',
-            style: EvsType.mono.copyWith(fontSize: 11, color: _faint(context)),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            m.displayName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11.5, color: _sub(context)),
-          ),
-          if (progress != null) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 3,
-                backgroundColor: _overlayFill(context, 0.1),
-                valueColor: AlwaysStoppedAnimation(_accent(context)),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              if (progress != null)
-                _NocturButton(
-                  label: app.t('cancel'),
-                  onTap: () => app.cancelLocalModelDownload(m.id),
-                )
-              else if (!installed)
-                _NocturButton(
-                  label: app.t('download'),
-                  primary: true,
-                  onTap: () => unawaited(app.downloadLocalModel(m)),
-                )
-              else ...[
-                _NocturButton(
-                  label: active ? app.t('ncActive') : app.t('ncUse'),
-                  primary: active,
-                  onTap: () => app.selectModel(m.modelKey),
-                ),
-                const SizedBox(width: 8),
-                _NocturButton(
-                  label: app.t('delete'),
-                  onTap: () => unawaited(app.deleteLocalModel(m)),
-                ),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final catalog = kLocalModels.where((m) => m.tier == _tier).toList();
-    final installedBytes = kLocalModels
-        .where((m) => app.downloadedLocalModelIds.contains(m.id))
-        .fold<int>(0, (a, m) => a + m.sizeBytes);
-    final gpu = SidecarClient.instance.gpuInfo.value;
-    final hasVram = gpu.$1 && gpu.$3 > 0;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(40, 22, 40, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            app.t('nxNavModels'),
-            style: TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.w500,
-              letterSpacing: -0.21,
-              color: _txt(context),
-            ),
-          ),
-          const SizedBox(height: 14),
-          _modeSegment(context, app),
-          const SizedBox(height: 14),
-          _connection(context, app),
-          const SizedBox(height: 18),
-          const _NocturRule(),
-          const SizedBox(height: 14),
-          _tierSegment(context, app),
-          const SizedBox(height: 14),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
-                mainAxisExtent: 168,
-              ),
-              itemCount: catalog.length,
-              itemBuilder: (context, i) => _modelCard(context, app, catalog[i]),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '${app.t('ncOnDisk')} ${_gb(installedBytes)} ${app.t('ncGb')}'
-            '${hasVram ? '   ·   VRAM ${(gpu.$4 / 1024).toStringAsFixed(1)} / ${(gpu.$3 / 1024).round()} ${app.t('ncGb')}' : ''}',
-            style: EvsType.mono.copyWith(fontSize: 11, color: _faint(context)),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /* ==================== «ЧТО НОВОГО» (§5.11, макет 1g) ====================

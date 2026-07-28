@@ -1155,7 +1155,7 @@ class _GenesisTextPainter extends CustomPainter {
 ///
 /// Интро (≈3.5 с) проигрывается при каждом монтировании; дальше идёт вечный луп
 /// образца (частицы, дыхание, редкие глитч-всплески), но только если это
-/// разрешает [MotionPolicy] — иначе знак замирает на «чистом» кадре без глитча.
+/// разрешает [gate] — иначе знак замирает на «чистом» кадре без глитча.
 /// [loop] = false вообще отключает луп (замирает сразу после интро).
 class GenesisLogo extends StatefulWidget {
   const GenesisLogo({
@@ -1163,7 +1163,7 @@ class GenesisLogo extends StatefulWidget {
     this.size = 30,
     this.withText = false,
     this.loop = true,
-    this.ambientGated = true,
+    this.gate = MotionGate.ambient,
     this.stage = _genStage,
     this.onIntroDone,
   });
@@ -1171,7 +1171,10 @@ class GenesisLogo extends StatefulWidget {
   final double size;
   final bool withText;
   final bool loop;
-  final bool ambientGated;
+
+  /// Чем гасится вечный луп — см. [MotionGate]. Маленькая марка в углу окна
+  /// живёт по фоновому гейту, знак на «О программе» — по переднему плану.
+  final MotionGate gate;
 
   /// Цвет собственной сцены знака — см. [_GenesisMarkPainter.stage]. По
   /// умолчанию подложка образца.
@@ -1195,8 +1198,15 @@ class _GenesisLogoState extends State<GenesisLogo>
   void initState() {
     super.initState();
     _ticker = createTicker(_tick)..start();
-    if (widget.ambientGated) MotionPolicy.ambient.addListener(_syncAmbient);
+    _gate?.addListener(_syncAmbient);
   }
+
+  /// Флаг политики движения, за которым следит этот знак; null — не гасится.
+  ValueNotifier<bool>? get _gate => switch (widget.gate) {
+        MotionGate.ambient => MotionPolicy.ambient,
+        MotionGate.foreground => MotionPolicy.foreground,
+        MotionGate.none => null,
+      };
 
   void _tick(Duration elapsed) {
     final t = elapsed.inMicroseconds / 1e6;
@@ -1213,8 +1223,7 @@ class _GenesisLogoState extends State<GenesisLogo>
     _t.value = t;
   }
 
-  bool get _loopAllowed =>
-      widget.loop && (!widget.ambientGated || MotionPolicy.ambient.value);
+  bool get _loopAllowed => widget.loop && (_gate?.value ?? true);
 
   // Политика движения переключилась — на ходу останавливаем/возобновляем луп.
   void _syncAmbient() {
@@ -1229,7 +1238,7 @@ class _GenesisLogoState extends State<GenesisLogo>
 
   @override
   void dispose() {
-    if (widget.ambientGated) MotionPolicy.ambient.removeListener(_syncAmbient);
+    _gate?.removeListener(_syncAmbient);
     _ticker.dispose();
     _t.dispose();
     super.dispose();

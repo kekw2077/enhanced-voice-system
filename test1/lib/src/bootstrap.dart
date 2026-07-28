@@ -791,7 +791,7 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
                     child: GenesisLogo(
                       size: _kUpdateSplashLogo,
                       withText: true,
-                      ambientGated: false,
+                      gate: MotionGate.none,
                     ),
                   ),
                 ),

@@ -920,6 +920,105 @@ class DesktopIntegration with WindowListener, TrayListener {
   }
 }
 
+// ============================ ЖУРНАЛ ============================
+// Чтение append-only логов, которые пишет appendLog(...) в <app-data>/logs.
+// Один источник на всё приложение: экран журнала «Ноктюрна» и страница
+// «Журнал» в настройках (её открывает и рейл Nexus) читают отсюда, а не
+// каждый по-своему.
+
+/// Одна строка журнала, разобранная из файла формата `<iso>  <текст>`.
+class EvsLogLine {
+  const EvsLogLine(this.time, this.source, this.text, this.level);
+  final DateTime? time;
+
+  /// Группа фильтра (см. [EvsLogFeed.sources]); подпись — [EvsLogFeed.labelKey].
+  final String source;
+  final String text;
+
+  /// success | warn | accent | danger — токен цвета, не сам цвет.
+  final String level;
+}
+
+class EvsLogFeed {
+  EvsLogFeed._();
+
+  /// Файл → (группа фильтра, уровень). Ровно те имена, которыми пишет
+  /// appendLog(...) по всему проекту, плюс лог установщика обновления.
+  static const Map<String, (String, String)> sources = {
+    'sidecar': ('voice', 'warn'),
+    'commands': ('commands', 'success'),
+    'remote': ('remote', 'accent'),
+    'chat': ('model', 'accent'),
+    'errors': ('errors', 'danger'),
+    'update-runner': ('updates', 'accent'),
+  };
+
+  /// Ключ i18n для подписи группы.
+  static String labelKey(String source) => switch (source) {
+        'voice' => 'ncLogVoice',
+        'model' => 'ncLogModel',
+        'commands' => 'ncTabCommands',
+        'remote' => 'ncLogRemote',
+        'updates' => 'ncLogUpdates',
+        _ => 'ncLogErrors',
+      };
+
+  static String clock(DateTime? t) => t == null
+      ? '--:--:--'
+      : '${t.hour.toString().padLeft(2, '0')}:'
+          '${t.minute.toString().padLeft(2, '0')}:'
+          '${t.second.toString().padLeft(2, '0')}';
+
+  static Future<String> dir() async =>
+      '${await appDataRoot()}${io.Platform.pathSeparator}logs';
+
+  /// Свежий срез журнала, новые записи сверху. [tail] — сколько последних строк
+  /// брать из каждого файла: файлы дописываются вечно, а на экране нужен хвост.
+  static Future<List<EvsLogLine>> load({int tail = 400}) async {
+    final out = <EvsLogLine>[];
+    try {
+      final root = await appDataRoot();
+      final sep = io.Platform.pathSeparator;
+      for (final e in sources.entries) {
+        // update-runner лежит в корне данных, остальные — в logs/.
+        final path = e.key == 'update-runner'
+            ? '$root$sep${e.key}.log'
+            : '$root${sep}logs$sep${e.key}.log';
+        final f = io.File(path);
+        if (!await f.exists()) continue;
+        final all = await f.readAsLines();
+        final slice = all.length > tail ? all.sublist(all.length - tail) : all;
+        for (final raw in slice) {
+          if (raw.trim().isEmpty) continue;
+          DateTime? ts;
+          var text = raw;
+          final sp = raw.indexOf('  ');
+          if (sp > 0) {
+            ts = DateTime.tryParse(raw.substring(0, sp));
+            if (ts != null) text = raw.substring(sp + 2);
+          }
+          out.add(EvsLogLine(ts, e.value.$1, text, e.value.$2));
+        }
+      }
+    } catch (_) {}
+    out.sort((a, b) => (b.time ?? DateTime(0)).compareTo(a.time ?? DateTime(0)));
+    return out;
+  }
+
+  /// Открыть папку логов в проводнике.
+  static Future<void> openFolder() async {
+    try {
+      final d = await dir();
+      if (await io.Directory(d).exists()) await io.Process.run('explorer', [d]);
+    } catch (_) {}
+  }
+
+  /// Журнал как текст — для кнопки «Копировать».
+  static String asText(List<EvsLogLine> lines) => lines
+      .map((l) => '${clock(l.time)}  ${l.source}  ${l.text}')
+      .join('\n');
+}
+
 // ============================ WEB SEARCH ============================
 // RAG web search: fetch a few results for a query and format them as a compact
 // context block fed to the model, so the assistant can answer with fresh info
