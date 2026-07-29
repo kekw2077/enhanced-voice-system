@@ -133,9 +133,17 @@ _stroke/_success/_danger/_info/_warn/…`), никаких сырых `Color(0x�
 
 Глобальный `fontFamily` темы (`_buildTheme`/`_buildGrayTheme`) — **Nunito**, а не `google_fonts`-пакет: файл вариативного шрифта (`assets/fonts/Nunito-VariableFont_wght.ttf`, лицензия OFL, скачан напрямую из `google/fonts` на GitHub) подключён как обычный asset в `pubspec.yaml` с несколькими `weight:`-записями на один и тот же файл — это сознательно, чтобы не тянуть шрифт по сети при первом запуске (`google_fonts` по умолчанию так делает), что противоречило бы офлайн-позиционированию приложения.
 
-### Иконка приложения
+### Иконки
 
-Генерируется через `flutter_launcher_icons` (dev-зависимость, секция `flutter_launcher_icons:` в `pubspec.yaml`). Исходник — [assets/icon/icon.png](assets/icon/icon.png) (1024×1024, с альфа-прозрачностью в углах для закруглённых углов на платформах без автоматического маскирования иконок). Для iOS включён `remove_alpha_ios: true` (Apple запрещает альфа-канал в иконках). После любой замены исходника — `dart run flutter_launcher_icons`.
+**Внутри приложения и снаружи — намеренно разные знаки.** Не «сводить их к одному»: так решено осознанно (2.10.3).
+
+- **В приложении — Genesis** (кольцо/горизонт событий): заставка запуска, марка в левом верхнем углу, «О программе». Рисуется кодом ([lib/src/genesis_logo.dart](lib/src/genesis_logo.dart)), не картинкой. Мастера-растры для мобильных/веб-таргетов — [assets/icon/icon.png](assets/icon/icon.png), он же исходник `flutter_launcher_icons`; рендерится из того же кода командой `flutter test test/genesis_icon_test.dart`, производные растры — `python assets/icon/gen_evs_icon.py`.
+- **Системные иконки Windows — эквалайзер**, отдельный знак от автора, в двух прорисовках:
+  - [assets/icon/evs_shortcut.ico](assets/icon/evs_shortcut.ico) — детальная (градиентная подложка, ореол, тонкая рамка). Копируется как есть в `windows/runner/resources/app_icon.ico` → exe, ярлык, `SetupIconFile` установщика.
+  - [assets/icon/evs_tray.svg](assets/icon/evs_tray.svg) — упрощённая прорисовка того же знака под мелкие размеры. Из неё собирается `assets/icon/app_icon.ico` для трея (`trayManager.setIcon`).
+  - Пересборка: `python assets/icon/gen_system_icons.py`. Кадры 16/20/24/32 там не просто уменьшаются, а выравниваются по пиксельной сетке (целые ширина полосы и зазор): при обычном уменьшении на 16 px зазор выходит 0,7 px и четыре полосы сливаются в один столбик. С выравниванием контраст «штрих/зазор» на 16 px — 3.1× против 1.6×.
+
+**У `flutter_launcher_icons` windows-таргет выключен** (`windows: generate: false`) — иначе `dart run flutter_launcher_icons` перезапишет системную иконку знаком Genesis из `icon.png`. По той же причине `gen_evs_icon.py` больше не пишет `.ico`. Для iOS включён `remove_alpha_ios: true` (Apple запрещает альфа-канал в иконках).
 
 ## Обновления приложения
 

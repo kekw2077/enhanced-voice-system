@@ -28,6 +28,35 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.10.3</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Новая иконка приложения и новый значок в трее.</b> Ярлык, окно установщика и сам exe получили детальную прорисовку знака, трей — упрощённую: она нарисована под мелкие размеры, полосы в ней шире и разнесены дальше.</li>
+          <li><b>Значок в трее наконец читается.</b> В кадре 16 пикселей (обычный масштаб экрана) зазор между полосами получается меньше пикселя, и при обычном уменьшении четыре полосы сливались в один смазанный столбик. Теперь кадры 16, 20, 24 и 32 выравниваются по пиксельной сетке — полосы видно раздельно.</li>
+          <li><b>Знак внутри приложения не менялся:</b> на заставке, в углу главного экрана и в «О программе» остаётся Genesis. Системные иконки и знак в приложении различаются намеренно.</li>
+          <li>Убрана ошибка, из-за которой при открытии главного экрана «Ноктюрна» строка состояния могла пропустить первое обновление.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Wed, 29 Jul 2026 13:20:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.10.3/EVS-Setup-2.10.3.exe"
+        sparkle:version="2.10.3"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHE/aN9OQZ7VnCxOk9lOrqPUjOpGKAQE/XP/xa2cCHFjbp9gRtljYg8je4wxir7LpYP/Vz3Huz/blc+E="
+        evs:sha256="02ca0d75d6f0204e57556d3748ef3c3c5a6e57aa4a3635715b27e353073bbb96"
+        length="16948795"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.10.2</title>
       <description><![CDATA[
         <style>

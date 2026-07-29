@@ -547,7 +547,15 @@ class NexusPipeline extends ChangeNotifier {
     // short silence) clears it.
     _subs.add(sc.partial.listen((_) => _markStt()));
     _subs.add(sc.finalText.listen((_) => _clearStt()));
-    _recompute();
+    // Без уведомления: bind() зовут из initState (сцены Nexus и «Ноктюрна»
+    // подключаются к конвейеру при монтировании), то есть notifyListeners()
+    // попал бы прямо в фазу build — Flutter ругается «setState() called during
+    // build», а AnimatedBuilder, который в этот момент строится, свою
+    // перерисовку теряет. Уведомлять здесь и не нужно: тот, кто только что
+    // связался, сейчас же и построится по свежим полям. Подпись при этом
+    // намеренно не обновляется, поэтому первое же реальное событие конвейера
+    // разошлёт уведомление, даже если состояние с тех пор не менялось.
+    _apply(notify: false);
   }
 
   void _markStt() {
@@ -598,7 +606,9 @@ class NexusPipeline extends ChangeNotifier {
     }
   }
 
-  void _recompute() {
+  void _recompute() => _apply(notify: true);
+
+  void _apply({required bool notify}) {
     final va = VoiceAssistant.instance.state.value;
     final speaking = VoiceLevels.instance.tts.value > 0.001;
     final String s;
@@ -631,6 +641,7 @@ class NexusPipeline extends ChangeNotifier {
       level = 0.0;
       vadActive = false;
     }
+    if (!notify) return;
     final sig = '$stage|$vadActive|$sttActive|$llmActive|$ttsActive';
     if (sig != _sig) {
       _sig = sig;

@@ -1,7 +1,7 @@
 name: evs
 description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 2.10.2+62
+version: 2.10.3+63
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -88,9 +88,13 @@ flutter_launcher_icons:
   remove_alpha_ios: true
   macos:
     generate: true
+  # Windows-иконка НЕ генерируется отсюда. Системные иконки (exe/ярлык/установщик
+  # и трей) — отдельный знак, он собирается скриптом assets/icon/gen_system_icons.py
+  # из assets/icon/evs_shortcut.ico и assets/icon/evs_tray.svg. Если включить
+  # generate обратно, `dart run flutter_launcher_icons` перезапишет
+  # windows/runner/resources/app_icon.ico знаком Genesis из icon.png.
   windows:
-    generate: true
-    icon_size: 256
+    generate: false
   web:
     generate: true
 

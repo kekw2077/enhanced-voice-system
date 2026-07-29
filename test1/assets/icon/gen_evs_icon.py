@@ -9,10 +9,12 @@ Source of truth (с 2.10.1): знак Genesis из lib/src/genesis_logo.dart —
 а этот скрипт пересобирает из них все производные растры. icon.svg остался от
 прежней иконки и больше ни на что не влияет.
 
+Область ответственности: только знак Genesis. Системные иконки Windows (трей,
+exe, установщик, ярлык) — ДРУГОЙ знак, их собирает соседний gen_system_icons.py;
+этот скрипт .ico больше не пишет.
+
 Outputs:
   * icon.png                                       1024, flutter_launcher_icons source
-  * app_icon.ico                                   multi-size, system tray
-  * ../../windows/runner/resources/app_icon.ico    exe + Inno Setup installer icon
   * ../../web/favicon.png, ../../web/icons/Icon-{192,512}[-maskable].png
 
 Usage:
@@ -36,14 +38,11 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 MASTER = os.path.join(HERE, "icon.png")
-# Отдельный мастер под .ico: в кадре 16-32 px кольцо на общем плане теряется,
-# поэтому знак там взят крупнее (см. test/genesis_icon_test.dart). Если файла
-# нет — .ico собираются из общего мастера, как раньше.
-ICO_MASTER = os.path.join(HERE, "icon_tray.png")
 SVG = os.path.join(HERE, "icon.svg")
-
-# Multi-resolution frames baked into each .ico (Explorer/taskbar/tray pick one).
-ICO_SIZES = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+# icon_tray.png (крупный план знака Genesis под .ico) больше не используется:
+# .ico ушли в gen_system_icons.py вместе с самим знаком. Мастер и его рендер в
+# test/genesis_icon_test.dart оставлены на случай, если Genesis вернётся в
+# системные иконки.
 
 
 def rasterize_from_svg() -> None:
@@ -72,23 +71,10 @@ def main() -> None:
     def rz(size: int) -> Image.Image:
         return master.resize((size, size), Image.LANCZOS)
 
-    ico_src = master
-    if os.path.exists(ICO_MASTER):
-        ico_src = Image.open(ICO_MASTER).convert("RGBA")
-        if ico_src.size != (1024, 1024):
-            ico_src = ico_src.resize((1024, 1024), Image.LANCZOS)
-
-    def rz_ico(size: int) -> Image.Image:
-        return ico_src.resize((size, size), Image.LANCZOS)
-
-    # System tray icon.
-    rz_ico(256).save(os.path.join(HERE, "app_icon.ico"), format="ICO", sizes=ICO_SIZES)
-
-    # Windows exe icon + Inno Setup installer icon (SetupIconFile).
-    rz_ico(256).save(
-        os.path.join(ROOT, "windows", "runner", "resources", "app_icon.ico"),
-        format="ICO", sizes=ICO_SIZES,
-    )
+    # .ico СПЕЦИАЛЬНО не трогаем: системные иконки (трей, exe, установщик,
+    # ярлык) — другой знак, их собирает gen_system_icons.py. Раньше эти два
+    # файла писались здесь; если вернуть строки обратно, они затрут системные
+    # иконки знаком Genesis.
 
     # Web (matches flutter_launcher_icons web:generate output).
     web_icons = os.path.join(ROOT, "web", "icons")
@@ -98,7 +84,7 @@ def main() -> None:
     rz(192).save(os.path.join(web_icons, "Icon-maskable-192.png"))
     rz(16).save(os.path.join(ROOT, "web", "favicon.png"))
 
-    print("wrote app_icon.ico, windows app_icon.ico, web icons (master: icon.png)")
+    print("wrote web icons (master: icon.png); .ico см. gen_system_icons.py")
 
 
 if __name__ == "__main__":
