@@ -312,6 +312,15 @@ class AppState extends ChangeNotifier {
   bool webSearchEnabled = false;
   String tavilyKey = '';
   String braveKey = '';
+  // Google Programmable Search: нужен и ключ, и ID созданного движка (cx).
+  String googleKey = '';
+  String googleCx = '';
+  // Yandex Search API: ключ и folderid облака. Ответ приходит XML.
+  String yandexKey = '';
+  String yandexFolder = '';
+  // Какой провайдер использовать: auto — прежнее поведение (перебор тех, у кого
+  // есть ключ, и DuckDuckGo как запасной), иначе строго выбранный.
+  String searchProvider = 'auto';
   // Retrieved web context for the CURRENT turn only — appended to the system
   // prompt, then cleared. Never persisted, never leaks into later turns.
   String pendingWebContext = '';
@@ -340,6 +349,10 @@ class AppState extends ChangeNotifier {
   // endpoint responds. The server isn't deployed yet, so it stays unavailable.
   String ttsEngineChoice = 'piper'; // 'piper' | 'cosyvoice'
   String cosyvoiceEndpoint = '';
+  // Интерпретатор для локального сервера синтеза (sidecar/qwen_tts_server.py).
+  // Пусто — искать самим: серверу нужен python с torch+CUDA, а он живёт в
+  // отдельном venv и в установочный пакет не попадает (torch ~5 ГБ).
+  String cloneServerPython = '';
   // Transient (not persisted): null = unknown, true/false = last check result.
   bool? cosyvoiceOnline;
   // CosyVoice deep controls (settings TZ §3.2). UI + persisted state only for
@@ -592,6 +605,11 @@ class AppState extends ChangeNotifier {
     webSearchEnabled = prefs.getBool('webSearchEnabled') ?? false;
     tavilyKey = prefs.getString('tavilyKey') ?? '';
     braveKey = prefs.getString('braveKey') ?? '';
+    googleKey = prefs.getString('googleKey') ?? '';
+    googleCx = prefs.getString('googleCx') ?? '';
+    yandexKey = prefs.getString('yandexKey') ?? '';
+    yandexFolder = prefs.getString('yandexFolder') ?? '';
+    searchProvider = prefs.getString('searchProvider') ?? 'auto';
     voiceResponses = prefs.getBool('voiceResponses') ?? false;
     announceReady = prefs.getBool('announceReady') ?? true;
     ttsPiperVoice = prefs.getString('ttsPiperVoice') ?? '';
@@ -602,6 +620,7 @@ class AppState extends ChangeNotifier {
     ttsInterpModel = prefs.getString('ttsInterpModel') ?? '';
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
     cosyvoiceEndpoint = prefs.getString('cosyvoiceEndpoint') ?? '';
+    cloneServerPython = prefs.getString('cloneServerPython') ?? '';
     cosyvoiceVoice = prefs.getString('cosyvoiceVoice') ?? '';
     cosyvoiceClonePath = prefs.getString('cosyvoiceClonePath') ?? '';
     cosyvoiceClonePromptText =
@@ -722,9 +741,11 @@ class AppState extends ChangeNotifier {
         cmdThreshold, cmdConfirm, cmdEnabled, chatEnabled, vizType, showVizBg,
         showPartial, overlayMode, overlaySize, vizAccent, orbSize, orbSpeed,
         barCount, autoUpdateCheck, webSearchEnabled, tavilyKey, braveKey,
+        googleKey, googleCx, yandexKey, yandexFolder, searchProvider,
         voiceResponses, announceReady, ttsPiperVoice, ttsRate, ttsVolume,
         ttsInterpEnabled, ttsInterpMode, ttsInterpModel, ttsEngineChoice,
         cosyvoiceEndpoint, cosyvoiceVoice, cosyvoiceClonePath,
+        cloneServerPython,
         cosyvoiceClonePromptText, cosyvoiceSpeed, cosyvoiceEmotion,
         cosyvoiceInstruct, cosyvoiceDevice,
         cloneGpuProfile, cloneGpuInGame, cloneGpuVramLimitGb,
@@ -839,6 +860,11 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('webSearchEnabled', webSearchEnabled);
     await prefs.setString('tavilyKey', tavilyKey);
     await prefs.setString('braveKey', braveKey);
+    await prefs.setString('googleKey', googleKey);
+    await prefs.setString('googleCx', googleCx);
+    await prefs.setString('yandexKey', yandexKey);
+    await prefs.setString('yandexFolder', yandexFolder);
+    await prefs.setString('searchProvider', searchProvider);
     await prefs.setBool('voiceResponses', voiceResponses);
     await prefs.setBool('announceReady', announceReady);
     await prefs.setString('ttsPiperVoice', ttsPiperVoice);
@@ -849,6 +875,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('ttsInterpModel', ttsInterpModel);
     await prefs.setString('ttsEngineChoice', ttsEngineChoice);
     await prefs.setString('cosyvoiceEndpoint', cosyvoiceEndpoint);
+    await prefs.setString('cloneServerPython', cloneServerPython);
     await prefs.setString('cosyvoiceVoice', cosyvoiceVoice);
     await prefs.setString('cosyvoiceClonePath', cosyvoiceClonePath);
     await prefs.setString('cosyvoiceClonePromptText', cosyvoiceClonePromptText);
@@ -1076,6 +1103,11 @@ class AppState extends ChangeNotifier {
     webSearchEnabled = prefs.getBool('webSearchEnabled') ?? false;
     tavilyKey = prefs.getString('tavilyKey') ?? '';
     braveKey = prefs.getString('braveKey') ?? '';
+    googleKey = prefs.getString('googleKey') ?? '';
+    googleCx = prefs.getString('googleCx') ?? '';
+    yandexKey = prefs.getString('yandexKey') ?? '';
+    yandexFolder = prefs.getString('yandexFolder') ?? '';
+    searchProvider = prefs.getString('searchProvider') ?? 'auto';
     voiceResponses = prefs.getBool('voiceResponses') ?? false;
     announceReady = prefs.getBool('announceReady') ?? true;
     ttsPiperVoice = prefs.getString('ttsPiperVoice') ?? '';
@@ -1086,6 +1118,7 @@ class AppState extends ChangeNotifier {
     ttsInterpModel = prefs.getString('ttsInterpModel') ?? '';
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
     cosyvoiceEndpoint = prefs.getString('cosyvoiceEndpoint') ?? '';
+    cloneServerPython = prefs.getString('cloneServerPython') ?? '';
     cosyvoiceVoice = prefs.getString('cosyvoiceVoice') ?? '';
     cosyvoiceClonePath = prefs.getString('cosyvoiceClonePath') ?? '';
     cosyvoiceClonePromptText =
@@ -2240,6 +2273,42 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setCloneServerPython(String v) {
+    cloneServerPython = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setGoogleKey(String v) {
+    googleKey = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setGoogleCx(String v) {
+    googleCx = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setYandexKey(String v) {
+    yandexKey = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setYandexFolder(String v) {
+    yandexFolder = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setSearchProvider(String v) {
+    searchProvider = WebSearchService.providers.contains(v) ? v : 'auto';
+    _save();
+    notifyListeners();
+  }
+
   void setVoiceResponses(bool v) {
     voiceResponses = v;
     _save();
@@ -3386,6 +3455,12 @@ class AppState extends ChangeNotifier {
     String text, {
     List<String> attachments = const [],
   }) async {
+    // «Разрешить чат» выключен — до 2.10.3 это держалось только ветками внутри
+    // композеров, и стиль «Ноктюрн», добавленный позже, такой ветки не имел:
+    // тумблер стоял выключенным, а чат продолжал работать. Гейт здесь — чтобы
+    // следующий шелл не смог повторить ту же ошибку. Голосовой путь от этого не
+    // страдает: он отсекается раньше, в VoiceAssistant._handle.
+    if (!chatEnabled) return '';
     unawaited(appendLog(
         'chat', text.length > 120 ? '${text.substring(0, 120)}…' : text));
     current ??= () {

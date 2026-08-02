@@ -24,18 +24,66 @@ class WebSearchService {
   );
   bool needed(String q) => _freshRe.hasMatch(q);
 
-  Future<List<SearchHit>> search(String query, {AppState? app}) async {
-    final tav = app?.tavilyKey ?? '';
-    final brave = app?.braveKey ?? '';
-    try {
-      if (tav.isNotEmpty) return await _tavily(query, tav);
-      if (brave.isNotEmpty) return await _brave(query, brave);
-      return await _ddg(query);
-    } catch (e) {
-      unawaited(appendLog('errors', 'WebSearch: $e'));
-      return const [];
-    }
+  /// Все значения настройки «Поисковик». `auto` — прежнее поведение.
+  static const List<String> providers = [
+    'auto',
+    'tavily',
+    'brave',
+    'google',
+    'yandex',
+    'ddg',
+  ];
+
+  /// Настроен ли провайдер: у платных это наличие ключей, DuckDuckGo — всегда.
+  bool configured(String id, AppState? app) => switch (id) {
+        'tavily' => (app?.tavilyKey ?? '').isNotEmpty,
+        'brave' => (app?.braveKey ?? '').isNotEmpty,
+        'google' =>
+          (app?.googleKey ?? '').isNotEmpty && (app?.googleCx ?? '').isNotEmpty,
+        'yandex' => (app?.yandexKey ?? '').isNotEmpty &&
+            (app?.yandexFolder ?? '').isNotEmpty,
+        _ => true,
+      };
+
+  // Кого и в каком порядке спрашивать.
+  //
+  // `auto` — сначала те, у кого есть ключ (они точнее и не ломаются от смены
+  // вёрстки), DuckDuckGo последним как беcключевой запасной. Явно выбранный
+  // провайдер используется СТРОГО один: если человек выбрал Яндекс, ответ из
+  // DuckDuckGo вместо него — сюрприз, а не помощь.
+  List<String> _order(AppState? app) {
+    final chosen = app?.searchProvider ?? 'auto';
+    if (chosen != 'auto' && providers.contains(chosen)) return [chosen];
+    return [
+      for (final p in const ['tavily', 'brave', 'google', 'yandex'])
+        if (configured(p, app)) p,
+      'ddg',
+    ];
   }
+
+  Future<List<SearchHit>> search(String query, {AppState? app}) async {
+    // Раньше выбирался первый провайдер с ключом и на этом всё: пустой ответ
+    // означал поиск без результата, хотя следующий мог бы ответить. Теперь
+    // пустой ответ — повод спросить следующего (в режиме `auto`).
+    for (final id in _order(app)) {
+      try {
+        final hits = await _byId(id, query, app);
+        if (hits.isNotEmpty) return hits;
+      } catch (e) {
+        unawaited(appendLog('errors', 'WebSearch[$id]: $e'));
+      }
+    }
+    return const [];
+  }
+
+  Future<List<SearchHit>> _byId(String id, String q, AppState? app) =>
+      switch (id) {
+        'tavily' => _tavily(q, app?.tavilyKey ?? ''),
+        'brave' => _brave(q, app?.braveKey ?? ''),
+        'google' => _google(q, app?.googleKey ?? '', app?.googleCx ?? ''),
+        'yandex' => _yandex(q, app?.yandexKey ?? '', app?.yandexFolder ?? ''),
+        _ => _ddg(q),
+      };
 
   Future<List<SearchHit>> _tavily(String q, String key) async {
     final res = await http
@@ -80,6 +128,71 @@ class WebSearchService {
           SearchHit((r['title'] ?? '').toString(),
               (r['url'] ?? '').toString(), (r['description'] ?? '').toString()),
     ];
+  }
+
+  // Google Programmable Search Engine (JSON API). Двух значений мало кто ждёт,
+  // но без `cx` запрос не работает: ключ авторизует, а cx говорит, ПО ЧЕМУ
+  // искать (движок настраивается на «весь интернет» в консоли Google).
+  // Скрейпить выдачу google.com вместо этого нельзя — там капча.
+  Future<List<SearchHit>> _google(String q, String key, String cx) async {
+    if (key.isEmpty || cx.isEmpty) return const [];
+    final res = await http.get(
+      Uri.parse('https://www.googleapis.com/customsearch/v1'
+          '?key=${Uri.encodeQueryComponent(key)}'
+          '&cx=${Uri.encodeQueryComponent(cx)}'
+          '&num=5&q=${Uri.encodeQueryComponent(q)}'),
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return const [];
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    return [
+      for (final r in (data['items'] as List? ?? const []))
+        if (r is Map)
+          SearchHit((r['title'] ?? '').toString(), (r['link'] ?? '').toString(),
+              (r['snippet'] ?? '').toString()),
+    ];
+  }
+
+  // Yandex Search API. Отдаёт XML, а не JSON, поэтому разбор — регулярками:
+  // тащить в проект XML-пакет ради одного провайдера не стоит, структура
+  // ответа простая и стабильная (<doc> с url/title/passage).
+  Future<List<SearchHit>> _yandex(String q, String key, String folder) async {
+    if (key.isEmpty || folder.isEmpty) return const [];
+    final res = await http.get(
+      Uri.parse('https://yandex.ru/search/xml'
+          '?folderid=${Uri.encodeQueryComponent(folder)}'
+          '&apikey=${Uri.encodeQueryComponent(key)}'
+          '&l10n=ru&sortby=rlv&filter=none&maxpassages=2'
+          '&groupby=${Uri.encodeQueryComponent('attr=d.mode=deep.groups-on-page=5.docs-in-group=1')}'
+          '&query=${Uri.encodeQueryComponent(q)}'),
+    ).timeout(const Duration(seconds: 12));
+    if (res.statusCode != 200) return const [];
+    final xml = utf8.decode(res.bodyBytes, allowMalformed: true);
+    // Яндекс отвечает 200 и на отказ (нет квоты, неверный ключ) — ошибка лежит
+    // внутри XML, иначе она молча выглядела бы как «ничего не нашлось».
+    final err = RegExp(r'<error[^>]*>(.*?)</error>', dotAll: true).firstMatch(xml);
+    if (err != null) {
+      unawaited(appendLog('errors',
+          'WebSearch[yandex]: ${_stripHtml(err.group(1) ?? '')}'));
+      return const [];
+    }
+    final hits = <SearchHit>[];
+    for (final m
+        in RegExp(r'<doc[^>]*>(.*?)</doc>', dotAll: true).allMatches(xml)) {
+      final doc = m.group(1) ?? '';
+      String tag(String name) {
+        final t = RegExp('<$name[^>]*>(.*?)</$name>', dotAll: true)
+            .firstMatch(doc)
+            ?.group(1);
+        return t == null ? '' : _stripHtml(t);
+      }
+
+      final title = tag('title');
+      if (title.isEmpty) continue;
+      final snippet = tag('passage').isNotEmpty ? tag('passage') : tag('headline');
+      hits.add(SearchHit(title, tag('url'), snippet));
+      if (hits.length >= 5) break;
+    }
+    return hits;
   }
 
   // Keyless fallback: scrape DuckDuckGo's HTML endpoint. Fragile by nature

@@ -818,6 +818,14 @@ class DesktopIntegration with WindowListener, TrayListener {
       await SidecarClient.instance.stop();
     } catch (_) {}
     try {
+      // Сервер клона держит модель в VRAM — просим освободить её штатно, пока
+      // процесс ещё жив; ProcessJob потом просто добьёт остаток.
+      final app = _app;
+      if (app != null && CloneServer.instance.isRunning) {
+        await CloneServer.instance.stop(app);
+      }
+    } catch (_) {}
+    try {
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
     } catch (_) {}
@@ -920,6 +928,194 @@ class DesktopIntegration with WindowListener, TrayListener {
   }
 }
 
+// ==================== ЛОКАЛЬНЫЙ СЕРВЕР СИНТЕЗА ====================
+// Кнопка «запустить/остановить» для sidecar/qwen_tts_server.py — того самого
+// сервера клон-голоса на видеокарте, который до сих пор поднимали руками из
+// консоли. Приложение с ним и так умеет разговаривать (движок озвучки
+// «Клон (сервер)» шлёт HTTP на cosyvoiceEndpoint) — здесь добавляется только
+// управление его жизненным циклом, без единого нового протокола.
+//
+// Почему не просто Process.start: сервер держит модель в VRAM, и осиротевший
+// процесс занимал бы видеопамять до перезагрузки. ProcessJob (см. выше) кладёт
+// его в Job Object с KILL_ON_JOB_CLOSE — он умрёт вместе с приложением даже
+// при аварийном завершении.
+
+enum CloneServerState { stopped, starting, running, failed }
+
+class CloneServer {
+  CloneServer._();
+  static final CloneServer instance = CloneServer._();
+
+  final ValueNotifier<CloneServerState> state =
+      ValueNotifier(CloneServerState.stopped);
+
+  /// Причина отказа для подписи под кнопкой (пусто, если всё хорошо).
+  final ValueNotifier<String> problem = ValueNotifier('');
+
+  io.Process? _proc;
+  bool _busy = false;
+
+  bool get isRunning => state.value == CloneServerState.running;
+
+  /// Порт из адреса в настройках; 8760 — тот же дефолт, что у самого скрипта.
+  static int portOf(String endpoint) {
+    final p = Uri.tryParse(endpoint.trim())?.port ?? 0;
+    return p == 0 ? 8760 : p;
+  }
+
+  /// Скрипт лежит в ассетах и разворачивается рядом с данными: в установленной
+  /// версии папки sidecar/ нет, а держать вторую копию в репозитории — верный
+  /// способ забыть про неё при правке.
+  Future<String?> _ensureScript() async {
+    try {
+      final dir = io.Directory(
+          '${await appDataRoot()}${io.Platform.pathSeparator}tts-server');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final f = io.File(
+          '${dir.path}${io.Platform.pathSeparator}qwen_tts_server.py');
+      final data = await rootBundle.load('sidecar/qwen_tts_server.py');
+      final bytes = data.buffer.asUint8List();
+      // Перезаписываем только при отличии — иначе каждый запуск трогает файл.
+      if (!await f.exists() || (await f.length()) != bytes.length) {
+        await f.writeAsBytes(bytes, flush: true);
+      }
+      return f.path;
+    } catch (e) {
+      unawaited(appendLog('errors', 'CloneServer script: $e'));
+      return null;
+    }
+  }
+
+  /// Интерпретатор с torch+CUDA. Сначала — заданный руками, иначе ищем сами.
+  Future<String?> resolvePython(AppState app) async {
+    final manual = app.cloneServerPython.trim();
+    if (manual.isNotEmpty) {
+      return await io.File(manual).exists() ? manual : null;
+    }
+    final sep = io.Platform.pathSeparator;
+    final candidates = <String>[];
+    // Рядом с приложением и вверх по дереву — так найдётся venv из репозитория
+    // на машине разработки.
+    var dir = io.File(io.Platform.resolvedExecutable).parent;
+    for (var i = 0; i < 7; i++) {
+      candidates.add('${dir.path}${sep}sidecar$sep.venv-gpu${sep}Scripts'
+          '${sep}python.exe');
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+    try {
+      candidates.add('${await appDataRoot()}${sep}tts-server$sep.venv'
+          '${sep}Scripts${sep}python.exe');
+    } catch (_) {}
+    for (final c in candidates) {
+      if (await io.File(c).exists()) return c;
+    }
+    return null;
+  }
+
+  Future<void> start(AppState app) async {
+    if (_busy || isRunning) return;
+    _busy = true;
+    problem.value = '';
+    state.value = CloneServerState.starting;
+    try {
+      final py = await resolvePython(app);
+      if (py == null) {
+        problem.value = app.t('cloneSrvNoPython');
+        state.value = CloneServerState.failed;
+        return;
+      }
+      final script = await _ensureScript();
+      if (script == null) {
+        problem.value = app.t('cloneSrvNoScript');
+        state.value = CloneServerState.failed;
+        return;
+      }
+      final port = portOf(app.cosyvoiceEndpoint);
+      // Веса (~4 ГБ) кладём в общий кэш EVS на диске установки, а не в профиль
+      // пользователя на C: — сервер уважает EVS_QWEN_CACHE.
+      final env = <String, String>{};
+      try {
+        env['EVS_QWEN_CACHE'] =
+            '${await componentsDirPath()}${io.Platform.pathSeparator}hf-cache';
+      } catch (_) {}
+      _proc = await io.Process.start(
+        py,
+        [script, '--port', '$port'],
+        runInShell: false,
+        environment: env,
+      );
+      ProcessJob.instance.add(_proc!.pid); // умрёт вместе с приложением
+      final up = Completer<void>();
+      // Сервер печатает всё в stderr с префиксом [qwen-tts]; строка про
+      // listening — его аналог EVS_SIDECAR_READY у сайдкара.
+      _proc!.stderr
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter())
+          .listen((line) {
+        final t = line.trim();
+        if (t.isEmpty) return;
+        unawaited(appendLog('tts-server', t));
+        if (!up.isCompleted && t.contains('listening on http')) up.complete();
+      });
+      _proc!.exitCode.then((code) {
+        _proc = null;
+        if (!up.isCompleted) {
+          problem.value = '${app.t('cloneSrvExited')} ($code)';
+          state.value = CloneServerState.failed;
+        } else {
+          state.value = CloneServerState.stopped;
+        }
+      });
+      // Импорт torch на холодную занимает десятки секунд — таймаут щедрый.
+      await up.future.timeout(const Duration(seconds: 180));
+      state.value = CloneServerState.running;
+      if (app.cosyvoiceEndpoint.trim().isEmpty) {
+        app.setCosyvoiceEndpoint('http://127.0.0.1:$port');
+      }
+      unawaited(app.checkCosyvoice());
+    } catch (e) {
+      unawaited(appendLog('errors', 'CloneServer start: $e'));
+      if (state.value != CloneServerState.failed) {
+        problem.value = app.t('cloneSrvFailed');
+        state.value = CloneServerState.failed;
+      }
+      try {
+        _proc?.kill();
+      } catch (_) {}
+      _proc = null;
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> stop(AppState app) async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      // Сначала попросить освободить VRAM штатно: /unload сервер умеет, а
+      // при kill его finally уже не отработает.
+      final ep = app.cosyvoiceEndpoint.trim();
+      if (ep.isNotEmpty) {
+        try {
+          await http
+              .post(Uri.parse('$ep/unload'))
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+      try {
+        _proc?.kill();
+      } catch (_) {}
+      _proc = null;
+      state.value = CloneServerState.stopped;
+      problem.value = '';
+    } finally {
+      _busy = false;
+    }
+  }
+}
+
 // ============================ ЖУРНАЛ ============================
 // Чтение append-only логов, которые пишет appendLog(...) в <app-data>/logs.
 // Один источник на всё приложение: экран журнала «Ноктюрна» и страница
@@ -951,6 +1147,7 @@ class EvsLogFeed {
     'chat': ('model', 'accent'),
     'errors': ('errors', 'danger'),
     'update-runner': ('updates', 'accent'),
+    'tts-server': ('voice', 'warn'),
   };
 
   /// Ключ i18n для подписи группы.

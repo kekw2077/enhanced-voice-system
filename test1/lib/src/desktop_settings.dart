@@ -159,6 +159,10 @@ class _WebSearchCard extends StatefulWidget {
 class _WebSearchCardState extends State<_WebSearchCard> {
   late final TextEditingController _tavily;
   late final TextEditingController _brave;
+  late final TextEditingController _googleKey;
+  late final TextEditingController _googleCx;
+  late final TextEditingController _yandexKey;
+  late final TextEditingController _yandexFolder;
 
   @override
   void initState() {
@@ -166,17 +170,77 @@ class _WebSearchCardState extends State<_WebSearchCard> {
     final app = context.read<AppState>();
     _tavily = TextEditingController(text: app.tavilyKey);
     _brave = TextEditingController(text: app.braveKey);
+    _googleKey = TextEditingController(text: app.googleKey);
+    _googleCx = TextEditingController(text: app.googleCx);
+    _yandexKey = TextEditingController(text: app.yandexKey);
+    _yandexFolder = TextEditingController(text: app.yandexFolder);
   }
 
   @override
   void dispose() {
     _tavily.dispose();
     _brave.dispose();
+    _googleKey.dispose();
+    _googleCx.dispose();
+    _yandexKey.dispose();
+    _yandexFolder.dispose();
     super.dispose();
   }
 
+  // Выбор поисковика. Шесть вариантов — для сегмента многовато, поэтому чипы
+  // в перенос; у ненастроенного провайдера подпись гаснет, чтобы было видно,
+  // что ключей ему не хватает.
+  Widget _providerChips(AppState app) {
+    const labels = {
+      'auto': null, // берётся из i18n
+      'tavily': 'Tavily',
+      'brave': 'Brave',
+      'google': 'Google',
+      'yandex': 'Яндекс',
+      'ddg': 'DuckDuckGo',
+    };
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final id in WebSearchService.providers)
+          Builder(builder: (context) {
+            final active = app.searchProvider == id;
+            final ready =
+                id == 'auto' || WebSearchService.instance.configured(id, app);
+            return GestureDetector(
+              onTap: () => app.setSearchProvider(id),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: active
+                      ? _accent(context).withValues(alpha: 0.12)
+                      : Colors.transparent,
+                  border: Border.all(
+                      color: active ? _accent(context) : _stroke(context)),
+                ),
+                child: Text(
+                  labels[id] ?? app.t('webSearchAuto'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: active
+                        ? _accent(context)
+                        : (ready ? _sub(context) : _faint(context)),
+                  ),
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
   Widget _keyField(
-      TextEditingController c, String hint, ValueChanged<String> onChanged) {
+      TextEditingController c, String hint, ValueChanged<String> onChanged,
+      {bool obscure = true}) {
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 13),
@@ -189,7 +253,7 @@ class _WebSearchCardState extends State<_WebSearchCard> {
       child: TextField(
         controller: c,
         onChanged: onChanged,
-        obscureText: true,
+        obscureText: obscure,
         style: TextStyle(fontSize: 12.5, color: _body(context)),
         decoration: InputDecoration(
           isDense: true,
@@ -241,6 +305,12 @@ class _WebSearchCardState extends State<_WebSearchCard> {
           ]),
           if (app.webSearchEnabled) ...[
             const SizedBox(height: 14),
+            _label(app.t('webSearchProvider')),
+            _providerChips(app),
+            const SizedBox(height: 6),
+            Text(app.t('webSearchProviderDesc'),
+                style: TextStyle(fontSize: 11.5, color: _faint(context))),
+            const SizedBox(height: 12),
             Text(app.t('webSearchKeysHint'),
                 style:
                     TextStyle(fontSize: 11.5, color: _faint(context))),
@@ -250,6 +320,26 @@ class _WebSearchCardState extends State<_WebSearchCard> {
             const SizedBox(height: 10),
             _label(app.t('webSearchBrave')),
             _keyField(_brave, 'BSA…', app.setBraveKey),
+            const SizedBox(height: 12),
+            Text(app.t('webSearchGoogleHint'),
+                style: TextStyle(fontSize: 11.5, color: _faint(context))),
+            const SizedBox(height: 8),
+            _label(app.t('webSearchGoogleKey')),
+            _keyField(_googleKey, 'AIza…', app.setGoogleKey),
+            const SizedBox(height: 10),
+            _label(app.t('webSearchGoogleCx')),
+            _keyField(_googleCx, 'a1b2c3d4e5f6…', app.setGoogleCx,
+                obscure: false),
+            const SizedBox(height: 12),
+            Text(app.t('webSearchYandexHint'),
+                style: TextStyle(fontSize: 11.5, color: _faint(context))),
+            const SizedBox(height: 8),
+            _label(app.t('webSearchYandexKey')),
+            _keyField(_yandexKey, 'AQVN…', app.setYandexKey),
+            const SizedBox(height: 10),
+            _label(app.t('webSearchYandexFolder')),
+            _keyField(_yandexFolder, 'b1g…', app.setYandexFolder,
+                obscure: false),
           ],
         ],
       ),
@@ -2873,6 +2963,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'cardConnMode': _Pages.llmConn,
     'cardGenParams': _Pages.llmParams,
     'navLog': _Pages.appLog,
+    'webSearch': _Pages.llmConn,
+    'webSearchProvider': _Pages.llmConn,
   };
 
   List<(String key, String page)> _matches(AppState app) {
@@ -5468,7 +5560,120 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
             ],
           ),
         ),
+        // Управление локальным сервером клона: раньше его поднимали руками из
+        // консоли, хотя приложение уже умеет с ним разговаривать.
+        evsRow(context,
+          stacked: true,
+          label: app.t('cloneSrvTitle'),
+          desc: app.t('cloneSrvDesc'),
+          control: _CloneServerControl(app),
+        ),
       ],
+    );
+  }
+}
+
+// Кнопка «запустить/остановить» + состояние. Сам процесс ведёт CloneServer
+// (desktop_integration.dart): он же кладёт его в ProcessJob, чтобы модель не
+// осталась висеть в видеопамяти, если приложение упадёт.
+class _CloneServerControl extends StatefulWidget {
+  const _CloneServerControl(this.app);
+  final AppState app;
+  @override
+  State<_CloneServerControl> createState() => _CloneServerControlState();
+}
+
+class _CloneServerControlState extends State<_CloneServerControl> {
+  late final TextEditingController _py;
+
+  @override
+  void initState() {
+    super.initState();
+    _py = TextEditingController(text: widget.app.cloneServerPython);
+  }
+
+  @override
+  void dispose() {
+    _py.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final srv = CloneServer.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([srv.state, srv.problem]),
+      builder: (context, _) {
+        final st = srv.state.value;
+        final busy = st == CloneServerState.starting;
+        final running = st == CloneServerState.running;
+        final (label, color) = switch (st) {
+          CloneServerState.running => (app.t('cloneSrvRunning'), _success(context)),
+          CloneServerState.starting => (app.t('cloneSrvStarting'), _warn(context)),
+          CloneServerState.failed => (srv.problem.value, _danger(context)),
+          CloneServerState.stopped => (app.t('cloneSrvStopped'), _faint(context)),
+        };
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: busy
+                    ? null
+                    : () => unawaited(
+                        running ? srv.stop(app) : srv.start(app)),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: running ? _danger(context) : _stroke(context)),
+                    color: running ? Colors.transparent : _stroke(context),
+                  ),
+                  child: Text(
+                    running ? app.t('cloneSrvStop') : app.t('cloneSrvStart'),
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: running ? _danger(context) : _body(context)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                      width: 7,
+                      height: 7,
+                      decoration:
+                          BoxDecoration(shape: BoxShape.circle, color: color)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: color)),
+                  ),
+                ]),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            Text(app.t('cloneSrvPython'),
+                style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: _sectionLabel(context))),
+            const SizedBox(height: 5),
+            _RemoteField(
+              controller: _py,
+              onChanged: app.setCloneServerPython,
+            ),
+          ],
+        );
+      },
     );
   }
 }

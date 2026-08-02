@@ -777,6 +777,9 @@ class _NocturStageState extends State<_NocturStage> {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
     final app = context.read<AppState>();
+    // Композер при выключенном чате подменяется замком, но поле могло остаться
+    // в фокусе с прошлого кадра — Enter не должен ничего отправлять.
+    if (!app.chatEnabled) return;
     app.buzz();
     _input.clear();
     setState(() => _sending = true);
@@ -957,8 +960,9 @@ class _NocturStageState extends State<_NocturStage> {
     );
   }
 
-  // 5. Поле ввода 42 px + контурная кнопка микрофона 42×42.
+  // 5. Поле ввода 42 px + переключатель чата 42×42.
   Widget _inputRow(BuildContext context, AppState app) {
+    if (!app.chatEnabled) return const _NocturChatLocked();
     final skin = _skin(context);
     return Row(
       children: [
@@ -1190,6 +1194,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
     final app = context.read<AppState>();
+    if (!app.chatEnabled) return;
     app.buzz();
     _input.clear();
     setState(() => _sending = true);
@@ -1590,6 +1595,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
   }
 
   Widget _composer(BuildContext context, AppState app) {
+    if (!app.chatEnabled) return const _NocturChatLocked();
     final skin = _skin(context);
     OutlineInputBorder border(Color c) => OutlineInputBorder(
       borderRadius: BorderRadius.circular(skin.radiusControl),
@@ -1714,6 +1720,55 @@ class _NocturIconBtn extends StatelessWidget {
       ),
     );
     return tooltip == null ? btn : Tooltip(message: tooltip!, child: btn);
+  }
+}
+
+// Композер при выключенном чате: вместо поля ввода — замок с той же
+// подсказкой, что в классическом стиле (chatDisabledHint), и справа сам
+// переключатель. Переключатель обязателен: без него из «Ноктюрна» нечем
+// включить чат обратно — пришлось бы идти в настройки.
+//
+// До 2.10.3 «Ноктюрн» брал у классического стиля только кнопку, а саму
+// блокировку — нет, и чат при выключенном тумблере продолжал работать.
+// Ветка стоит в _inputRow (главный экран) и _composer (вкладка «Диалог»),
+// ровно как _inputBar в chat_screen.dart и _inputRow в desktop_home.dart.
+class _NocturChatLocked extends StatelessWidget {
+  const _NocturChatLocked();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            height: 42,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              borderRadius:
+                  BorderRadius.circular(_skin(context).radiusControl),
+              border: Border.all(color: _stroke(context)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 16, color: _sub(context)),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Text(
+                    app.t('chatDisabledHint'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: _sub(context)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        const _NocturChatToggle(),
+      ],
+    );
   }
 }
 

@@ -1,7 +1,7 @@
 name: evs
 description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 2.10.3+63
+version: 2.11.0+64
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -66,6 +66,11 @@ flutter:
   assets:
     - assets/icon/app_icon.ico
     - assets/icon/icon.png
+    # Сервер клон-голоса запускается кнопкой в настройках, а папки sidecar/ в
+    # установленной версии нет — скрипт едет ассетом и разворачивается в
+    # userdata/tts-server. Вторую копию в assets/ намеренно не заводим: она
+    # рассинхронизировалась бы с оригиналом при первой же правке.
+    - sidecar/qwen_tts_server.py
   uses-material-design: true
   fonts:
     - family: Nunito
