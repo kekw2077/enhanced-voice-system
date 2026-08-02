@@ -828,7 +828,13 @@ class DesktopIntegration with WindowListener, TrayListener {
     // главное окно: пока она висела, оно намеренно было скрыто. Ставится ДО
     // всего остального: свались что-нибудь ниже, окно так и не появилось бы.
     BootSplash.instance.onDone = () {
-      if (_app?.startupShowWindow ?? false) unawaited(_show());
+      final a = _app;
+      if (a == null) return;
+      // Порядок важен: сначала виджет (у него свой процесс и своё окно), потом
+      // главное окно — чтобы фокус остался на нём, а не уехал на виджет.
+      unawaited(VizOverlayServer.instance.start(a));
+      if (a.startupShowWindow) unawaited(_show());
+      unawaited(_rebuildTrayMenu()); // «Загрузка…» → обычное меню
     };
     // Ambient-animation gating: subscribe the policy to the activity signals
     // (assistant speech/thinking, wake hits, loud mic) once per launch.
@@ -894,7 +900,12 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Floating widget: separate process, fed over a localhost WebSocket.
       // Spawns immediately when enabled (the chat window itself may stay
       // hidden — see main()).
-      unawaited(VizOverlayServer.instance.start(app));
+      // Виджет — тоже «окно программы»: поднимать его, пока движок грузится,
+      // значит предлагать нажать на то, что ещё не работает. Пока висит
+      // карточка загрузки, ждём; поднимет его onDone вместе с главным окном.
+      if (!BootSplash.instance.active) {
+        unawaited(VizOverlayServer.instance.start(app));
+      }
 
       // Widget-first startup: the native runner re-shows the window on the
       // first frame AFTER main()'s early hide — hide again once rendering
@@ -1002,6 +1013,20 @@ class DesktopIntegration with WindowListener, TrayListener {
 
   Future<void> _rebuildTrayMenu() async {
     final app = _app;
+    // Пока идёт загрузка, «Показать EVS» всё равно ничего не откроет — значит
+    // и предлагать его нельзя: неактивный пункт честнее кнопки, которая молча
+    // не срабатывает. Меню пересобирается по готовности (BootSplash.onDone).
+    if (BootSplash.instance.active) {
+      await trayManager.setContextMenu(Menu(items: [
+        MenuItem(
+            key: 'loading',
+            label: app?.t('trayLoading') ?? 'Загрузка…',
+            disabled: true),
+        MenuItem.separator(),
+        MenuItem(key: 'quit', label: app?.t('trayQuit') ?? 'Quit'),
+      ]));
+      return;
+    }
     await trayManager.setContextMenu(Menu(items: [
       MenuItem(key: 'show', label: app?.t('trayShow') ?? 'Show EVS'),
       MenuItem(
@@ -1026,6 +1051,15 @@ class DesktopIntegration with WindowListener, TrayListener {
   }
 
   Future<void> _show() async {
+    // Пока идёт загрузка, окно открывать нечему: движок ещё не поднят, команды
+    // не принимаются, а на экране висит карточка загрузки. Раньше окно можно
+    // было вытащить из трея прямо поверх неё и получить наполовину живое
+    // приложение. Единственная точка входа — сюда сходятся и трей, и горячая
+    // клавиша, и повторный запуск.
+    if (BootSplash.instance.active) {
+      unawaited(appendLog('sidecar', 'показ окна отложен: идёт загрузка'));
+      return;
+    }
     try {
       await windowManager.show();
       await windowManager.focus();

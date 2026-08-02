@@ -102,6 +102,11 @@ class SidecarClient {
       final args = <String>[
         ...launch.$2,
         '--engine', _sttEngine,
+        // Размер модели тоже задаётся при запуске, а не только сообщением
+        // следом. Иначе сайдкар начинал грузить свой умолчательный `small`,
+        // получал `stt.config {model: tiny}` уже в процессе и грузил модель
+        // ВТОРОЙ раз — это видно в журнале двумя строками подряд.
+        '--model', _sttModel,
         '--denoise', _denoise,
         '--device', _sttDevice,
         '--tts-engine', _ttsEngine,
@@ -130,7 +135,14 @@ class SidecarClient {
           .transform(const LineSplitter())
           .listen((line) {
         final t = line.trim();
-        if (t.isNotEmpty) unawaited(appendLog('sidecar', 'ERR $t'));
+        if (t.isEmpty) return;
+        unawaited(appendLog('sidecar', 'ERR $t'));
+        // Сайдкар печатает свои этапы в stderr. Момент «модель загрузилась,
+        // пошёл прогрев» — настоящее событие между «загружаю модели» и
+        // «готово», и других способов узнать о нём у окна загрузки нет.
+        if (t.contains('] engine ') && t.contains(' loaded in ')) {
+          BootSplash.instance.phase('warming');
+        }
       });
       final ready = Completer<int>();
       _proc!.stdout

@@ -668,6 +668,10 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
   String _capKey = 'bootPhaseStart';
   String _noteKey = '';
   bool _ending = false; // выход уже назначен — второй раз не назначать
+  // Границы текущего этапа и момент, когда он начался (см. _readBoot).
+  double _phaseBase = 0.0;
+  double _phaseCeil = 0.0;
+  DateTime _phaseAt = DateTime.now();
 
   bool get _boot => widget.mode == 'boot';
 
@@ -698,6 +702,7 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
     _status = Timer.periodic(const Duration(milliseconds: 250), (_) => _read());
     // Полоса догоняет цель плавно — 30 кадров в секунду тут достаточно.
     _tick = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      if (_boot) _creep();
       final next = _shown + (_target - _shown) * 0.12;
       if ((next - _shown).abs() < 0.0005) return;
       if (mounted) setState(() => _shown = next);
@@ -747,29 +752,39 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
     if (parts.isEmpty || parts.first.isEmpty) return;
     final note = lines.length > 1 ? lines[1].trim() : '';
     final phase = parts.first;
-    final (double t, String cap) = switch (phase) {
-      'start' => (0.04, 'bootPhaseStart'),
-      'settings' => (0.10, 'bootPhaseSettings'),
-      'tray' => (0.18, 'bootPhaseTray'),
+    final frac = parts.length > 1 ? (double.tryParse(parts[1]) ?? 0) : 0.0;
+    // Полосы у каждого этапа две: где он начинается и куда может доползти, пока
+    // идёт. Границы разнесены по РЕАЛЬНОЙ длительности, замеренной на запуске:
+    // дольше всего поднимается процесс сайдкара (~3 с) и грузится модель, вот
+    // им и отданы самые широкие участки.
+    final (double base, double ceil, String cap) = switch (phase) {
+      'start' => (0.02, 0.06, 'bootPhaseStart'),
+      'settings' => (0.06, 0.12, 'bootPhaseSettings'),
+      'tray' => (0.12, 0.20, 'bootPhaseTray'),
+      // У скачивания компонента есть настоящий процент — ползти незачем.
       'component' => (
-          0.20 +
-              0.42 *
-                  ((parts.length > 1 ? double.tryParse(parts[1]) ?? 0 : 0)
-                      .clamp(0.0, 1.0)),
+          0.20 + 0.30 * frac.clamp(0.0, 1.0),
+          0.20 + 0.30 * frac.clamp(0.0, 1.0),
           'bootPhaseComponent'
         ),
-      'sidecar' => (0.66, 'bootPhaseSidecar'),
-      'connect' => (0.76, 'bootPhaseConnect'),
-      'models' => (0.86, 'bootPhaseModels'),
-      'ready' => (1.0, 'bootPhaseReady'),
-      'error' => (1.0, 'bootPhaseError'),
-      _ => (-1.0, ''),
+      'sidecar' => (0.52, 0.76, 'bootPhaseSidecar'),
+      'connect' => (0.76, 0.82, 'bootPhaseConnect'),
+      'models' => (0.82, 0.92, 'bootPhaseModels'),
+      'warming' => (0.92, 0.98, 'bootPhaseWarming'),
+      'ready' => (1.0, 1.0, 'bootPhaseReady'),
+      'error' => (1.0, 1.0, 'bootPhaseError'),
+      _ => (-1.0, -1.0, ''),
     };
-    if (t < 0) return;
-    if (!mounted) return;
+    if (base < 0 || !mounted) return;
+    final changed = cap != _capKey || (base - _phaseBase).abs() > 0.0001;
     setState(() {
+      if (changed) {
+        _phaseBase = base;
+        _phaseCeil = ceil;
+        _phaseAt = DateTime.now();
+      }
       // Только вперёд: откат полосы читается как сбой, которого не было.
-      if (t > _target) _target = t;
+      if (base > _target) _target = base;
       _capKey = cap;
       _noteKey = note;
     });
@@ -785,6 +800,19 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
           Duration(milliseconds: phase == 'error' ? 4000 : 800),
           () => io.exit(0));
     }
+  }
+
+  // Внутри этапа полоса не стоит: она асимптотически подползает к границе
+  // следующего, но никогда её не достигает. Это не выдуманный прогресс — этап
+  // и его подпись настоящие, а движение означает ровно «работа ещё идёт».
+  // Стоящая полоса на трёхсекундном подъёме сайдкара читается как зависание,
+  // и именно на это была жалоба.
+  void _creep() {
+    if (_phaseCeil <= _phaseBase) return;
+    final dt = DateTime.now().difference(_phaseAt).inMilliseconds / 1000.0;
+    final t = _phaseBase +
+        (_phaseCeil - _phaseBase) * (1 - math.exp(-dt / 2.0));
+    if (t > _target && mounted) setState(() => _target = t);
   }
 
   Future<int> _logBytes() async {

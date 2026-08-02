@@ -1081,41 +1081,60 @@ class ComponentManager {
 
   bool isReady(String id) => statusOf(id).value.state == ComponentState.ready;
 
+  /// Читает манифест компонентов. **Сначала кэш на диске, сеть — фоном.**
+  ///
+  /// Чтобы решить, какой файл движка запускать, свежий манифест не нужен:
+  /// нужен тот, по которому компонент уже установлен, а он лежит рядом. Сеть
+  /// нужна только чтобы УЗНАТЬ о новой версии, а это не срочно — обновление всё
+  /// равно применяется на следующем запуске. Раньше запрос стоял на пути
+  /// запуска с таймаутом 15 секунд: полторы секунды в лучшем случае и до
+  /// пятнадцати, если до GitHub не достучаться.
   Future<void> loadManifest() async {
     final sep = io.Platform.pathSeparator;
     final cache = io.File('${await _componentsDir()}${sep}manifest.json');
-    String? body;
+    var fromCache = false;
+    try {
+      if (await cache.exists()) {
+        _parseManifest(await cache.readAsString());
+        fromCache = true;
+      }
+    } catch (_) {}
+    if (fromCache) {
+      // Кэш есть — стартуем по нему, а свежий подтянем в фоне: он повлияет на
+      // stageUpdate (припасти обновление к следующему запуску), не на этот.
+      unawaited(_fetchManifest(cache));
+      await refreshStates();
+      return;
+    }
+    // Кэша нет вовсе — первый запуск. Тут без сети действительно никак:
+    // неизвестно даже, что качать.
+    await _fetchManifest(cache);
+    await refreshStates();
+  }
+
+  Future<void> _fetchManifest(io.File cache) async {
     try {
       final res = await http
           .get(Uri.parse(manifestUrl))
           .timeout(const Duration(seconds: 15));
-      if (res.statusCode == 200) {
-        body = res.body;
-        try {
-          await cache.writeAsString(body);
-        } catch (_) {}
-      }
+      if (res.statusCode != 200) return;
+      _parseManifest(res.body);
+      try {
+        await cache.writeAsString(res.body);
+      } catch (_) {}
     } catch (_) {}
-    // Offline / fetch failed: fall back to the last cached manifest so component
-    // resolution (which sidecar exe to launch) still works without network,
-    // instead of an empty manifest that reverts to a stale legacy onefile.
-    if (body == null) {
-      try {
-        if (await cache.exists()) body = await cache.readAsString();
-      } catch (_) {}
-    }
-    if (body != null) {
-      try {
-        final j = jsonDecode(body) as Map<String, dynamic>;
-        final comps = (j['components'] as Map?)?.cast<String, dynamic>() ?? {};
-        _manifest = {
-          for (final e in comps.entries)
-            e.key: ComponentInfo.fromJson(
-                e.key, (e.value as Map).cast<String, dynamic>())
-        };
-      } catch (_) {}
-    }
-    await refreshStates();
+  }
+
+  void _parseManifest(String body) {
+    try {
+      final j = jsonDecode(body) as Map<String, dynamic>;
+      final comps = (j['components'] as Map?)?.cast<String, dynamic>() ?? {};
+      _manifest = {
+        for (final e in comps.entries)
+          e.key: ComponentInfo.fromJson(
+              e.key, (e.value as Map).cast<String, dynamic>())
+      };
+    } catch (_) {}
   }
 
   Future<void> refreshStates() async {
@@ -1178,6 +1197,27 @@ class ComponentManager {
   Future<String> _versionMarkerPath(String id) async =>
       '${await _componentsDir()}${io.Platform.pathSeparator}.$id.version';
 
+  /// Удалить файл, которого Windows ещё может не отпустить. Сразу после
+  /// распаковки её собственный хэндл на архив живёт ещё мгновение, и
+  /// одиночный `delete()` тихо проваливается — а провалившееся удаление здесь
+  /// стоило пользователю 88 секунд на каждом запуске. Несколько попыток с
+  /// паузой закрывают вопрос; если и они не помогли, следующий запуск отсеет
+  /// файл по маркеру версии.
+  Future<bool> _deleteStubborn(io.File f) async {
+    for (var i = 0; i < 5; i++) {
+      try {
+        if (!await f.exists()) return true;
+        await f.delete();
+        return true;
+      } catch (_) {
+        await Future.delayed(Duration(milliseconds: 120 * (i + 1)));
+      }
+    }
+    unawaited(appendLog('errors',
+        'не удалось удалить припасённый файл ${f.path} — будет отсеян по версии'));
+    return false;
+  }
+
   Future<String?> _readVersion(String id) async {
     try {
       return await io.File(await _versionMarkerPath(id)).readAsString();
@@ -1230,6 +1270,17 @@ class ComponentManager {
         final name = entry.value.fileName;
         final staged = io.File('$dir$sep$name.new');
         if (!await staged.exists()) continue;
+        // Эта версия уже стоит — припасённый файл лишний. Проверка обязана быть
+        // ПЕРВОЙ: без неё каждый запуск считал sha256 по сотне мегабайт и
+        // распаковывал их заново. Так и было — удалить архив после распаковки
+        // не удавалось (Windows ещё держал файл), маркер версии при этом
+        // обновлялся, и приложение переустанавливало один и тот же движок
+        // каждый раз. Замер на машине пользователя: 88 секунд из 94.
+        if ((await _readVersion(entry.key))?.trim() ==
+            entry.value.version.trim()) {
+          await _deleteStubborn(staged);
+          continue;
+        }
         if (entry.value.archive) {
           if (!await _verify(staged.path, entry.value.sha256)) {
             try {
@@ -1239,9 +1290,7 @@ class ComponentManager {
           }
           final exe = await _extract(entry.key, staged.path);
           if (exe != null) {
-            try {
-              await staged.delete();
-            } catch (_) {}
+            await _deleteStubborn(staged);
             try {
               await io.File(await _versionMarkerPath(entry.key))
                   .writeAsString(entry.value.version);

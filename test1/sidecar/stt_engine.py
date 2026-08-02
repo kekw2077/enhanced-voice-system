@@ -126,6 +126,7 @@ class WhisperEngine(BaseSttEngine):
         self._device_active = "cpu"  # what actually loaded (after fallback)
         self._fell_back = False  # cuda requested but dropped to cpu
         self._model = None
+        self._model_lock = threading.Lock()
         self._prompt: str | None = _DEFAULT_PROMPT
         self._language = None
         try:
@@ -182,8 +183,52 @@ class WhisperEngine(BaseSttEngine):
     def _ensure_model(self):
         if self._model is not None:
             return self._model
+        # Поток прогрева и поток захвата зовут это одновременно: в журнале
+        # видно две загрузки подряд. Для tiny это лишние миллисекунды, а для
+        # large-v3 — вторая копия модели в памяти рядом с первой.
+        with self._model_lock:
+            if self._model is not None:
+                return self._model
+            return self._build_model()
+
+    def _build_model(self):
         from faster_whisper import WhisperModel
         self._fell_back = False
+
+        def build(device: str, offline: bool):
+            kw = {"local_files_only": True} if offline else {}
+            return WhisperModel(self.model_size, device=device,
+                                compute_type=self.compute_type, **kw)
+
+        # Первый заход — строго из локального кэша. Без него faster-whisper на
+        # КАЖДОМ запуске ходит на huggingface.co спросить, не вышла ли новая
+        # версия модели, которая и так лежит на диске: замер на этой машине —
+        # 1.67 с против 0.20 с. Сеть остаётся только там, где без неё нельзя:
+        # модели ещё нет и её надо скачать.
+        for offline in (True, False):
+            try:
+                if self.device == "cuda":
+                    # Try CUDA; on any init failure (no driver / VRAM / cuDNN)
+                    # fall back to CPU so the pipeline never dies (TZ2 block 6).
+                    try:
+                        self._model = build("cuda", offline)
+                        self._device_active = "cuda"
+                        self._loaded = True
+                        return self._model
+                    except Exception:
+                        if not offline:
+                            self._fell_back = True
+                self._model = build("cpu", offline)
+                self._device_active = "cpu"
+                self._loaded = True
+                if offline:
+                    log_stage(f"whisper '{self.model_size}' loaded from cache")
+                return self._model
+            except Exception:
+                if offline:
+                    continue  # в кэше нет — идём в сеть
+                break
+
         # The greedy warmup can fire the instant the model finishes downloading,
         # when the just-written model.bin isn't yet openable ("Unable to open
         # file 'model.bin'"). Retry a few times so a cold first-run download race
@@ -192,20 +237,14 @@ class WhisperEngine(BaseSttEngine):
         for attempt in range(4):
             try:
                 if self.device == "cuda":
-                    # Try CUDA; on any init failure (no driver / VRAM / cuDNN)
-                    # fall back to CPU so the pipeline never dies (TZ2 block 6).
                     try:
-                        self._model = WhisperModel(
-                            self.model_size, device="cuda",
-                            compute_type=self.compute_type)
+                        self._model = build("cuda", False)
                         self._device_active = "cuda"
                         self._loaded = True
                         return self._model
                     except Exception:
                         self._fell_back = True
-                self._model = WhisperModel(
-                    self.model_size, device="cpu",
-                    compute_type=self.compute_type)
+                self._model = build("cpu", False)
                 self._device_active = "cpu"
                 self._loaded = True
                 return self._model
