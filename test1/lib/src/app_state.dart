@@ -226,6 +226,12 @@ class AppState extends ChangeNotifier {
   // these are additional simultaneous inputs, each arbitrated by the sidecar.
   List<String> extraMicIds = [];
   String listenMode = 'continuous'; // 'continuous' | 'ptt'
+  // Push-to-Talk: комбинация из 1–3 клавиш. Хранится virtual-key кодами Windows
+  // — именно их читает GetAsyncKeyState в PttWatcher. Подпись лежит рядом, а не
+  // выводится из кодов: обратная таблица «код → имя клавиши» жила бы только ради
+  // этой строчки и расходилась бы с раскладкой.
+  List<int> pttKeys = const [];
+  String pttLabel = '';
   String sttLanguage = 'auto'; // 'auto' | 'ru' | 'en'
   String whisperModel = 'small'; // tiny | base | small | medium (sidecar)
   String sttEngine = 'whisper'; // 'whisper' (sidecar) | 'windows' (speech_to_text)
@@ -552,6 +558,12 @@ class AppState extends ChangeNotifier {
       }
     } catch (_) {}
     listenMode = prefs.getString('listenMode') ?? 'continuous';
+    pttKeys = (prefs.getString('pttKeys') ?? '')
+        .split(',')
+        .map((s) => int.tryParse(s.trim()) ?? 0)
+        .where((v) => v > 0)
+        .toList();
+    pttLabel = prefs.getString('pttLabel') ?? '';
     sttLanguage = prefs.getString('sttLanguage') ?? 'auto';
     whisperModel = prefs.getString('whisperModel') ?? 'small';
     // One-time rescue (1.0.7): medium/large are unusable on CPU — measured
@@ -734,7 +746,8 @@ class AppState extends ChangeNotifier {
         savedServers.join(','), llmNumCtx, llmNumPredict, llmTemperature,
         llmKeepAlive, searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
-        jsonEncode(deviceDenoise), listenMode, sttLanguage, whisperModel, sttEngine,
+        jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
+        sttLanguage, whisperModel, sttEngine,
         sttSidecarEngine, denoiseMode, sttDevice, gameModeFullscreen, gameModeVram,
         gameModeVramEnter, gameModeVramExit, gameModeNotify,
         gameModeExclusions.join(','), cmdMode, wakeWord, stopWords.join(','),
@@ -821,6 +834,8 @@ class AppState extends ChangeNotifier {
     await prefs.setStringList('extraMicIds', extraMicIds);
     await prefs.setString('deviceDenoise', jsonEncode(deviceDenoise));
     await prefs.setString('listenMode', listenMode);
+    await prefs.setString('pttKeys', pttKeys.join(','));
+    await prefs.setString('pttLabel', pttLabel);
     await prefs.setString('sttLanguage', sttLanguage);
     await prefs.setString('whisperModel', whisperModel);
     await prefs.setString('sttEngine', sttEngine);
@@ -1061,6 +1076,12 @@ class AppState extends ChangeNotifier {
       }
     } catch (_) {}
     listenMode = prefs.getString('listenMode') ?? 'continuous';
+    pttKeys = (prefs.getString('pttKeys') ?? '')
+        .split(',')
+        .map((s) => int.tryParse(s.trim()) ?? 0)
+        .where((v) => v > 0)
+        .toList();
+    pttLabel = prefs.getString('pttLabel') ?? '';
     sttLanguage = prefs.getString('sttLanguage') ?? 'auto';
     whisperModel = prefs.getString('whisperModel') ?? 'small';
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
@@ -1945,6 +1966,15 @@ class AppState extends ChangeNotifier {
 
   void setListenMode(String v) {
     listenMode = v;
+    _save();
+    notifyListeners();
+  }
+
+  // Комбинация Push-to-Talk. Пустой список = «не назначено»: PttWatcher тогда
+  // не заводит опрос, а карточка настроек честно об этом пишет.
+  void setPttHotkey(List<int> keys, String label) {
+    pttKeys = List<int>.unmodifiable(keys);
+    pttLabel = label;
     _save();
     notifyListeners();
   }

@@ -110,19 +110,29 @@ Future<void> clearModelLoadingFlag() async {
   } catch (_) {}
 }
 
+// Очередь записи на каждый файл журнала. Без неё два одновременных
+// open-append-close на Windows перетирают друг другу хвост, и в журнале
+// остаются обрубки вроде «m opened» вместо «audio stream opened» — а журнал
+// теперь единственный способ разобрать, дошло ли нажатие Push-to-Talk.
+final Map<String, Future<void>> _logQueue = {};
+
 // Append-only diagnostics logs (<app-data>/logs/<name>.log): commands.log,
 // chat.log, errors.log. Best-effort — logging must never break the app.
-Future<void> appendLog(String name, String line) async {
-  try {
-    final root = await appDataRoot();
-    final logs = Directory('$root/logs');
-    if (!await logs.exists()) await logs.create(recursive: true);
-    final f = File('${logs.path}/$name.log');
-    await f.writeAsString(
-      '${DateTime.now().toIso8601String()}  $line\n',
-      mode: FileMode.append,
-    );
-  } catch (_) {}
+Future<void> appendLog(String name, String line) {
+  // Отметка времени берётся сейчас, а не в момент записи: очередь может
+  // сдвинуть запись, но порядок и время событий должны остаться настоящими.
+  final text = '${DateTime.now().toIso8601String()}  $line\n';
+  final next = (_logQueue[name] ?? Future<void>.value()).then((_) async {
+    try {
+      final root = await appDataRoot();
+      final logs = Directory('$root/logs');
+      if (!await logs.exists()) await logs.create(recursive: true);
+      await File('${logs.path}/$name.log')
+          .writeAsString(text, mode: FileMode.append);
+    } catch (_) {}
+  });
+  _logQueue[name] = next;
+  return next;
 }
 
 Future<void> installApk(String path) async {

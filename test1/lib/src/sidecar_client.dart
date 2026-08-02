@@ -853,6 +853,83 @@ class VoiceAssistant {
     _arm();
   }
 
+  // ---- Push-to-Talk -------------------------------------------------------
+  // Клавиша зажата прямо сейчас; хвост записи после отпускания; и предел
+  // ожидания расшифровки, когда микрофон уже закрыт.
+  bool _pttHeld = false;
+  Timer? _pttTail;
+  Timer? _pttGiveUp;
+
+  // Идёт сеанс удержания в любой его фазе. Нужно `_sync()`: в режиме PTT он
+  // всегда «не хочет» слушать, и без этой проверки любое уведомление AppState
+  // (а их во время команды десятки) обрывало бы запись на полуслове.
+  bool get _pttBusy => _pttHeld || _pttTail != null || _pttGiveUp != null;
+
+  /// Клавиша нажата: открыть микрофон. Слово-активатор при этом не нужен —
+  /// удержание само по себе значит «обращаюсь к тебе».
+  void pttPress() {
+    final app = _app;
+    if (app == null || app.listenMode != 'ptt') return;
+    if (_pttHeld) return;
+    if (SidecarClient.instance.status.value != SidecarStatus.connected) {
+      _toast(app.t('vaSttOffline'));
+      return;
+    }
+    _pttHeld = true;
+    _pttTail?.cancel();
+    _pttTail = null;
+    _pttGiveUp?.cancel();
+    _pttGiveUp = null;
+    _listening = true;
+    // Условие именно на `_sttStartedForSession`, а не на `_listening`: после
+    // хвоста запись уже остановлена, а сеанс ещё открыт (ждём расшифровку).
+    // Проверка по `_listening` в этом окне пропускала бы `stt.start`, и второе
+    // удержание подряд записывало бы тишину.
+    if (!_sttStartedForSession) {
+      _sttStartedForSession = true;
+      SidecarClient.instance
+          .sttStart(app.effectiveSttLanguage, prompt: app.sttBiasPrompt);
+    }
+    _flagWake();
+    if (!_busy) state.value = VaState.listening;
+    // В журнал — иначе «удержание не работает» невозможно разложить на «клавиша
+    // не долетела» и «фраза не распозналась».
+    unawaited(appendLog('sidecar', 'PTT down (${app.pttLabel})'));
+  }
+
+  /// Клавиша отпущена. Запись обрывается не сразу: сегмент во VAD сайдкара
+  /// закрывается по 600 мс тишины, и мгновенный `stt.stop` съел бы последнее
+  /// слово вместе с недособранной фразой.
+  void pttRelease() {
+    if (!_pttHeld) return;
+    _pttHeld = false;
+    unawaited(appendLog('sidecar', 'PTT up'));
+    _pttTail?.cancel();
+    _pttTail = Timer(const Duration(milliseconds: 1200), () {
+      _pttTail = null;
+      SidecarClient.instance.sttStop();
+      _sttStartedForSession = false;
+      // Микрофон закрыт — «Слушаю» на экране здесь было бы обманом. Когда
+      // расшифровка приедет, `_handle` сам зажжёт «Думаю».
+      if (!_busy) state.value = VaState.idle;
+      // Микрофон закрыт, но фразу ещё расшифровывают (на процессоре это
+      // секунды) — держим сеанс открытым, иначе результат придёт в пустоту.
+      _pttGiveUp?.cancel();
+      _pttGiveUp = Timer(const Duration(seconds: 25), _pttEnd);
+    });
+  }
+
+  void _pttEnd() {
+    _pttTail?.cancel();
+    _pttTail = null;
+    _pttGiveUp?.cancel();
+    _pttGiveUp = null;
+    if (!_listening) return;
+    _listening = false;
+    _disarm();
+    if (!_busy) state.value = VaState.idle;
+  }
+
   void attach(AppState app) {
     _app = app;
     if (_attached) return;
@@ -903,8 +980,12 @@ class VoiceAssistant {
     if (!connected) _sttStartedForSession = false; // next connect must restart
     // Only the wake-word mode listens continuously; 'separate'/'first' are
     // button-triggered, so the app doesn't capture audio non-stop by surprise.
-    final want =
-        connected && app.sttEngine == 'whisper' && app.cmdMode == 'wakeword';
+    // Push-to-Talk тоже не слушает постоянно — микрофон открывает удержание
+    // клавиши (pttPress), в этом весь смысл режима.
+    final want = connected &&
+        app.sttEngine == 'whisper' &&
+        app.cmdMode == 'wakeword' &&
+        app.listenMode != 'ptt';
     if (want) {
       if (!_listening) {
         _listening = true;
@@ -918,7 +999,7 @@ class VoiceAssistant {
         SidecarClient.instance
             .sttStart(app.effectiveSttLanguage, prompt: app.sttBiasPrompt);
       }
-    } else if (_listening) {
+    } else if (_listening && !_pttBusy) {
       _listening = false;
       _sttStartedForSession = false;
       _disarm();
@@ -955,7 +1036,13 @@ class VoiceAssistant {
     lastHeard.value = raw;
 
     String? command;
-    if (app.cmdMode == 'wakeword') {
+    if (app.listenMode == 'ptt') {
+      // Микрофон открылся ровно потому, что пользователь зажал клавишу — вся
+      // фраза и есть команда. «Режим распознавания» здесь ничего не решает,
+      // и в настройках под ним это написано прямым текстом.
+      _disarm();
+      command = raw;
+    } else if (app.cmdMode == 'wakeword') {
       if (state.value == VaState.armed) {
         // Wake word already heard on its own — this whole utterance is the
         // command.
@@ -989,7 +1076,17 @@ class VoiceAssistant {
       unawaited(appendLog('errors', 'VoiceAssistant._handle: $e'));
     } finally {
       _busy = false;
-      if (_listening) state.value = VaState.listening;
+      if (app.listenMode == 'ptt') {
+        // Фраза обработана: если клавишу уже отпустили — сеанс закрыт, а если
+        // всё ещё держат, микрофон остаётся открытым для следующей.
+        if (_pttHeld) {
+          state.value = VaState.listening;
+        } else {
+          _pttEnd();
+        }
+      } else if (_listening) {
+        state.value = VaState.listening;
+      }
     }
   }
 

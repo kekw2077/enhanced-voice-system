@@ -467,10 +467,14 @@ class _ChatScreenState extends State<ChatScreen> {
         return ValueListenableBuilder<VaState>(
           valueListenable: VoiceAssistant.instance.state,
           builder: (_, s, __) {
+            // В покое при Push-to-Talk микрофон закрыт — «Слушаю» здесь было бы
+            // обманом; вместо этого пилюля напоминает, что зажать.
+            final pttIdle = s == VaState.idle ? pttIdleHint(app) : null;
             final (label, color) = switch (s) {
               VaState.armed => (app.t('vaArmed'), _info(context)),
               VaState.thinking => (app.t('vaThinking'), _success(context)),
               VaState.running => (app.t('vaRunning'), _warn(context)),
+              _ when pttIdle != null => (pttIdle, _faint(context)),
               _ => (app.t('vaListening'), _accent(context)),
             };
             if (s == VaState.listening || s == VaState.idle) {

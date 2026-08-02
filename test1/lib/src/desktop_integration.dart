@@ -629,6 +629,152 @@ class VizOverlayServer {
   }
 }
 
+// ==================== PUSH-TO-TALK: УДЕРЖАНИЕ КЛАВИШИ ====================
+
+typedef _GetAsyncKeyStateNative = Int16 Function(Int32);
+typedef _GetAsyncKeyStateDart = int Function(int);
+
+/// Следит за комбинацией Push-to-Talk и превращает её в «зажал / отпустил».
+///
+/// Почему опрос, а не хоткей: `hotkey_manager` на Windows физически не может
+/// сообщить об отпускании — нативный плагин шлёт только `onKeyDown`, потому что
+/// `RegisterHotKey` присылает единственное сообщение `WM_HOTKEY` на нажатие.
+/// `GetAsyncKeyState` читает состояние клавиатуры, ничего не перехватывая: если
+/// на PTT назначена обычная буква, она продолжает работать во всех остальных
+/// программах. `RegisterHotKey` её бы, наоборот, проглотил системно — для
+/// комбинации с модификатором это удобно, а для одиночной клавиши означало бы,
+/// что её больше нигде не набрать, пока EVS запущен.
+class PttWatcher {
+  PttWatcher._();
+  static final PttWatcher instance = PttWatcher._();
+
+  _GetAsyncKeyStateDart? _fn;
+  bool _tried = false;
+  Timer? _timer;
+  List<int> _vks = const [];
+  bool _down = false;
+
+  _GetAsyncKeyStateDart? get _get {
+    if (!_tried) {
+      _tried = true;
+      try {
+        _fn = DynamicLibrary.open('user32.dll').lookupFunction<
+            _GetAsyncKeyStateNative, _GetAsyncKeyStateDart>('GetAsyncKeyState');
+      } catch (_) {}
+    }
+    return _fn;
+  }
+
+  /// Подписаться на настройки: опрос живёт ровно пока выбран режим «по нажатию»
+  /// и комбинация назначена.
+  void bind(AppState app) {
+    app.addListener(() => apply(app));
+    apply(app);
+  }
+
+  void apply(AppState app) {
+    if (app.listenMode != 'ptt' || app.pttKeys.isEmpty) {
+      _stop();
+      return;
+    }
+    _vks = app.pttKeys;
+    if (_timer != null) return;
+    if (_get == null) {
+      // Не Windows или user32 не открылась. Молча ничего не делать нельзя:
+      // снаружи это выглядит как «Push-to-Talk просто не работает».
+      unawaited(appendLog('errors', 'PTT: GetAsyncKeyState недоступна'));
+      return;
+    }
+    // 30 мс: задержка на слух незаметна, а нагрузка — три чтения состояния
+    // клавиатуры в такт, то есть около сотни вызовов в секунду.
+    _timer = Timer.periodic(const Duration(milliseconds: 30), (_) => _poll());
+    unawaited(appendLog('sidecar', 'PTT: опрос включён (${app.pttLabel})'));
+  }
+
+  void _stop() {
+    if (_timer == null) return;
+    _timer?.cancel();
+    _timer = null;
+    unawaited(appendLog('sidecar', 'PTT: опрос выключен'));
+    if (_down) {
+      _down = false;
+      VoiceAssistant.instance.pttRelease();
+    }
+  }
+
+  void _poll() {
+    final fn = _get;
+    if (fn == null || _vks.isEmpty) return;
+    var all = true;
+    for (final vk in _vks) {
+      // Старший бит = клавиша зажата сейчас. Младший («нажималась с прошлого
+      // вызова») намеренно не трогаем: он сбрасывается чтением и увёл бы
+      // состояние в разнос при двух читателях.
+      if (fn(vk) & 0x8000 == 0) {
+        all = false;
+        break;
+      }
+    }
+    if (all == _down) return;
+    _down = all;
+    if (all) {
+      VoiceAssistant.instance.pttPress();
+    } else {
+      VoiceAssistant.instance.pttRelease();
+    }
+  }
+}
+
+/// Virtual-key коды Windows для клавиши из записанной комбинации. Левый и
+/// правый модификаторы сводятся к общему коду: пользователь жмёт «Shift», а не
+/// «правый Shift», и требовать ту же половину клавиатуры было бы придиркой.
+int? pttVkFor(PhysicalKeyboardKey key) {
+  const ctrl = [
+    PhysicalKeyboardKey.controlLeft,
+    PhysicalKeyboardKey.controlRight
+  ];
+  const shift = [
+    PhysicalKeyboardKey.shiftLeft,
+    PhysicalKeyboardKey.shiftRight
+  ];
+  const alt = [PhysicalKeyboardKey.altLeft, PhysicalKeyboardKey.altRight];
+  if (ctrl.contains(key)) return 0x11; // VK_CONTROL
+  if (shift.contains(key)) return 0x10; // VK_SHIFT
+  if (alt.contains(key)) return 0x12; // VK_MENU
+  return key.keyCode;
+}
+
+/// Подпись клавиши для капсов в настройках. `debugName` даёт «Key G» / «Digit
+/// 1» — сокращаем до того, что написано на самой клавише.
+String pttKeyLabel(PhysicalKeyboardKey key) {
+  const named = <int, String>{
+    0x000700e0: 'Ctrl', 0x000700e4: 'Ctrl',
+    0x000700e1: 'Shift', 0x000700e5: 'Shift',
+    0x000700e2: 'Alt', 0x000700e6: 'Alt',
+    0x000700e3: 'Win', 0x000700e7: 'Win',
+  };
+  final fixed = named[key.usbHidUsage];
+  if (fixed != null) return fixed;
+  final n = key.debugName ?? '';
+  if (n.startsWith('Key ')) return n.substring(4);
+  if (n.startsWith('Digit ')) return n.substring(6);
+  if (n.startsWith('Numpad ')) return 'Num ${n.substring(7)}';
+  return n.isEmpty ? '?' : n;
+}
+
+/// Подсказка покоя для режима Push-to-Talk, или null в обычном режиме.
+/// Одна на все стили — чтобы следующий не написал свою, снова про «Айрис».
+String? pttIdleHint(AppState app) {
+  if (app.listenMode != 'ptt') return null;
+  if (app.pttLabel.isEmpty) return app.t('pttHintUnset');
+  return '${app.t('pttHintHold')}: ${app.pttLabel}';
+}
+
+/// Чем ассистента зовут прямо сейчас: слово-активатор или комбинация
+/// удержания. Пусто — режим удержания выбран, а клавиши ещё не назначены.
+String activatorLabel(AppState app) =>
+    app.listenMode == 'ptt' ? app.pttLabel : '«${app.wakeWord}»';
+
 class DesktopIntegration with WindowListener, TrayListener {
   DesktopIntegration._();
   static final DesktopIntegration instance = DesktopIntegration._();
@@ -661,6 +807,12 @@ class DesktopIntegration with WindowListener, TrayListener {
   Future<void> init(AppState app) async {
     if (defaultTargetPlatform != TargetPlatform.windows) return;
     _app = app;
+    // Карточка загрузки ушла — если виджет выключен, самое время показать
+    // главное окно: пока она висела, оно намеренно было скрыто. Ставится ДО
+    // всего остального: свались что-нибудь ниже, окно так и не появилось бы.
+    BootSplash.instance.onDone = () {
+      if (!(_app?.overlayMode ?? true)) unawaited(_show());
+    };
     // Ambient-animation gating: subscribe the policy to the activity signals
     // (assistant speech/thinking, wake hits, loud mic) once per launch.
     MotionPolicy.bindSignals();
@@ -690,13 +842,31 @@ class DesktopIntegration with WindowListener, TrayListener {
       SystemMonitor.instance.start(app);
       unawaited(MicMeter.instance.start(deviceId: app.inputDeviceId));
       unawaited(_bootstrapSidecar(app));
+      // Распознавание отдано системному движку — сигнала `ready` от сайдкара не
+      // будет вовсе, и окну загрузки ждать нечего.
+      if (app.sttEngine != 'whisper') {
+        unawaited(BootSplash.instance.finish());
+      }
       VoiceAssistant.instance.attach(app);
+      // Push-to-Talk: опрос клавиатуры включается сам, когда выбран режим «по
+      // нажатию» и назначена комбинация.
+      PttWatcher.instance.bind(app);
       // Bring the remote-input listener up if it was left enabled (TZ §14).
       if (app.remoteInputEnabled) RemoteInputServer.instance.start(app);
 
       // Auto-update (Discord-style): AppUpdater silently downloads the new
       // installer in the background and shows an in-app "restart to update"
       // banner — no native WinSparkle prompts.
+      // Проверка обновлений идёт параллельно и на готовность не влияет — она
+      // отражается побочной строкой окна загрузки, а не основной подписью.
+      AppUpdater.instance.status.addListener(() {
+        BootSplash.instance.note(switch (AppUpdater.instance.status.value) {
+          UpdateStatus.checking => 'bootNoteUpdCheck',
+          UpdateStatus.downloading => 'bootNoteUpdDownload',
+          UpdateStatus.ready => 'bootNoteUpdReady',
+          _ => '',
+        });
+      });
       AppUpdater.instance.start(app);
 
       // Verify CosyVoice reachability once at launch; an unavailable server
@@ -712,9 +882,11 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Widget-first startup: the native runner re-shows the window on the
       // first frame AFTER main()'s early hide — hide again once rendering
       // has settled so only the widget and tray remain.
-      if (app.overlayMode) {
+      if (app.overlayMode || BootSplash.instance.active) {
         unawaited(Future.delayed(const Duration(milliseconds: 900), () async {
-          if (_app?.overlayMode ?? false) await windowManager.hide();
+          if ((_app?.overlayMode ?? false) || BootSplash.instance.active) {
+            await windowManager.hide();
+          }
         }));
       }
     } catch (_) {}
@@ -729,6 +901,24 @@ class DesktopIntegration with WindowListener, TrayListener {
   // its download progress shows in Settings → STT. XTTS stays opt-in.
   Future<void> _bootstrapSidecar(AppState app) async {
     try {
+      // Окно загрузки закрывается по `ready` — это и есть «готова слушать».
+      // `connected` тут не годится: он значит лишь поднятый WebSocket, а модели
+      // после него грузятся ещё пару секунд.
+      SidecarClient.instance.status.addListener(() {
+        if (SidecarClient.instance.status.value == SidecarStatus.connected) {
+          BootSplash.instance.phase('connect');
+        }
+      });
+      SidecarClient.instance.sttState.addListener(() {
+        switch (SidecarClient.instance.sttState.value) {
+          case 'loading_models':
+            BootSplash.instance.phase('models');
+          case 'ready':
+            unawaited(BootSplash.instance.finish());
+          case 'error':
+            unawaited(BootSplash.instance.finish(failed: true));
+        }
+      });
       await ComponentManager.instance.loadManifest();
       // Apply any update staged on a previous run (before the exe is launched).
       await ComponentManager.instance.applyStagedUpdates();
@@ -753,10 +943,19 @@ class DesktopIntegration with WindowListener, TrayListener {
       // update. A newer component version is staged in the background for the
       // next launch (applied by applyStagedUpdates above).
       if (!await SidecarClient.instance.hasLocalSidecar()) {
+        // Первый запуск: компонент в сотню мегабайт качается прямо сейчас, и
+        // это единственный этап с настоящим процентом — показываем его.
+        final st = ComponentManager.instance.statusOf('sidecar');
+        void onProgress() =>
+            BootSplash.instance.phase('component', value: st.value.progress);
+        st.addListener(onProgress);
+        onProgress();
         await ComponentManager.instance.ensure('sidecar');
+        st.removeListener(onProgress);
       } else {
         unawaited(ComponentManager.instance.stageUpdate('sidecar'));
       }
+      BootSplash.instance.phase('sidecar');
       // The CPU voice clone (XTTS) was removed — reclaim its ~8 GB component and
       // caches from disk (idempotent no-op once gone).
       unawaited(ComponentManager.instance.purgeClone());
@@ -769,7 +968,11 @@ class DesktopIntegration with WindowListener, TrayListener {
       app.hookCloneGpuGameMode();
       unawaited(app.applyCloneServer());
       unawaited(app.syncActiveMics()); // resolve multi-mic devices (block 8.2)
-    } catch (_) {}
+    } catch (_) {
+      // Сайдкар не поднялся — готовности не будет, держать окно загрузки не за
+      // чем. Ошибку показываем в нём же, а не роняем окно молча.
+      unawaited(BootSplash.instance.finish(failed: true));
+    }
   }
 
   Future<void> _rebuildTrayMenu() async {

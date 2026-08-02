@@ -2878,8 +2878,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _statusChip(app.t('voiceStatusMic'),
-                  up ? app.t('voiceStatusReady') : app.t('voiceStatusOff'), up),
+              _statusChip(
+                  app.t('voiceStatusMic'),
+                  !up
+                      ? app.t('voiceStatusOff')
+                      // При Push-to-Talk микрофон открыт только на удержание —
+                      // «слушает» здесь неправда.
+                      : app.listenMode == 'ptt'
+                          ? app.t('voiceStatusPtt')
+                          : app.t('voiceStatusReady'),
+                  up),
               _statusChip(app.t('voiceStatusStt'), stt, up),
               _statusChip(app.t('voiceStatusVoice'), voice, voiceOk),
             ],
@@ -2933,6 +2941,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'sttEngine': _Pages.stt,
     'cardDenoise': _Pages.stt,
     'activationMode': _Pages.listen,
+    'pttKeysLabel': _Pages.listen,
     'showPartial': _Pages.listen,
     'autoSendPause': _Pages.listen,
     'cardVoiceResp': _Pages.voiceOut,
@@ -5123,13 +5132,27 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             stacked: true,
             label: app.t('activationMode'),
             desc: app.t('activationModeDesc'),
-            control: evsSegmentedWide<String>(context, 
+            control: evsSegmentedWide<String>(context,
               [('continuous', app.t('continuous')), ('ptt', 'Push-to-Talk')],
               app.listenMode,
               (v) => app.setListenMode(v),
             ),
           ),
-          evsRow(context, 
+          // Область назначения клавиш появляется только у Push-to-Talk: в
+          // непрерывном режиме удерживать нечего.
+          if (app.listenMode == 'ptt') ...[
+            evsRow(context,
+              stacked: true,
+              label: app.t('pttKeysLabel'),
+              desc: app.t('pttKeysDesc'),
+              control: _PttHotkeyRow(app),
+            ),
+            _PttNote(app.t('pttNoWake')),
+            _PttNote(app.t('pttPassthrough')),
+            if (_pttConflictsWithShowWindow(app))
+              _PttNote(app.t('pttConflict'), danger: true),
+          ],
+          evsRow(context,
             label: app.t('autoSendPause'),
             desc: app.t('autoSendPauseDesc'),
             control: evsToggle(context, app.micAutoSend, (v) => app.setMicAutoSend(v)),
@@ -5154,6 +5177,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         ],
       )),
     ];
+  }
+
+  // Комбинация показа окна (Ctrl+Shift+Space) захардкожена в DesktopIntegration
+  // и перехватывается системно: назначив её же на удержание, пользователь при
+  // каждой попытке заговорить открывал бы окно.
+  bool _pttConflictsWithShowWindow(AppState app) {
+    const showWindow = [0x11, 0x10, 0x20]; // VK_CONTROL, VK_SHIFT, VK_SPACE
+    if (app.pttKeys.length != showWindow.length) return false;
+    return showWindow.every(app.pttKeys.contains);
   }
 
   // ---- Голос ассистента ----
@@ -5304,6 +5336,168 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         rows: [_ClonePhrasesCard(app)],
       )),
     ];
+  }
+}
+
+// Пояснение под строкой настройки — там, где предупредить важнее, чем
+// уместиться в подпись самой строки.
+class _PttNote extends StatelessWidget {
+  const _PttNote(this.text, {this.danger = false});
+  final String text;
+  final bool danger;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(18, 9, 18, 9),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: _stroke(context))),
+        ),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(danger ? Icons.error_outline : Icons.info_outline,
+              size: 15, color: danger ? _danger(context) : _faint(context)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: EvsType.caption.copyWith(
+                    color: danger ? _danger(context) : _sub(context))),
+          ),
+        ]),
+      );
+}
+
+// Запись комбинации Push-to-Talk. Своя, а не HotKeyRecorder из hotkey_manager:
+// тот собирает HotKey, которому обязательно нужна не-модификаторная клавиша, а
+// на удержание вполне разумно повесить один голый Shift.
+class _PttHotkeyRow extends StatefulWidget {
+  const _PttHotkeyRow(this.app);
+  final AppState app;
+  @override
+  State<_PttHotkeyRow> createState() => _PttHotkeyRowState();
+}
+
+class _PttHotkeyRowState extends State<_PttHotkeyRow> {
+  static const int _maxKeys = 3;
+  final FocusNode _node = FocusNode(debugLabel: 'ptt-recorder');
+  bool _rec = false;
+  List<PhysicalKeyboardKey> _best = const [];
+
+  @override
+  void dispose() {
+    _node.dispose();
+    super.dispose();
+  }
+
+  // Модификаторы впереди — «Ctrl + Shift + G» читается, «G + Ctrl + Shift» нет.
+  static int _rank(PhysicalKeyboardKey k) => switch (pttKeyLabel(k)) {
+        'Ctrl' => 0,
+        'Shift' => 1,
+        'Alt' => 2,
+        'Win' => 3,
+        _ => 4,
+      };
+
+  void _start() {
+    setState(() {
+      _rec = true;
+      _best = const [];
+    });
+    _node.requestFocus();
+  }
+
+  void _cancel() {
+    setState(() {
+      _rec = false;
+      _best = const [];
+    });
+    _node.unfocus();
+  }
+
+  KeyEventResult _onKey(FocusNode _, KeyEvent e) {
+    if (!_rec) return KeyEventResult.ignored;
+    if (e is KeyDownEvent && e.logicalKey == LogicalKeyboardKey.escape) {
+      _cancel();
+      return KeyEventResult.handled;
+    }
+    final down = HardwareKeyboard.instance.physicalKeysPressed.toList()
+      ..sort((a, b) {
+        final r = _rank(a).compareTo(_rank(b));
+        return r != 0 ? r : a.usbHidUsage.compareTo(b.usbHidUsage);
+      });
+    // Запоминаем самый полный аккорд: пальцы сходят с клавиш не одновременно,
+    // и по последнему событию комбинация всегда оказалась бы короче.
+    if (down.length > _best.length) {
+      setState(() => _best = down.take(_maxKeys).toList());
+    }
+    if (down.isEmpty && _best.isNotEmpty) _commit();
+    return KeyEventResult.handled;
+  }
+
+  void _commit() {
+    final vks = <int>[];
+    final labels = <String>[];
+    for (final k in _best) {
+      final vk = pttVkFor(k);
+      if (vk == null || vk == 0 || vks.contains(vk)) continue;
+      vks.add(vk);
+      labels.add(pttKeyLabel(k));
+    }
+    setState(() {
+      _rec = false;
+      _best = const [];
+    });
+    _node.unfocus();
+    if (vks.isEmpty) return; // клавиши без virtual-key кода опросить нельзя
+    widget.app.setPttHotkey(vks, labels.join(' + '));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final caps = _rec
+        ? _best.map(pttKeyLabel).toList()
+        : app.pttLabel.split(' + ').where((s) => s.isNotEmpty).toList();
+    return Focus(
+      focusNode: _node,
+      onKeyEvent: _onKey,
+      child: Row(children: [
+        Expanded(
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (caps.isEmpty)
+                Text(_rec ? app.t('pttPressKeys') : app.t('pttUnset'),
+                    style: EvsType.caption.copyWith(
+                        color: _rec ? _accent(context) : _faint(context)))
+              else
+                for (int i = 0; i < caps.length; i++) ...[
+                  if (i > 0) const _KeySep(),
+                  _KeyCap(caps[i]),
+                ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: _rec ? _cancel : _start,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: _rec ? _accent(context) : _stroke(context)),
+              color: _rec ? Colors.transparent : _stroke(context),
+            ),
+            child: Text(
+              _rec ? app.t('cancel') : app.t('pttAssign'),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _rec ? _accent(context) : _body(context)),
+            ),
+          ),
+        ),
+      ]),
+    );
   }
 }
 

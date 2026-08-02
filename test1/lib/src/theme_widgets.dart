@@ -34,7 +34,12 @@ class MiraiApp extends StatelessWidget {
           child: child!,
         );
       },
-      home: const ImmersiveSplash(),
+      // Заставка внутри окна — только когда окна загрузки не было: иначе один и
+      // тот же знак Genesis проигрывается дважды подряд, второй раз уже после
+      // того, как приложение готово.
+      home: BootSplash.instance.replacedInAppSplash
+          ? const _RootHome()
+          : const ImmersiveSplash(),
     );
   }
 

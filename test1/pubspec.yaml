@@ -1,7 +1,7 @@
 name: evs
 description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 2.11.0+64
+version: 2.12.0+65
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -28,6 +28,12 @@ dependencies:
   screen_retriever: ^0.2.0
   tray_manager: ^0.3.0
   hotkey_manager: ^0.2.3
+  # Транзитивная зависимость hotkey_manager, подключённая явно: только из неё
+  # берётся PhysicalKeyboardKey.keyCode — virtual-key код Windows, который
+  # читает GetAsyncKeyState в PttWatcher (удержание клавиши для Push-to-Talk).
+  # Сам hotkey_manager этот геттер наружу не экспортирует, а держать свою
+  # таблицу «клавиша → VK» на сотню строк — верный способ забыть половину.
+  uni_platform: ^0.1.3
   launch_at_startup: ^0.5.1
   # Win32 system monitor (GlobalMemoryStatusEx / GetSystemTimes) for the
   # CPU/RAM sidebar widget and real RAM detection on Windows.

@@ -634,11 +634,16 @@ class UpdateSplashApp extends StatefulWidget {
   final String lang;
   final String statusPath;
   final String logPath;
+  // 'update' — установка обновления, 'boot' — обычный запуск приложения.
+  // Карточка, логотип, полоса и сглаживание у них общие; расходятся только
+  // словарь фаз и то, кто и когда закрывает окно.
+  final String mode;
   const UpdateSplashApp({
     super.key,
     required this.lang,
     this.statusPath = '',
     this.logPath = '',
+    this.mode = 'update',
   });
   @override
   State<UpdateSplashApp> createState() => _UpdateSplashAppState();
@@ -659,6 +664,12 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
   // того, как лог пишется, и никогда не идёт назад.
   double _target = 0.03;
   double _shown = 0.0;
+  // Режим запуска: подпись меняется по фазам, а не стоит одной строкой.
+  String _capKey = 'bootPhaseStart';
+  String _noteKey = '';
+  bool _ending = false; // выход уже назначен — второй раз не назначать
+
+  bool get _boot => widget.mode == 'boot';
 
   @override
   void initState() {
@@ -667,17 +678,23 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
     // перезапуска приложения). Два предохранителя на случай, когда до него не
     // дошло: увидели снова живой evs.exe — уходим; и жёсткий лимит по времени,
     // чтобы окно не осталось висеть навсегда при провалившейся установке.
-    _alive = Timer.periodic(const Duration(seconds: 2), (_) async {
-      if (DateTime.now().difference(_started) < const Duration(seconds: 15)) {
-        return; // главное приложение может быть ещё в процессе выхода
-      }
-      try {
-        final r = await io.Process.run(
-            'tasklist', ['/FI', 'IMAGENAME eq evs.exe', '/NH']);
-        if ((r.stdout as String).toLowerCase().contains('evs.exe')) io.exit(0);
-      } catch (_) {}
-    });
-    _watchdog = Timer(const Duration(minutes: 6), () => io.exit(0));
+    //
+    // В режиме запуска первый предохранитель не нужен и вреден: живой evs.exe
+    // там — норма, это он нас и запустил. Его роль играет Job Object: окно
+    // умрёт вместе с приложением, даже если то рухнет.
+    if (!_boot) {
+      _alive = Timer.periodic(const Duration(seconds: 2), (_) async {
+        if (DateTime.now().difference(_started) < const Duration(seconds: 15)) {
+          return; // главное приложение может быть ещё в процессе выхода
+        }
+        try {
+          final r = await io.Process.run(
+              'tasklist', ['/FI', 'IMAGENAME eq evs.exe', '/NH']);
+          if ((r.stdout as String).toLowerCase().contains('evs.exe')) io.exit(0);
+        } catch (_) {}
+      });
+    }
+    _watchdog = Timer(Duration(minutes: _boot ? 3 : 6), () => io.exit(0));
     _status = Timer.periodic(const Duration(milliseconds: 250), (_) => _read());
     // Полоса догоняет цель плавно — 30 кадров в секунду тут достаточно.
     _tick = Timer.periodic(const Duration(milliseconds: 33), (_) {
@@ -693,7 +710,12 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
     try {
       final f = io.File(widget.statusPath);
       if (!await f.exists()) return;
-      final parts = (await f.readAsString()).trim().split(RegExp(r'\s+'));
+      final raw = await f.readAsString();
+      if (_boot) {
+        _readBoot(raw);
+        return;
+      }
+      final parts = raw.trim().split(RegExp(r'\s+'));
       if (parts.isEmpty) return;
       double t;
       switch (parts.first) {
@@ -714,6 +736,55 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
       // Только вперёд: откат полосы читается как сбой, которого не было.
       if (t > _target && mounted) setState(() => _target = t);
     } catch (_) {}
+  }
+
+  // Формат файла запуска: первая строка `<фаза> [доля]`, вторая (необязательная)
+  // — ключ побочной строки. Проверка обновлений идёт параллельно и на готовность
+  // не влияет, поэтому живёт именно там, а не в основной подписи.
+  void _readBoot(String raw) {
+    final lines = raw.split('\n');
+    final parts = lines.first.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return;
+    final note = lines.length > 1 ? lines[1].trim() : '';
+    final phase = parts.first;
+    final (double t, String cap) = switch (phase) {
+      'start' => (0.04, 'bootPhaseStart'),
+      'settings' => (0.10, 'bootPhaseSettings'),
+      'tray' => (0.18, 'bootPhaseTray'),
+      'component' => (
+          0.20 +
+              0.42 *
+                  ((parts.length > 1 ? double.tryParse(parts[1]) ?? 0 : 0)
+                      .clamp(0.0, 1.0)),
+          'bootPhaseComponent'
+        ),
+      'sidecar' => (0.66, 'bootPhaseSidecar'),
+      'connect' => (0.76, 'bootPhaseConnect'),
+      'models' => (0.86, 'bootPhaseModels'),
+      'ready' => (1.0, 'bootPhaseReady'),
+      'error' => (1.0, 'bootPhaseError'),
+      _ => (-1.0, ''),
+    };
+    if (t < 0) return;
+    if (!mounted) return;
+    setState(() {
+      // Только вперёд: откат полосы читается как сбой, которого не было.
+      if (t > _target) _target = t;
+      _capKey = cap;
+      _noteKey = note;
+    });
+    if ((phase == 'ready' || phase == 'error') && !_ending) {
+      // Ровно один раз: файл перечитывается каждые 250 мс, и таймер, который
+      // взводится заново на каждом чтении, не срабатывает никогда — окно
+      // тогда доживает до `kill` из главного процесса, а это лишние секунды
+      // поверх уже готового приложения.
+      _ending = true;
+      // Дать полосе доехать до конца, иначе окно исчезает на 90%.
+      _watchdog?.cancel();
+      _watchdog = Timer(
+          Duration(milliseconds: phase == 'error' ? 4000 : 800),
+          () => io.exit(0));
+    }
   }
 
   Future<int> _logBytes() async {
@@ -826,7 +897,8 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
                         blendMode: BlendMode.srcIn,
                         shaderCallback: grad.createShader,
                         child: Text(
-                          _t('updSplashKicker'),
+                          _boot ? _t(_capKey) : _t('updSplashKicker'),
+                          textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: capSize,
                             fontWeight: FontWeight.w600,
@@ -835,6 +907,19 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
                           ),
                         ),
                       ),
+                      // Побочная строка: то, что идёт параллельно и запуск не
+                      // задерживает (проверка обновлений).
+                      if (_boot && _noteKey.isNotEmpty) ...[
+                        const SizedBox(height: 7),
+                        Text(
+                          _t(_noteKey),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: capSize * 0.85,
+                            color: Color(0x8AFFFFFF),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -844,6 +929,155 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
         ),
       ),
     );
+  }
+}
+
+/* ==================== ПРОЦЕСС ОКНА ЗАПУСКА ==================== */
+
+// Точка входа окна загрузки (`evs.exe --boot-splash --lang=ru --status=…`).
+//
+// Почему отдельный процесс, а не заставка внутри главного окна: по умолчанию
+// работает плавающий виджет, и главное окно при старте СКРЫТО — внутриоконную
+// заставку в этом (обычном) случае просто некому увидеть. Перекраивать главное
+// окно в карточку 660×640 с прозрачностью и обратно значит менять размер, рамку
+// и acrylic-эффект живьём, рискуя затереть сохранённую геометрию. Цена решения
+// честная: свой старт Flutter — примерно секунда, поэтому при тёплом запуске
+// окно видно около двух секунд из четырёх.
+Future<void> _bootSplashMain(List<String> args) async {
+  var lang = 'ru';
+  var statusPath = '';
+  for (final a in args) {
+    if (a.startsWith('--lang=')) lang = a.substring(7);
+    if (a.startsWith('--status=')) statusPath = a.substring(9);
+  }
+  await windowManager.ensureInitialized();
+  try {
+    await acrylic.Window.initialize();
+  } catch (_) {}
+  const opts = WindowOptions(
+    size: Size(_kUpdateSplashWin, _kUpdateSplashWin * 0.97),
+    center: true,
+    title: 'EVS',
+    titleBarStyle: TitleBarStyle.hidden,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+  );
+  unawaited(windowManager.waitUntilReadyToShow(opts, () async {
+    await windowManager.setAsFrameless();
+    try {
+      await acrylic.Window.setEffect(
+        effect: acrylic.WindowEffect.transparent,
+        color: const Color(0x00000000),
+        dark: true,
+      );
+    } catch (_) {}
+    await windowManager.setResizable(false);
+    await windowManager.show();
+  }));
+  runApp(UpdateSplashApp(lang: lang, statusPath: statusPath, mode: 'boot'));
+}
+
+/// Сторона главного процесса: поднимает окно загрузки и рассказывает ему, что
+/// сейчас происходит. Канал — файл `boot-status.txt` рядом с данными: через
+/// границу процессов другого способа тут нет, а формат тот же, что у заставки
+/// обновления.
+class BootSplash {
+  BootSplash._();
+  static final BootSplash instance = BootSplash._();
+
+  io.Process? _proc;
+  String _path = '';
+  String _note = '';
+  bool _closed = false;
+  bool _launched = false;
+
+  /// Что сделать, когда карточка уходит. Ставит DesktopIntegration: пока она на
+  /// экране, главное окно скрыто, и показать его должен тот, кто знает про
+  /// виджет и режимы окна, — не эта заставка.
+  void Function()? onDone;
+
+  bool get active => _proc != null && !_closed;
+
+  /// Окно загрузки этот запуск показывалось — значит внутриоконная заставка уже
+  /// не нужна. Отдельно от [active] намеренно: [active] гаснет при готовности,
+  /// и по нему MiraiApp при первой же перерисовке подсунул бы вторую заставку.
+  bool get replacedInAppSplash => _launched;
+
+  Future<void> start(String lang) async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
+    try {
+      final root = await appDataRoot();
+      if (root.isEmpty) return;
+      _path = '$root${io.Platform.pathSeparator}boot-status.txt';
+      _write('start');
+      _proc = await io.Process.start(
+        io.Platform.resolvedExecutable,
+        ['--boot-splash', '--lang=$lang', '--status=$_path'],
+        runInShell: false,
+      );
+      // Умрёт вместе с приложением, даже если то рухнет на середине запуска —
+      // окно загрузки не должно пережить своё приложение.
+      ProcessJob.instance.add(_proc!.pid);
+      _launched = true;
+      // Предохранитель на случай, когда готовность не наступит вовсе (движок
+      // распознавания выключен, сайдкар не поднялся, конфигурация без него):
+      // окно не должно висеть поверх работающего приложения.
+      unawaited(Future.delayed(const Duration(seconds: 75), () {
+        if (active) unawaited(finish());
+      }));
+    } catch (_) {
+      _proc = null;
+    }
+  }
+
+  /// Текущий этап. `value` — доля для этапов с настоящим прогрессом (скачивание
+  /// компонента); у остальных её нет и рисовать её было бы враньём.
+  void phase(String name, {double? value}) {
+    if (!active) return;
+    _write(value == null ? name : '$name ${value.toStringAsFixed(3)}');
+  }
+
+  /// Побочная строка — то, что идёт параллельно и запуск не задерживает.
+  void note(String i18nKey) {
+    if (!active) return;
+    _note = i18nKey;
+    _write('');
+  }
+
+  /// Готовы слушать. Окно само доводит полосу до конца и закрывается; kill —
+  /// только страховка, если оно этого почему-то не сделало.
+  Future<void> finish({bool failed = false}) async {
+    if (!active) return;
+    _write(failed ? 'error' : 'ready');
+    _closed = true;
+    final p = _proc;
+    _proc = null;
+    // Окно ещё доводит полосу до конца — главное показываем в тот же момент,
+    // когда оно исчезает, иначе между ними будет пустой кадр рабочего стола.
+    final done = onDone;
+    onDone = null;
+    if (done != null) {
+      unawaited(Future.delayed(
+          Duration(milliseconds: failed ? 3800 : 800), () => done()));
+    }
+    unawaited(Future.delayed(Duration(seconds: failed ? 6 : 3), () {
+      try {
+        p?.kill();
+      } catch (_) {}
+      try {
+        if (_path.isNotEmpty) io.File(_path).deleteSync();
+      } catch (_) {}
+    }));
+  }
+
+  // Пустая фаза = «оставь как было, я поменял только вторую строку».
+  String _last = 'start';
+  void _write(String phase) {
+    if (_path.isEmpty) return;
+    if (phase.isNotEmpty) _last = phase;
+    try {
+      io.File(_path).writeAsStringSync('$_last\n$_note\n', flush: true);
+    } catch (_) {}
   }
 }
 

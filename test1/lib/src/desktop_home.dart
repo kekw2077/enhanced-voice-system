@@ -1154,7 +1154,11 @@ class _NexusStageState extends State<_NexusStage> {
               const Spacer(),
               Flexible(
                 child: Text(
-                  '«${app.wakeWord}»   ·   Ctrl+Shift+Space',
+                  // Слева — чем зовут ассистента сейчас (слово-активатор или
+                  // комбинация удержания), справа — показ окна.
+                  [activatorLabel(app), 'Ctrl+Shift+Space']
+                      .where((s) => s.isNotEmpty)
+                      .join('   ·   '),
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
                   style: EvsType.caption.copyWith(color: _faint(context)),

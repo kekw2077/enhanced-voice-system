@@ -25,6 +25,8 @@ import 'package:screen_retriever/screen_retriever.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:tray_manager/tray_manager.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+// PhysicalKeyboardKey.keyCode — virtual-key код Windows для GetAsyncKeyState.
+import 'package:uni_platform/uni_platform.dart' show ExtendedPhysicalKeyboardKey;
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:crypto/crypto.dart';
 import 'package:uuid/uuid.dart';
@@ -88,6 +90,14 @@ void main(List<String> args) async {
     return;
   }
 
+  // Четвёртый режим: окно загрузки (`evs.exe --boot-splash`) — та же карточка,
+  // но с этапами запуска вместо установки. Тоже до single-instance guard: иначе
+  // процесс упёрся бы в занятый порт и убил сам себя.
+  if (isWindows && args.contains('--boot-splash')) {
+    await _bootSplashMain(args);
+    return;
+  }
+
   // Enforce a single running instance of the main app (widget process above is
   // exempt — it returned already).
   if (isWindows) {
@@ -129,6 +139,13 @@ void main(List<String> args) async {
     await _installPortablePrefs();
   }
   final prefs = await SharedPreferences.getInstance();
+  // Окно загрузки поднимается как только известны язык и путь к данным, и живёт
+  // до готовности движка распознавания (DesktopIntegration закрывает его по
+  // `sttState == 'ready'`). Раньше запустить нельзя — обе вещи берутся отсюда.
+  if (isWindows) {
+    await BootSplash.instance.start(prefs.getString('lang') ?? 'ru');
+    BootSplash.instance.phase('settings');
+  }
   final app = AppState(prefs);
   if (isWindows) {
     await windowManager.ensureInitialized();
@@ -144,7 +161,11 @@ void main(List<String> args) async {
       title: 'EVS',
       titleBarStyle: TitleBarStyle.hidden,
     );
-    final startHidden = prefs.getBool('overlayMode') ?? true;
+    // Скрыть на старте нужно не только ради виджета: пока висит карточка
+    // загрузки, пустое главное окно за ней — это два окна на одно действие.
+    // Его показывает DesktopIntegration, когда карточка уходит.
+    final startHidden =
+        (prefs.getBool('overlayMode') ?? true) || BootSplash.instance.active;
     // The window boots hidden with the floating widget on: tell MotionPolicy so
     // ambient loops don't repaint an invisible window, and so the startup splash
     // waits for the first real show instead of playing to nobody.
@@ -168,6 +189,7 @@ void main(List<String> args) async {
   await app.load();
 
   if (isWindows) {
+    BootSplash.instance.phase('tray');
     await DesktopIntegration.instance.init(app);
   }
 

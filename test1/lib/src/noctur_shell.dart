@@ -44,7 +44,9 @@ String _nocturStateHint(AppState app, String stage) => switch (stage) {
   'listening' => app.t('ncHintListening'),
   'thinking' => app.t('ncHintThinking'),
   'speaking' => app.t('ncHintSpeaking'),
-  _ => app.t('ncHintIdle'),
+  // В покое подсказка говорит, чем разбудить ассистента, а это зависит от
+  // режима: при Push-to-Talk слово-активатор не работает, и звать им — врать.
+  _ => pttIdleHint(app) ?? app.t('ncHintIdle'),
 };
 
 // Свободная горизонтальная линейка, гаснущая в прозрачность по 48 px с каждого
@@ -836,10 +838,11 @@ class _NocturStageState extends State<_NocturStage> {
                 ],
               ),
             ),
-            // Слово-активатор берётся из настроек, не хардкод. В узком окне
-            // подсказка сворачивается до одного слова и затем исчезает (§7).
-            if (hint) ...[
-              _NocturCapsule(label: '«${app.wakeWord}»'),
+            // Чем зовут ассистента — из настроек, не хардкод: слово-активатор
+            // либо комбинация удержания. В узком окне подсказка сворачивается
+            // до одного слова и затем исчезает (§7).
+            if (hint && activatorLabel(app).isNotEmpty) ...[
+              _NocturCapsule(label: activatorLabel(app)),
               if (wide) ...[
                 const SizedBox(width: 8),
                 const _NocturCapsule(label: 'Ctrl+Shift+Space'),
@@ -980,9 +983,15 @@ class _NocturStageState extends State<_NocturStage> {
                   horizontal: 14,
                   vertical: 12,
                 ),
-                hintText: app
-                    .t('ncAskPlaceholder')
-                    .replaceAll('{w}', app.wakeWord),
+                // При удержании подсказка зовёт зажать клавиши: слово-активатор
+                // в этом режиме не работает.
+                hintText: app.listenMode == 'ptt'
+                    ? (app.pttLabel.isEmpty
+                        ? app.t('ncAskPlaceholderPlain')
+                        : app
+                            .t('ncAskPlaceholderPtt')
+                            .replaceAll('{w}', app.pttLabel))
+                    : app.t('ncAskPlaceholder').replaceAll('{w}', app.wakeWord),
                 hintStyle: TextStyle(fontSize: 13.5, color: _faint(context)),
                 filled: false,
                 enabledBorder: OutlineInputBorder(
