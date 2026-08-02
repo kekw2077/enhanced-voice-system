@@ -10,9 +10,12 @@ Protocol (JSON text frames)
     {"type": "stt.start", "language": "ru"|"en"|"auto"}
     {"type": "stt.stop"}
     {"type": "stt.config", "model": "small", "prompt": "...",
-                           "engine": "whisper"|"gigaam", "gigaam_dir": "...",
+                           "engine": "whisper"|"gigaam"|"remote", "gigaam_dir": "...",
+                           "remote_url": "http://host:8000", "remote_model": "...",
+                           "remote_key": "...",
                            "denoise": "off"|"light"|"strong", "denoise_dir": "...",
                            "device": "cpu"|"cuda"}
+    {"type": "stt.remote_check"}                     # probe the remote STT server
     {"type": "gamemode.config", "fullscreen_enabled": bool, "vram_enabled": bool,
                            "vram_enter": 85, "vram_exit": 65, "notify_enabled": bool,
                            "exclusions": ["vlc.exe"], "texts": {"fullscreen": ..., "vram": ..., "exit": ...}}
@@ -177,6 +180,14 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                 gdir = data.get("gigaam_dir")
                 if gdir:
                     stt.update_gigaam_dir(str(gdir))
+                # Адрес сервера ставится ДО выбора движка: иначе переключение
+                # на "remote" случилось бы с ещё пустым адресом и сразу упало
+                # бы в «адрес не задан».
+                if any(k in data for k in
+                       ("remote_url", "remote_model", "remote_key")):
+                    stt.set_remote(url=data.get("remote_url"),
+                                   model=data.get("remote_model"),
+                                   key=data.get("remote_key"))
                 engine = data.get("engine")
                 if engine:
                     stt.set_engine(str(engine), str(gdir) if gdir else None)
@@ -194,6 +205,18 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                     stt.set_vad_aggressiveness(data.get("vad"))
                 if "gain" in data:
                     stt.set_mic_gain(data.get("gain"))
+            elif t == "stt.remote_check":
+                # Кнопка «Проверить» в настройках: жив ли сервер распознавания
+                # и какие у него модели. Ответ — тем же stt.engine_status, что
+                # и обычные состояния движка, чтобы карточка читала один сигнал.
+                try:
+                    models = stt.probe_remote()
+                    emit({"type": "stt.engine_status", "engine": "remote",
+                          "state": "ready",
+                          "models": models})
+                except Exception as e:
+                    emit({"type": "stt.engine_status", "engine": "remote",
+                          "state": "error", "message": str(e)})
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),
@@ -317,7 +340,10 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
 async def _main(args) -> None:
     stt = SttEngine(args.model, args.device, args.compute_type,
                     engine=args.engine, gigaam_dir=args.gigaam_dir,
-                    denoise=args.denoise, denoise_dir=args.denoise_dir)
+                    denoise=args.denoise, denoise_dir=args.denoise_dir,
+                    remote_url=args.stt_remote_url,
+                    remote_model=args.stt_remote_model,
+                    remote_key=args.stt_remote_key)
     tts = TtsEngine(engine=args.tts_engine, voice=args.tts_voice,
                     voice_dir=args.tts_voice_dir)
     game = GameModeMonitor()
@@ -368,7 +394,14 @@ def main() -> None:
     ap.add_argument("--model", default="small", help="faster-whisper model size")
     ap.add_argument("--device", default="cpu", help="cpu | cuda")
     ap.add_argument("--compute-type", dest="compute_type", default="int8")
-    ap.add_argument("--engine", default="whisper", help="whisper | gigaam")
+    ap.add_argument("--engine", default="whisper",
+                    help="whisper | gigaam | remote")
+    ap.add_argument("--stt-remote-url", dest="stt_remote_url", default="",
+                    help="OpenAI-compatible base url for remote recognition")
+    ap.add_argument("--stt-remote-model", dest="stt_remote_model", default="",
+                    help="model name asked of the remote recognition server")
+    ap.add_argument("--stt-remote-key", dest="stt_remote_key", default="",
+                    help="bearer token for the remote recognition server")
     ap.add_argument("--gigaam-dir", dest="gigaam_dir", default="",
                     help="GigaAM sherpa-onnx model directory")
     ap.add_argument("--denoise", default="off", help="off | light | strong")

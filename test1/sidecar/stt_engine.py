@@ -6,6 +6,9 @@ recognition of a speech segment is delegated to the ACTIVE engine:
 
   * WhisperEngine — faster-whisper (multilingual, partial + final results).
   * GigaAmEngine  — sherpa-onnx NeMo transducer (Russian, offline: FINAL only).
+  * RemoteSttEngine — чужой сервер по OpenAI-совместимому /v1/audio/
+    transcriptions (FINAL only). Захват и VAD всё равно остаются здесь:
+    микрофон у пользователя, наружу уходит уже нарезанная фраза.
 
 `SttEngine` is the manager: it owns capture + VAD + the active engine, hot-swaps
 engines (unload old -> load new, rollback on error), and reports state via
@@ -68,6 +71,11 @@ class BaseSttEngine:
     name = "base"
     supports_partial = True
     supports_gpu = False
+    # Прогрев холостым распознаванием: он существует, чтобы разложить модель по
+    # памяти до первой настоящей фразы. Движку, у которого модель не здесь,
+    # прогревать нечего — это был бы лишний сетевой запрос (а на платном API ещё
+    # и оплаченный) секунды тишины.
+    needs_warmup = True
 
     def __init__(self) -> None:
         self._loaded = False
@@ -328,6 +336,157 @@ class GigaAmEngine(BaseSttEngine):
         return (stream.result.text or "").strip()
 
 
+class RemoteSttEngine(BaseSttEngine):
+    """Распознавание на сервере по OpenAI-совместимому контракту:
+
+        POST {base}/v1/audio/transcriptions
+        multipart: file=<wav>, model, language, response_format=json
+        ответ:     {"text": "..."}
+
+    Контракт выбран не свой намеренно: такой эндпоинт из коробки отдают готовые
+    серверы (speaches — бывший faster-whisper-server, whisper.cpp server, vLLM),
+    то есть держать и обновлять собственную серверную часть не придётся.
+    Самописный протокол был бы проще здесь и хуже в жизни.
+
+    Захват, шумодав и VAD остаются на этой машине: микрофон у пользователя, а не
+    на сервере. Наружу уходит уже нарезанная фраза, а не поток.
+    """
+
+    name = "remote"
+    # Частичные результаты стоили бы по сетевому запросу на каждые полсекунды
+    # речи — на них уходил бы весь выигрыш от чужой видеокарты.
+    supports_partial = False
+    # Видеокарта не наша: селектор «CPU/GPU» к этому движку не относится.
+    supports_gpu = False
+    # Прогревать нечего: связь уже проверена пробой в load().
+    needs_warmup = False
+
+    def __init__(self, base_url: str = "", model: str = "",
+                 api_key: str = "", timeout: float = 30.0) -> None:
+        super().__init__()
+        self._base = (base_url or "").rstrip("/")
+        self._model = model or "whisper-1"
+        self._key = api_key or ""
+        self._timeout = timeout
+        self._language: str | None = "ru"
+
+    def set_config(self, base_url=None, model=None, api_key=None) -> None:
+        if base_url is not None:
+            new = (base_url or "").rstrip("/")
+            if new != self._base:
+                self._base = new
+                self._loaded = False
+        if model is not None and model:
+            self._model = model
+        if api_key is not None:
+            self._key = api_key
+
+    def set_language(self, language: str | None) -> None:
+        self._language = (language or "ru") if language != "auto" else None
+
+    @property
+    def available(self) -> bool:
+        return bool(self._base)
+
+    def unavailable_reason(self) -> str:
+        return "" if self._base else "адрес сервера распознавания не задан"
+
+    def _headers(self) -> dict:
+        h = {}
+        if self._key:
+            h["Authorization"] = "Bearer " + self._key
+        return h
+
+    def probe(self) -> list[str]:
+        """Живой ли сервер и какие у него модели. Ошибка HTTP (404 на /v1/models,
+        401 без ключа) — это ОТВЕТ, значит сервер на месте; провалом считается
+        только отсутствие соединения."""
+        import json as _json
+        import urllib.error
+        import urllib.request
+        if not self._base:
+            raise RuntimeError(self.unavailable_reason())
+        req = urllib.request.Request(self._base + "/v1/models",
+                                     headers=self._headers())
+        try:
+            with urllib.request.urlopen(req, timeout=8) as r:
+                data = _json.loads(r.read().decode("utf-8", "replace"))
+            items = data.get("data") if isinstance(data, dict) else None
+            return [str(m.get("id")) for m in (items or []) if m.get("id")]
+        except urllib.error.HTTPError:
+            return []
+
+    def load(self) -> None:
+        # Проба связи прямо на старте: без неё «готов» наступал бы сразу, а
+        # выяснялось бы всё на первой же фразе — то есть молчанием в ответ.
+        if not self._base:
+            raise RuntimeError(self.unavailable_reason())
+        self.probe()
+        self._loaded = True
+
+    def unload(self) -> None:
+        self._loaded = False
+
+    @staticmethod
+    def _wav(pcm: bytes) -> bytes:
+        """Сырые кадры захвата (PCM16 моно 16 кГц) в WAV — сервер ждёт файл."""
+        import io as _io
+        import wave
+        buf = _io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(SAMPLE_RATE)
+            w.writeframes(pcm)
+        return buf.getvalue()
+
+    def transcribe(self, np, audio_bytes: bytes, final: bool) -> str:
+        import json as _json
+        import urllib.request
+        if not final or not audio_bytes:
+            return ""
+        if not self._base:
+            raise RuntimeError(self.unavailable_reason())
+        boundary = "----evsStt%d" % (threading.get_ident() & 0xffffff)
+        parts: list[bytes] = []
+
+        def field(name: str, value) -> None:
+            parts.append(("--" + boundary).encode())
+            parts.append(
+                ('Content-Disposition: form-data; name="%s"\r\n' % name).encode())
+            parts.append(str(value).encode("utf-8"))
+
+        field("model", self._model)
+        field("response_format", "json")
+        if self._language:
+            field("language", self._language)
+        parts.append(("--" + boundary).encode())
+        parts.append(b'Content-Disposition: form-data; name="file"; '
+                     b'filename="speech.wav"\r\nContent-Type: audio/wav\r\n')
+        parts.append(self._wav(audio_bytes))
+        parts.append(("--" + boundary + "--").encode())
+        body = b"\r\n".join(parts) + b"\r\n"
+
+        headers = self._headers()
+        headers["Content-Type"] = "multipart/form-data; boundary=" + boundary
+        req = urllib.request.Request(
+            self._base + "/v1/audio/transcriptions", data=body, headers=headers)
+        with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            raw = resp.read().decode("utf-8", "replace")
+        try:
+            text = str(_json.loads(raw).get("text") or "")
+        except Exception:
+            # response_format=json просили, но сервер прислал plain text —
+            # это тоже рабочий ответ, а не повод потерять фразу.
+            text = raw
+        text = text.strip()
+        # Тот же фильтр, что и у локального Whisper: на сервере крутится он же,
+        # и на шуме выдаёт те же субтитровые галлюцинации.
+        if text and WhisperEngine._hallucinated(text):
+            return ""
+        return text
+
+
 class Denoiser:
     """Streaming noise suppression applied BEFORE the VAD, via sherpa-onnx
     OnlineSpeechDenoiser (16 kHz, frame-by-frame, state kept across calls):
@@ -499,16 +658,25 @@ class SttEngine:
     the active engine. Keeps the original constructor signature; adds
     engine selection (whisper|gigaam) and hot-swapping."""
 
+    # Единственный список допустимых движков — иначе четвёртый добавится в трёх
+    # местах из четырёх.
+    ENGINES = ("whisper", "gigaam", "remote")
+
     def __init__(self, model_size: str = "small", device: str = "cpu",
                  compute_type: str = "int8", engine: str = "whisper",
                  gigaam_dir: str | None = None, denoise: str = "off",
-                 denoise_dir: str = "") -> None:
+                 denoise_dir: str = "", remote_url: str = "",
+                 remote_model: str = "", remote_key: str = "") -> None:
         self._whisper = WhisperEngine(model_size, device, compute_type)
         self._gigaam = GigaAmEngine(gigaam_dir)
-        self._desired = engine if engine in ("whisper", "gigaam") else "whisper"
+        self._remote = RemoteSttEngine(remote_url, remote_model, remote_key)
+        self._desired = engine if engine in self.ENGINES else "whisper"
         self._engine_name = "whisper"
         self._active: BaseSttEngine = self._whisper
         self._switching = False
+        # Подряд сорвавшиеся запросы к серверу распознавания. Одна сетевая
+        # икота не повод уходить на локальный движок, три подряд — повод.
+        self._remote_fails = 0
 
         self._denoiser = Denoiser(denoise_dir)
         self._desired_denoise = \
@@ -561,11 +729,22 @@ class SttEngine:
         return {
             "whisper": self._whisper.available,
             "gigaam": self._gigaam.available,
+            "remote": self._remote.available,
             # Which engines have a usable GPU path (TZ2 block 6). Only Whisper
-            # here; sherpa-onnx (GigaAM) is CPU-only in this build.
+            # here; sherpa-onnx (GigaAM) is CPU-only in this build, and the
+            # remote engine runs on somebody else's card — the CPU/GPU selector
+            # is not ours to show.
             "whisper_gpu": WhisperEngine.supports_gpu,
             "gigaam_gpu": GigaAmEngine.supports_gpu,
+            "remote_gpu": RemoteSttEngine.supports_gpu,
         }
+
+    def _engine_by_name(self, name: str) -> BaseSttEngine:
+        if name == "gigaam":
+            return self._gigaam
+        if name == "remote":
+            return self._remote
+        return self._whisper
 
     @property
     def engine_name(self) -> str:
@@ -637,7 +816,7 @@ class SttEngine:
             # Resolve the engine to load. If the desired one (e.g. GigaAM) has no
             # model/deps, fall back to Whisper so startup still reaches `ready`.
             want = self._desired
-            target = self._gigaam if want == "gigaam" else self._whisper
+            target = self._engine_by_name(want)
             if not target.available:
                 if want != "whisper":
                     self._emit_status(want, "error", target.unavailable_reason())
@@ -678,6 +857,9 @@ class SttEngine:
     def _warm_inference(self, engine: "BaseSttEngine") -> None:
         """Run one throwaway final decode on ~1 s of silence to page in the
         graph / allocate buffers. Best-effort — never fatal to readiness."""
+        if not engine.needs_warmup:
+            log_stage(f"warmup skipped (engine '{engine.name}' has no local model)")
+            return
         try:
             import numpy as np
             t0 = time.monotonic()
@@ -702,8 +884,9 @@ class SttEngine:
     # ---- engine selection ----------------------------------------------
 
     def set_engine(self, name: str, gigaam_dir: str | None = None) -> None:
-        name = name if name in ("whisper", "gigaam") else "whisper"
+        name = name if name in self.ENGINES else "whisper"
         self._desired = name
+        self._remote_fails = 0  # выбор вручную — второй шанс серверу
         if gigaam_dir:
             self._gigaam.set_dir(gigaam_dir)
         # Load on a background thread — the model load must not block the WS loop
@@ -712,7 +895,7 @@ class SttEngine:
                          daemon=True).start()
 
     def _switch_blocking(self, name: str) -> None:
-        target = self._gigaam if name == "gigaam" else self._whisper
+        target = self._engine_by_name(name)
         if name == self._engine_name and target.is_loaded:
             self._emit_status(name, "ready")
             return
@@ -740,6 +923,55 @@ class SttEngine:
             self._active = prev
             self._engine_name = prev_name
             self._emit_status(name, "error", str(e))
+
+    def set_remote(self, url=None, model=None, key=None) -> None:
+        """Адрес/модель/ключ сервера распознавания. Меняются на лету; если
+        сервер сейчас активен, следующая фраза уйдёт уже по новому адресу."""
+        self._remote.set_config(base_url=url, model=model, api_key=key)
+        self._remote_fails = 0
+
+    def probe_remote(self) -> list[str]:
+        """Проверка связи с сервером распознавания (кнопка «Проверить»).
+        Бросает, если сервер не отвечает."""
+        return self._remote.probe()
+
+    # ---- распознавание с фолбэком --------------------------------------
+
+    def _recognize(self, np, audio_bytes: bytes, final: bool) -> str:
+        """Распознать сегмент активным движком. Звать под `_recog_lock`.
+
+        Отдельный метод ради одной вещи: если сервер не ответил, фраза не
+        должна пропасть — её дораспознаёт локальный Whisper. Три сорвавшихся
+        запроса подряд переводят на локальный совсем, иначе каждая следующая
+        фраза платила бы сетевым таймаутом за уже мёртвый сервер."""
+        engine = self._active
+        try:
+            text = engine.transcribe(np, audio_bytes, final)
+            if engine is self._remote:
+                self._remote_fails = 0
+            return text
+        except Exception as e:
+            if engine is not self._remote:
+                raise
+            self._remote_fails += 1
+            log_stage(f"remote STT failed ({self._remote_fails}): {e}")
+            self._emit_status("remote", "error", str(e))
+            if self._remote_fails >= 3:
+                self._fallback_to_local(str(e))
+            if not self._whisper.available:
+                return ""
+            return self._whisper.transcribe(np, audio_bytes, final)
+
+    def _fallback_to_local(self, why: str) -> None:
+        if self._engine_name != "remote":
+            return
+        self._active = self._whisper
+        self._engine_name = "whisper"
+        log_stage(f"remote STT unreachable, switching to whisper: {why}")
+        # Именно «fallback», а не «ready»: пользователь выбирал сервер, и знать,
+        # что распознаёт теперь его собственный процессор, он должен.
+        self._emit_status("remote", "fallback", why)
+        self._emit_status("whisper", "ready")
 
     def set_model(self, model_size: str) -> None:
         """Switch the Whisper model size (Whisper engine only)."""
@@ -948,7 +1180,7 @@ class SttEngine:
         if not pcm_i16:
             return ""
         with self._recog_lock:
-            return self._active.transcribe(np, pcm_i16, final=True)
+            return self._recognize(np, pcm_i16, final=True)
 
     # ---- multi-mic capture + arbitration (TZ2 block 8.2) --------------
 
@@ -1104,7 +1336,7 @@ class SttEngine:
                 try:
                     t0 = time.monotonic()
                     with self._recog_lock:
-                        text = self._active.transcribe(np, seg["audio"], True)
+                        text = self._recognize(np, seg["audio"], True)
                     latency = int((time.monotonic() - t0) * 1000)
                 except Exception as e:  # pragma: no cover
                     self._emit({"type": "error",
@@ -1212,7 +1444,7 @@ class SttEngine:
         try:
             t0 = time.monotonic()
             with self._recog_lock:
-                text = engine.transcribe(np, audio_bytes, final)
+                text = self._recognize(np, audio_bytes, final)
             latency_ms = int((time.monotonic() - t0) * 1000)
             if text:
                 msg = {

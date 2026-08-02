@@ -107,6 +107,15 @@ class SidecarClient {
         '--tts-engine', _ttsEngine,
       ];
       if (_gigaamDir.isNotEmpty) args.addAll(['--gigaam-dir', _gigaamDir]);
+      if (_sttRemoteUrl.isNotEmpty) {
+        args.addAll(['--stt-remote-url', _sttRemoteUrl]);
+        if (_sttRemoteModel.isNotEmpty) {
+          args.addAll(['--stt-remote-model', _sttRemoteModel]);
+        }
+        if (_sttRemoteKey.isNotEmpty) {
+          args.addAll(['--stt-remote-key', _sttRemoteKey]);
+        }
+      }
       if (_denoiseDir.isNotEmpty) args.addAll(['--denoise-dir', _denoiseDir]);
       if (_ttsVoice.isNotEmpty) args.addAll(['--tts-voice', _ttsVoice]);
       if (_ttsVoiceDir.isNotEmpty) args.addAll(['--tts-voice-dir', _ttsVoiceDir]);
@@ -415,16 +424,49 @@ class SidecarClient {
     return _gigaamDir;
   }
 
-  // Switch the sidecar recognition engine live (whisper | gigaam). Applied at
-  // spawn via CLI too; here it hot-swaps a running sidecar (TZ1).
+  // Switch the sidecar recognition engine live (whisper | gigaam | remote).
+  // Applied at spawn via CLI too; here it hot-swaps a running sidecar (TZ1).
   Future<void> setSttEngine(String engine) async {
-    _sttEngine = engine == 'gigaam' ? 'gigaam' : 'whisper';
+    _sttEngine =
+        AppState.kSttSidecarEngines.contains(engine) ? engine : 'whisper';
     await _ensureGigaamDir();
     _send({
       'type': 'stt.config',
       'engine': _sttEngine,
       'gigaam_dir': _gigaamDir,
+      // Адрес едет вместе с выбором: сайдкар ставит его до переключения, иначе
+      // «на сервере» включился бы с пустым адресом.
+      'remote_url': _sttRemoteUrl,
+      'remote_model': _sttRemoteModel,
+      'remote_key': _sttRemoteKey,
     });
+  }
+
+  // Сервер распознавания: адрес, модель, ключ. Хранятся здесь же, чтобы
+  // переподключившийся сайдкар получил их обратно — как и всё остальное.
+  String _sttRemoteUrl = '';
+  String _sttRemoteModel = '';
+  String _sttRemoteKey = '';
+
+  Future<void> setSttRemote(
+      {required String url,
+      required String model,
+      required String key}) async {
+    _sttRemoteUrl = url;
+    _sttRemoteModel = model;
+    _sttRemoteKey = key;
+    _send({
+      'type': 'stt.config',
+      'remote_url': url,
+      'remote_model': model,
+      'remote_key': key,
+    });
+  }
+
+  /// Проба связи с сервером распознавания. Ответ придёт как `engineStatus`
+  /// с движком `remote`.
+  Future<void> checkSttRemote() async {
+    _send({'type': 'stt.remote_check'});
   }
 
   Future<void> _ensureDenoiseDir() async {

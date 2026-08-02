@@ -1310,10 +1310,9 @@ class _NexusSubsystemCards extends StatelessWidget {
 
   Widget _sttCard(
       BuildContext c, AppState app, SidecarClient sc, NexusPipeline pipe) {
-    final gigaam = app.sttSidecarEngine == 'gigaam';
-    final engine = gigaam ? 'GigaAM-v3' : 'Whisper · ${app.whisperModel}';
+    final engine = sttEngineLabel(app);
     final device = (sc.deviceStatus.value?.$2 ?? app.sttDevice).toUpperCase();
-    final runtime = gigaam ? 'sherpa-onnx' : 'faster-whisper';
+    final runtime = sttRuntimeLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
     final ready = sc.sttState.value == 'ready';
     final loaded = sc.engines.value[app.sttSidecarEngine] == true;

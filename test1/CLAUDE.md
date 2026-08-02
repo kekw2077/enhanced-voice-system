@@ -55,7 +55,7 @@ Flutter-приложение «Mirai» — чат-клиент для LLM с п�
 | [lib/src/genesis_logo.dart](lib/src/genesis_logo.dart) | логотип **Genesis**: построчный порт SVG+CSS-образца `genesis/EVS Animations.dc.html` в `CustomPainter` — `GenesisLogo` (вариант 01 со подписью и вариант 05 «знак»), палитра бренда, дорожки `@keyframes`, `paintGenesisMark`/`paintGenesisSignature` (отрисовка одного кадра без виджетов), `genesisBackdrop`. Единственное место, где сырые `Color(0x…)` уместны: это фиксированная палитра логотипа, не токены темы |
 | [lib/src/desktop_integration.dart](lib/src/desktop_integration.dart) | `CommandExecutor`, `SystemMonitor`, `ProcessJob`, `VizOverlayServer`, `CloneServer` (кнопка запуска/остановки сервера синтеза), `DesktopIntegration` (tray/hotkeys/окно), `PttWatcher` + `pttVkFor`/`pttKeyLabel`/`pttIdleHint`/`activatorLabel` — Push-to-Talk, `EvsLogFeed`/`EvsLogLine` — чтение логов `appendLog(...)` из `<app-data>/logs`, общее для экрана журнала «Ноктюрна» и страницы «Журнал» в настройках |
 | [lib/src/updater_and_web.dart](lib/src/updater_and_web.dart) | `AppUpdater` (Sparkle-апдейт), `WebSearchService`, `ComponentManager` |
-| [lib/src/sidecar_client.dart](lib/src/sidecar_client.dart) | `SidecarClient` (Python STT/TTS сайдкар), `VoiceAssistant` (wake-word/состояния) |
+| [lib/src/sidecar_client.dart](lib/src/sidecar_client.dart) | `SidecarClient` (Python STT/TTS сайдкар), `VoiceAssistant` (wake-word/состояния, Push-to-Talk через `pttPress`/`pttRelease`) |
 | [lib/src/desktop_home.dart](lib/src/desktop_home.dart) | `_RootHome`/`DesktopHome`/`_DesktopSidebar`/`_DesktopSystemWidget`, `_evsRelTime`, контекст-меню чатов |
 | [lib/src/noctur_shell.dart](lib/src/noctur_shell.dart) | стиль **«Ноктюрн»** (третье значение `AppStyle`): `_NocturHome` (шапка с вкладками → экран → строка телеметрии), `NocturTopBar`, `NocturStatusStrip`, `NocturRingViz` (кольцо из 8 слоёв, тикер через `AmbientMotion` с гейтом `MotionGate.foreground` — вращается, пока окно видно), `_NocturStage` (главный экран) и три экрана вкладок — `_NocturDialogTab`, `_NocturCommandsTab`, `_NocturLogTab` (журнал читает `EvsLogFeed`); `_nocturSlot` — единственное место, где состояние выбирает цвет. Вкладка «Модели» — не экран, а ссылка на `DesktopSettings(initialPage: _Pages.llmConn)`. Данные берутся у `NexusPipeline`/`SidecarClient`/`SystemMonitor`/`AppState` — своих источников стиль не заводит |
 | [lib/src/remote_input.dart](lib/src/remote_input.dart) | `RemoteInputServer`, `VoiceCommand`/типы, `SuggestionEngine`, `_RemoteInputPanel`, `_AddCommandWizard`, `_SuggestCommandsDialog` |
@@ -144,6 +144,30 @@ _stroke/_success/_danger/_info/_warn/…`), никаких сырых `Color(0x�
   - Пересборка: `python assets/icon/gen_system_icons.py`. Кадры 16/20/24/32 там не просто уменьшаются, а выравниваются по пиксельной сетке (целые ширина полосы и зазор): при обычном уменьшении на 16 px зазор выходит 0,7 px и четыре полосы сливаются в один столбик. С выравниванием контраст «штрих/зазор» на 16 px — 3.1× против 1.6×.
 
 **У `flutter_launcher_icons` windows-таргет выключен** (`windows: generate: false`) — иначе `dart run flutter_launcher_icons` перезапишет системную иконку знаком Genesis из `icon.png`. По той же причине `gen_evs_icon.py` больше не пишет `.ico`. Для iOS включён `remove_alpha_ios: true` (Apple запрещает альфа-канал в иконках).
+
+### Движки распознавания (сайдкар)
+
+[sidecar/stt_engine.py](sidecar/stt_engine.py): захват с микрофона, шумодав и
+нарезка фраз по VAD — общие; распознаёт сегмент **активный движок**. Их три, и
+допустимый набор объявлен ОДИН раз — `SttEngine.ENGINES`, выбор экземпляра —
+`_engine_by_name`; на стороне Flutter то же самое в `AppState.kSttSidecarEngines`:
+
+- `WhisperEngine` — faster-whisper, есть частичные результаты, есть путь на CUDA.
+- `GigaAmEngine` — sherpa-onnx (GigaAM-v3, русский), только финальные, **только
+  CPU**: sherpa-onnx собран без GPU-колёс, селектор устройства для него скрыт.
+- `RemoteSttEngine` — чужой сервер, `POST {url}/v1/audio/transcriptions`
+  (контракт OpenAI). Контракт **не свой намеренно**: такой эндпоинт отдают
+  готовые серверы (speaches, whisper.cpp server, vLLM), и своей серверной части
+  держать не придётся. Микрофон остаётся здесь — наружу уезжает готовая фраза, а
+  не поток.
+
+Всё распознавание идёт через `SttEngine._recognize` (звать под `_recog_lock`) —
+там же живёт фолбэк: сервер не ответил → фразу подхватывает локальный Whisper,
+три срыва подряд → движок меняется совсем и об этом сообщается
+`stt.engine_status` со `state: "fallback"` (не «ready» — пользователь выбирал
+сервер и должен знать, что распознаёт теперь его процессор). Прогрев холостым
+распознаванием пропускается у движков с `needs_warmup = False` — серверному
+греть нечего, это был бы лишний (а на платном API оплаченный) запрос.
 
 ## Обновления приложения
 

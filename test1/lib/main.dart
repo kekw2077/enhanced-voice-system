@@ -161,11 +161,14 @@ void main(List<String> args) async {
       title: 'EVS',
       titleBarStyle: TitleBarStyle.hidden,
     );
-    // Скрыть на старте нужно не только ради виджета: пока висит карточка
+    // Скрыть на старте нужно не только по настройке: пока висит карточка
     // загрузки, пустое главное окно за ней — это два окна на одно действие.
     // Его показывает DesktopIntegration, когда карточка уходит.
-    final startHidden =
-        (prefs.getBool('overlayMode') ?? true) || BootSplash.instance.active;
+    // Умолчание повторяет прежнее поведение (окно видно, если виджет выключен);
+    // AppState.load() читает тот же ключ с тем же фолбэком.
+    final wantWindow = prefs.getBool('startupShowWindow') ??
+        !(prefs.getBool('overlayMode') ?? true);
+    final startHidden = !wantWindow || BootSplash.instance.active;
     // The window boots hidden with the floating widget on: tell MotionPolicy so
     // ambient loops don't repaint an invisible window, and so the startup splash
     // waits for the first real show instead of playing to nobody.

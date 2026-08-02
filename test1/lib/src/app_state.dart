@@ -237,7 +237,15 @@ class AppState extends ChangeNotifier {
   String sttEngine = 'whisper'; // 'whisper' (sidecar) | 'windows' (speech_to_text)
   // Sidecar recognition engine (TZ1): which model the sidecar uses. Distinct
   // from sttEngine above (sidecar-vs-native backend).
-  String sttSidecarEngine = 'whisper'; // 'whisper' | 'gigaam'
+  String sttSidecarEngine = 'whisper'; // 'whisper' | 'gigaam' | 'remote'
+  // Распознавание на сервере: OpenAI-совместимый эндпоинт
+  // POST {url}/v1/audio/transcriptions. Контракт чужой намеренно — его отдают
+  // готовые серверы (speaches, whisper.cpp server, vLLM), и свою серверную
+  // часть держать не придётся. Захват и VAD всё равно остаются в сайдкаре:
+  // микрофон здесь, а не на сервере.
+  String sttRemoteUrl = '';
+  String sttRemoteModel = 'whisper-1';
+  String sttRemoteKey = '';
   // Noise suppression before the VAD (TZ2 block 1). 'light' is the default but
   // needs the GTCRN model; the sidecar fail-safes to off until it's present.
   String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
@@ -308,6 +316,12 @@ class AppState extends ChangeNotifier {
   // visualization. Enabled by default; it opens together with the app at the
   // right edge of the desktop while the chat window starts hidden.
   bool overlayMode = true; // widget on/off — persisted
+  // Показывать ли главное окно сразу после запуска. Раньше это решал сам
+  // overlayMode: включён виджет — окно скрыто. Две вещи на одном тумблере, и
+  // «окно и виджет вместе» выразить было нечем. Теперь окно и виджет —
+  // независимые флаги, а карточка «После запуска показывать» в «Общих» ставит
+  // оба разом. Значение по умолчанию повторяет прежнее поведение.
+  bool startupShowWindow = false;
   double overlaySize = 260; // widget window size, px (200 | 260 | 330)
   // Periodic background update checks (the in-app Discord-style updater).
   bool autoUpdateCheck = true;
@@ -579,6 +593,9 @@ class AppState extends ChangeNotifier {
     }
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
+    sttRemoteUrl = prefs.getString('sttRemoteUrl') ?? '';
+    sttRemoteModel = prefs.getString('sttRemoteModel') ?? 'whisper-1';
+    sttRemoteKey = prefs.getString('sttRemoteKey') ?? '';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
     micGain = prefs.getDouble('micGain') ?? 1.0;
@@ -608,6 +625,9 @@ class AppState extends ChangeNotifier {
     showVizBg = prefs.getBool('showVizBg') ?? true;
     showPartial = prefs.getBool('showPartial') ?? true;
     overlayMode = prefs.getBool('overlayMode') ?? true;
+    // Умолчание берётся из прежнего поведения: окно показывалось ровно тогда,
+    // когда виджет был выключен. У существующих установок ничего не меняется.
+    startupShowWindow = prefs.getBool('startupShowWindow') ?? !overlayMode;
     overlaySize = prefs.getDouble('overlaySize') ?? 260;
     vizAccent = prefs.getInt('vizAccent') ?? 0xFFCC785C;
     orbSize = prefs.getDouble('orbSize') ?? 200;
@@ -748,11 +768,13 @@ class AppState extends ChangeNotifier {
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
         sttLanguage, whisperModel, sttEngine,
-        sttSidecarEngine, denoiseMode, sttDevice, gameModeFullscreen, gameModeVram,
+        sttSidecarEngine, sttRemoteUrl, sttRemoteModel, sttRemoteKey,
+        denoiseMode, sttDevice, gameModeFullscreen, gameModeVram,
         gameModeVramEnter, gameModeVramExit, gameModeNotify,
         gameModeExclusions.join(','), cmdMode, wakeWord, stopWords.join(','),
         cmdThreshold, cmdConfirm, cmdEnabled, chatEnabled, vizType, showVizBg,
-        showPartial, overlayMode, overlaySize, vizAccent, orbSize, orbSpeed,
+        showPartial, overlayMode, startupShowWindow, overlaySize, vizAccent,
+        orbSize, orbSpeed,
         barCount, autoUpdateCheck, webSearchEnabled, tavilyKey, braveKey,
         googleKey, googleCx, yandexKey, yandexFolder, searchProvider,
         voiceResponses, announceReady, ttsPiperVoice, ttsRate, ttsVolume,
@@ -840,6 +862,9 @@ class AppState extends ChangeNotifier {
     await prefs.setString('whisperModel', whisperModel);
     await prefs.setString('sttEngine', sttEngine);
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
+    await prefs.setString('sttRemoteUrl', sttRemoteUrl);
+    await prefs.setString('sttRemoteModel', sttRemoteModel);
+    await prefs.setString('sttRemoteKey', sttRemoteKey);
     await prefs.setString('denoiseMode', denoiseMode);
     await prefs.setInt('micVadAggr', micVadAggr);
     await prefs.setDouble('micGain', micGain);
@@ -866,6 +891,7 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('showVizBg', showVizBg);
     await prefs.setBool('showPartial', showPartial);
     await prefs.setBool('overlayMode', overlayMode);
+    await prefs.setBool('startupShowWindow', startupShowWindow);
     await prefs.setDouble('overlaySize', overlaySize);
     await prefs.setInt('vizAccent', vizAccent);
     await prefs.setDouble('orbSize', orbSize);
@@ -997,6 +1023,10 @@ class AppState extends ChangeNotifier {
       SidecarClient.instance.setSttModel(whisperModel);
     } catch (_) {}
     try {
+      // Адрес сервера — раньше выбора движка: setSttEngine отправляет их одним
+      // сообщением, но у сайдкара адрес должен быть и при откате настроек.
+      unawaited(SidecarClient.instance.setSttRemote(
+          url: sttRemoteUrl, model: sttRemoteModel, key: sttRemoteKey));
       unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
     } catch (_) {}
     try {
@@ -1086,6 +1116,9 @@ class AppState extends ChangeNotifier {
     whisperModel = prefs.getString('whisperModel') ?? 'small';
     sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
+    sttRemoteUrl = prefs.getString('sttRemoteUrl') ?? '';
+    sttRemoteModel = prefs.getString('sttRemoteModel') ?? 'whisper-1';
+    sttRemoteKey = prefs.getString('sttRemoteKey') ?? '';
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
     micGain = prefs.getDouble('micGain') ?? 1.0;
@@ -1115,6 +1148,9 @@ class AppState extends ChangeNotifier {
     showVizBg = prefs.getBool('showVizBg') ?? true;
     showPartial = prefs.getBool('showPartial') ?? true;
     overlayMode = prefs.getBool('overlayMode') ?? true;
+    // Умолчание берётся из прежнего поведения: окно показывалось ровно тогда,
+    // когда виджет был выключен. У существующих установок ничего не меняется.
+    startupShowWindow = prefs.getBool('startupShowWindow') ?? !overlayMode;
     overlaySize = prefs.getDouble('overlaySize') ?? 260;
     vizAccent = prefs.getInt('vizAccent') ?? 0xFFCC785C;
     orbSize = prefs.getDouble('orbSize') ?? 200;
@@ -1998,14 +2034,55 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Switch the sidecar recognition engine (whisper | gigaam). Applies live for
-  // preview (the card shows loading/ready/error); the choice persists on Save
-  // and is resynced to the backend on Save/Cancel via _applySettingsSideEffects.
+  // Switch the sidecar recognition engine (whisper | gigaam | remote). Applies
+  // live for preview (the card shows loading/ready/error); the choice persists
+  // on Save and is resynced to the backend on Save/Cancel via
+  // _applySettingsSideEffects.
+  static const List<String> kSttSidecarEngines = ['whisper', 'gigaam', 'remote'];
+
   void setSttSidecarEngine(String v) {
-    sttSidecarEngine = v == 'gigaam' ? 'gigaam' : 'whisper';
+    sttSidecarEngine = kSttSidecarEngines.contains(v) ? v : 'whisper';
     _save();
     notifyListeners();
     unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));
+  }
+
+  // Адрес/модель/ключ сервера распознавания. Уходят в сайдкар сразу: адрес
+  // должен быть у него ДО того, как выберут движок «на сервере», иначе тот
+  // переключится на пустой адрес и сразу отвалится.
+  void setSttRemoteUrl(String v) {
+    sttRemoteUrl = v.trim();
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setSttRemote(
+        url: sttRemoteUrl, model: sttRemoteModel, key: sttRemoteKey));
+  }
+
+  void setSttRemoteModel(String v) {
+    sttRemoteModel = v.trim();
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setSttRemote(
+        url: sttRemoteUrl, model: sttRemoteModel, key: sttRemoteKey));
+  }
+
+  void setSttRemoteKey(String v) {
+    sttRemoteKey = v.trim();
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setSttRemote(
+        url: sttRemoteUrl, model: sttRemoteModel, key: sttRemoteKey));
+  }
+
+  /// Кнопка «Проверить» у сервера распознавания. Пробу делает сайдкар, а не
+  /// приложение: у него уже есть адрес, ключ и та же сетевая обстановка, в
+  /// которой пойдут настоящие запросы. Ответ приходит обычным
+  /// `stt.engine_status` — карточка читает один сигнал, а не два.
+  Future<void> checkSttRemote() async {
+    if (sttRemoteUrl.trim().isEmpty) return;
+    await SidecarClient.instance.setSttRemote(
+        url: sttRemoteUrl, model: sttRemoteModel, key: sttRemoteKey);
+    await SidecarClient.instance.checkSttRemote();
   }
 
   // Switch noise suppression (off | light | strong). Applies live for preview;
@@ -2224,6 +2301,16 @@ class AppState extends ChangeNotifier {
     if (defaultTargetPlatform == TargetPlatform.windows) {
       unawaited(VizOverlayServer.instance.setVisible(v));
     }
+  }
+
+  /// Что показывать сразу после запуска: окно, виджет, оба или ничего. Ставит
+  /// сразу два флага, поэтому тумблер «Плавающий виджет» в «Виджетах» никогда
+  /// не расходится с этим выбором — он и есть половина этого выбора.
+  void setStartupView({required bool window, required bool widget}) {
+    startupShowWindow = window;
+    _save();
+    notifyListeners();
+    setOverlayMode(widget); // сам сохранит и поднимет/погасит процесс виджета
   }
 
   void setOverlaySize(double v) {

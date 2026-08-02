@@ -375,8 +375,7 @@ class NocturStatusStrip extends StatelessWidget {
         builder: (context, _) {
           final pipe = NexusPipeline.instance;
           // STT: движок · устройство.
-          final gigaam = app.sttSidecarEngine == 'gigaam';
-          final stt = gigaam ? 'GigaAM-v3' : 'Whisper · ${app.whisperModel}';
+          final stt = sttEngineLabel(app);
           final device = (sc.deviceStatus.value?.$2 ?? app.sttDevice)
               .toUpperCase();
           // LLM: модель @ хост (или on-device).

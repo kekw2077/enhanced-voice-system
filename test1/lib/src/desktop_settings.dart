@@ -774,16 +774,34 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
 
   void _onStatus() {
     final st = SidecarClient.instance.engineStatus.value;
-    if (st == null || _pending == null || st.$1 != _pending) return;
+    if (st == null) return;
+    // Сервер распознавания отвалился на ходу: сайдкар уже перешёл на локальный
+    // движок, чтобы фразы не пропадали. Показываем это, а не молчим — иначе
+    // «распознаёт хуже, чем вчера» останется без объяснения. Приходит вне
+    // переключения, поэтому проверяется до `_pending`.
+    if (st.$2 == 'fallback') {
+      if (widget.app.sttSidecarEngine == st.$1) {
+        widget.app.setSttSidecarEngine('whisper');
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('${widget.app.t('engRemoteFellBack')}'
+                '${(st.$3 ?? '').isEmpty ? '' : ': ${st.$3}'}')));
+      }
+      return;
+    }
+    if (_pending == null || st.$1 != _pending) return;
     if (st.$2 == 'ready') {
       if (mounted) setState(() => _pending = null);
     } else if (st.$2 == 'error') {
       final failed = _pending!;
       final msg = st.$3 ?? widget.app.t('engSwitchFailed');
       if (mounted) setState(() => _pending = null);
-      // Visual rollback: revert the choice to the other engine.
+      // Visual rollback: revert to Whisper (the one engine that is always
+      // there); if Whisper itself is what failed, fall back to GigaAM.
       if (widget.app.sttSidecarEngine == failed) {
-        widget.app.setSttSidecarEngine(failed == 'gigaam' ? 'whisper' : 'gigaam');
+        widget.app
+            .setSttSidecarEngine(failed == 'whisper' ? 'gigaam' : 'whisper');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -812,6 +830,9 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
           const SizedBox(height: 10),
           _tile('gigaam', widget.app.t('engGigaamName'),
               widget.app.t('engGigaamShort')),
+          const SizedBox(height: 10),
+          _tile('remote', widget.app.t('engRemoteName'),
+              widget.app.t('engRemoteShort')),
         ]),
       ),
     );
@@ -830,7 +851,12 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
     final app = widget.app;
     final sc = SidecarClient.instance;
     final selected = app.sttSidecarEngine == engine;
-    final avail = sc.engines.value[engine] == true;
+    // У серверного движка «доступен» — это «адрес задан»; спрашивать сайдкар
+    // бессмысленно, он сообщает свои возможности один раз при подключении, а
+    // адрес пользователь вводит потом.
+    final avail = engine == 'remote'
+        ? app.sttRemoteUrl.trim().isNotEmpty
+        : sc.engines.value[engine] == true;
     final loading = _pending == engine;
 
     String status;
@@ -906,8 +932,11 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                       color: _sub(context), fontSize: 12)),
               _DetailDisclosure(
                 open: _expanded.contains(engine),
-                detail: app.t(
-                    engine == 'gigaam' ? 'engGigaamDetail' : 'engWhisperDetail'),
+                detail: app.t(switch (engine) {
+                  'gigaam' => 'engGigaamDetail',
+                  'remote' => 'engRemoteDetail',
+                  _ => 'engWhisperDetail',
+                }),
                 moreLabel: app.t('moreDetails'),
                 lessLabel: app.t('lessDetails'),
                 onToggle: () => setState(() {
@@ -926,6 +955,10 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                     ),
                   ),
                 ),
+              // Поля сервера видны всегда, а не только у выбранного движка:
+              // выбрать «на сервере» с пустым адресом — значит сразу получить
+              // откат. Сначала настроить и проверить, потом выбирать.
+              if (engine == 'remote') _RemoteSttFields(app),
               if (engine == 'whisper' && selected) ...[
                 const SizedBox(height: 12),
                 Text(app.t('engWhisperSize'),
@@ -945,6 +978,142 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Адрес, модель и ключ сервера распознавания плюс кнопка «Проверить». Пробу
+// делает сайдкар, а не приложение: у него уже есть адрес и та же сетевая
+// обстановка, в которой пойдут настоящие запросы, — иначе «здесь работает, там
+// нет» не с чем сопоставить. Ответ приходит обычным stt.engine_status.
+class _RemoteSttFields extends StatefulWidget {
+  const _RemoteSttFields(this.app);
+  final AppState app;
+  @override
+  State<_RemoteSttFields> createState() => _RemoteSttFieldsState();
+}
+
+class _RemoteSttFieldsState extends State<_RemoteSttFields> {
+  late final TextEditingController _url =
+      TextEditingController(text: widget.app.sttRemoteUrl);
+  late final TextEditingController _model =
+      TextEditingController(text: widget.app.sttRemoteModel);
+  late final TextEditingController _key =
+      TextEditingController(text: widget.app.sttRemoteKey);
+  bool _checking = false;
+  String _verdict = '';
+  bool _ok = false;
+
+  @override
+  void dispose() {
+    _url.dispose();
+    _model.dispose();
+    _key.dispose();
+    super.dispose();
+  }
+
+  Future<void> _check() async {
+    final app = widget.app;
+    if (app.sttRemoteUrl.trim().isEmpty) {
+      setState(() {
+        _ok = false;
+        _verdict = app.t('engRemoteNoUrl');
+      });
+      return;
+    }
+    setState(() {
+      _checking = true;
+      _verdict = '';
+    });
+    final sc = SidecarClient.instance;
+    final done = Completer<(String, String?)>();
+    void listener() {
+      final st = sc.engineStatus.value;
+      if (st == null || st.$1 != 'remote') return;
+      if (!done.isCompleted) done.complete((st.$2, st.$3));
+    }
+
+    sc.engineStatus.addListener(listener);
+    try {
+      await app.checkSttRemote();
+      final r = await done.future.timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      setState(() {
+        _ok = r.$1 == 'ready';
+        _verdict = _ok
+            ? app.t('engRemoteOnline')
+            : '${app.t('engRemoteOffline')}: ${r.$2 ?? ''}';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      // Сайдкар не ответил вовсе — это не «сервер офлайн», а «спросить некого».
+      setState(() {
+        _ok = false;
+        _verdict = app.t('engRemoteNoSidecar');
+      });
+    } finally {
+      sc.engineStatus.removeListener(listener);
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 5),
+        child: Text(text,
+            style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: _sectionLabel(context))),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _label(app.t('engRemoteUrl')),
+        _RemoteField(controller: _url, onChanged: app.setSttRemoteUrl),
+        _label(app.t('engRemoteModel')),
+        _RemoteField(controller: _model, onChanged: app.setSttRemoteModel),
+        _label(app.t('engRemoteKey')),
+        _RemoteField(controller: _key, onChanged: app.setSttRemoteKey),
+        const SizedBox(height: 10),
+        Row(children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: _checking ? null : () => unawaited(_check()),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _stroke(context)),
+                color: _stroke(context),
+              ),
+              child: Text(app.t('engRemoteCheck'),
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _body(context))),
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (_checking)
+            const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2))
+          else if (_verdict.isNotEmpty)
+            Expanded(
+              child: Text(_verdict,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: _ok ? _success(context) : _danger(context))),
+            ),
+        ]),
+      ],
     );
   }
 }
@@ -2854,7 +3023,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       animation: Listenable.merge([sc.status]),
       builder: (context, _) {
         final up = sc.status.value == SidecarStatus.connected;
-        final stt = app.sttSidecarEngine == 'gigaam' ? 'GigaAM-v3' : 'Whisper';
+        final stt = sttEngineLabel(app);
 
         String voice;
         bool voiceOk;
@@ -2930,6 +3099,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'uiStyle': _Pages.basics,
     'fontSize': _Pages.basics,
     'motionMode': _Pages.basics,
+    'startupView': _Pages.startup,
     'autostart': _Pages.startup,
     'minimizeToTray': _Pages.startup,
     'globalHotkey': _Pages.startup,
@@ -2939,6 +3109,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'micGain': _Pages.stt,
     'recognitionLanguage': _Pages.stt,
     'sttEngine': _Pages.stt,
+    'engRemoteName': _Pages.stt,
     'cardDenoise': _Pages.stt,
     'activationMode': _Pages.listen,
     'pttKeysLabel': _Pages.listen,
@@ -3376,7 +3547,26 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           icon: Icons.desktop_windows_outlined,
           title: app.t('cardStartup'),
           rows: [
-            evsRow(context, 
+            evsRow(context,
+              stacked: true,
+              label: app.t('startupView'),
+              desc: app.t('startupViewDesc'),
+              // Один выбор ставит оба флага сразу, поэтому тумблер «Плавающий
+              // виджет» в «Виджетах и оверлее» не может с ним разойтись: он и
+              // есть половина этого выбора.
+              control: evsSegmentedWide<String>(context, [
+                ('widget', app.t('startupViewWidget')),
+                ('both', app.t('startupViewBoth')),
+                ('window', app.t('startupViewWindow')),
+                ('none', app.t('startupViewNone')),
+              ], _startupView(app), (v) {
+                app.setStartupView(
+                  window: v == 'both' || v == 'window',
+                  widget: v == 'both' || v == 'widget',
+                );
+              }),
+            ),
+            evsRow(context,
               label: app.t('autostart'),
               desc: app.t('autostartDesc'),
               control: evsToggle(context, app.autostart, (v) {
@@ -3428,7 +3618,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final (label, color) = switch (s) {
       SidecarStatus.connected => (
           '${app.t('sidecarConnected')}'
-              '${SidecarClient.instance.sttAvailable ? ' · ${app.sttSidecarEngine == 'gigaam' ? app.t('engGigaamName') : app.t('engWhisperName')}' : ''}',
+              '${SidecarClient.instance.sttAvailable ? ' · ${sttEngineLabel(app)}' : ''}',
           _success(context)
         ),
       SidecarStatus.starting => (app.t('sidecarStarting'), _warn(context)),
@@ -5177,6 +5367,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         ],
       )),
     ];
+  }
+
+  // Окно и виджет — два независимых флага; карточка показывает их пару одним
+  // выбором, чтобы «окно и виджет вместе» вообще стало выразимым.
+  String _startupView(AppState app) {
+    if (app.startupShowWindow) return app.overlayMode ? 'both' : 'window';
+    return app.overlayMode ? 'widget' : 'none';
   }
 
   // Комбинация показа окна (Ctrl+Shift+Space) захардкожена в DesktopIntegration

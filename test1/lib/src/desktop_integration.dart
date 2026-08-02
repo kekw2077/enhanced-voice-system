@@ -775,6 +775,23 @@ String? pttIdleHint(AppState app) {
 String activatorLabel(AppState app) =>
     app.listenMode == 'ptt' ? app.pttLabel : '«${app.wakeWord}»';
 
+/// Название активного движка распознавания для строк состояния. Одна на все
+/// стили: три копии тернарника «gigaam или whisper» и так уже разъезжались,
+/// а на третьем движке разъехались бы наверняка.
+String sttEngineLabel(AppState app) => switch (app.sttSidecarEngine) {
+      'gigaam' => 'GigaAM-v3',
+      'remote' => app.t('engRemoteName'),
+      _ => 'Whisper · ${app.whisperModel}',
+    };
+
+/// Чем именно распознаётся — нижняя строка телеметрии.
+String sttRuntimeLabel(AppState app) => switch (app.sttSidecarEngine) {
+      'gigaam' => 'sherpa-onnx',
+      'remote' =>
+        app.sttRemoteModel.isEmpty ? 'HTTP' : app.sttRemoteModel,
+      _ => 'faster-whisper',
+    };
+
 class DesktopIntegration with WindowListener, TrayListener {
   DesktopIntegration._();
   static final DesktopIntegration instance = DesktopIntegration._();
@@ -811,7 +828,7 @@ class DesktopIntegration with WindowListener, TrayListener {
     // главное окно: пока она висела, оно намеренно было скрыто. Ставится ДО
     // всего остального: свались что-нибудь ниже, окно так и не появилось бы.
     BootSplash.instance.onDone = () {
-      if (!(_app?.overlayMode ?? true)) unawaited(_show());
+      if (_app?.startupShowWindow ?? false) unawaited(_show());
     };
     // Ambient-animation gating: subscribe the policy to the activity signals
     // (assistant speech/thinking, wake hits, loud mic) once per launch.
@@ -882,9 +899,10 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Widget-first startup: the native runner re-shows the window on the
       // first frame AFTER main()'s early hide — hide again once rendering
       // has settled so only the widget and tray remain.
-      if (app.overlayMode || BootSplash.instance.active) {
+      if (!app.startupShowWindow || BootSplash.instance.active) {
         unawaited(Future.delayed(const Duration(milliseconds: 900), () async {
-          if ((_app?.overlayMode ?? false) || BootSplash.instance.active) {
+          if (!(_app?.startupShowWindow ?? true) ||
+              BootSplash.instance.active) {
             await windowManager.hide();
           }
         }));
@@ -923,6 +941,13 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Apply any update staged on a previous run (before the exe is launched).
       await ComponentManager.instance.applyStagedUpdates();
       SidecarClient.instance.setSttModel(app.whisperModel);
+      // Адрес сервера распознавания — до выбора движка: он же уезжает в
+      // аргументы запуска сайдкара, и «на сервере» должен подняться сразу с
+      // адресом, а не с пустым.
+      await SidecarClient.instance.setSttRemote(
+          url: app.sttRemoteUrl,
+          model: app.sttRemoteModel,
+          key: app.sttRemoteKey);
       await SidecarClient.instance.setSttEngine(app.sttSidecarEngine);
       await SidecarClient.instance.setDenoise(app.denoiseMode);
       SidecarClient.instance.setSttDevice(app.sttDevice); // sets CLI arg too
