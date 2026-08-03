@@ -1194,6 +1194,42 @@ class ComponentManager {
     } catch (_) {}
   }
 
+  /// Одноразовая уборка: сайдкар когда-то был одним файлом (`evs_sidecar.exe`),
+  /// потом стал распакованной папкой `components/sidecar/`. Файлы прежнего
+  /// формата код с тех пор не открывает ни разу — но лежат они по 100 МБ
+  /// каждый: на этой машине 212 МБ вдвоём.
+  ///
+  /// Удалять их не просто ради места. `installedPath` при недоступном манифесте
+  /// умеет подхватить старый одиночный exe — а он не понимает нынешние
+  /// аргументы запуска и падает на их разборе, выдавая «голосовой движок не
+  /// запущен». То есть это не запасной вариант, а ловушка.
+  ///
+  /// Идемпотентно: после первого раза — пустой проход.
+  Future<void> purgeLegacySidecar() async {
+    try {
+      final sep = io.Platform.pathSeparator;
+      final dir = await _componentsDir();
+      // Только формат «один файл» и обрывки закачек. Ни `sidecar/`, ни
+      // `evs_sidecar.zip.new` тут не трогаем: первое — рабочий движок, второе
+      // разбирает applyStagedUpdates по маркеру версии.
+      for (final f in const [
+        'evs_sidecar.exe',
+        'evs_sidecar.exe.new',
+        'evs_sidecar.zip.part',
+      ]) {
+        final file = io.File('$dir$sep$f');
+        try {
+          if (!await file.exists()) continue;
+          final mb = (await file.length()) ~/ (1024 * 1024);
+          if (await _deleteStubborn(file)) {
+            unawaited(appendLog('sidecar', 'убран файл старого формата: $f '
+                '($mb МБ)'));
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
   Future<String> _versionMarkerPath(String id) async =>
       '${await _componentsDir()}${io.Platform.pathSeparator}.$id.version';
 

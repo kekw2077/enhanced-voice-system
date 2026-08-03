@@ -1020,6 +1020,10 @@ class DesktopIntegration with WindowListener, TrayListener {
       // The CPU voice clone (XTTS) was removed — reclaim its ~8 GB component and
       // caches from disk (idempotent no-op once gone).
       unawaited(ComponentManager.instance.purgeClone());
+      // Движок прежнего формата (один файл) — те же 212 МБ впустую, что и у
+      // клон-голоса выше. Зовётся ПОСЛЕ hasLocalSidecar/ensure: к этому моменту
+      // рабочая распакованная папка точно на месте.
+      unawaited(ComponentManager.instance.purgeLegacySidecar());
       await SidecarClient.instance.start();
       // Push game-mode config (thresholds, exclusions, localized phrases) now
       // that the socket is up; the sidecar started the monitor with defaults.

@@ -1142,10 +1142,22 @@ class SttEngine:
             self._emit_status("remote", "ready")
             return
 
+    @property
+    def _whisper_is_working(self) -> bool:
+        """Whisper — рабочий движок ПРЯМО СЕЙЧАС, а не начальное значение поля.
+
+        До конца прогрева `_engine_name` держит подстановку "whisper" из
+        конструктора, и полагаться на неё нельзя: настройки приезжают сразу
+        после подключения, то есть раньше, чем прогрев успевает поставить туда
+        настоящий движок. По этому признаку Whisper грузился на КАЖДОМ запуске
+        у тех, кто им не пользуется — замер на этой машине: +0,75 с к запуску и
+        лишняя модель в памяти при выбранном GigaAM."""
+        return self._warmed and self._engine_name == "whisper"
+
     def set_model(self, model_size: str) -> None:
         """Switch the Whisper model size (Whisper engine only)."""
         self._whisper.set_model(str(model_size))
-        if self._engine_name == "whisper":
+        if self._whisper_is_working:
             # Reload eagerly if Whisper is active so the next phrase uses it.
             threading.Thread(target=self._switch_blocking, args=("whisper",),
                              daemon=True).start()
@@ -1179,7 +1191,10 @@ class SttEngine:
         if dev == self._whisper.device and self._whisper.is_loaded:
             return
         self._whisper.set_device(dev)
-        if self._engine_name == "whisper":
+        # Устройство запоминаем всегда, а грузить модель — только если Whisper
+        # и правда работает: см. `_whisper_is_working`. Прогрев поднимет его
+        # сам и уже с этим устройством.
+        if self._whisper_is_working:
             threading.Thread(target=self._reload_whisper_device,
                              daemon=True).start()
 

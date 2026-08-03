@@ -28,6 +28,33 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.15.2</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Whisper больше не грузится на каждом запуске у тех, кто им не пользуется.</b> Настройки приезжают в движок сразу после подключения — раньше, чем запуск успевает выставить выбранный движок, и в этот момент поле ещё держало начальное значение «whisper». По нему модель и загружалась: замер на машине с GigaAM — лишние 0,75 секунды к запуску и целая модель в памяти впустую.</li>
+          <li><b>Убраны 212 МБ мёртвых файлов.</b> Движок когда-то был одним файлом, потом стал распакованной папкой; файлы прежнего формата остались лежать и больше никогда не открывались. Это была не только трата места: при недоступном списке компонентов программа могла подхватить тот старый файл, а он не понимает нынешние аргументы запуска и падает с «голосовой движок не запущен».</li>
+        </ul>
+      ]]></description>
+      <pubDate>Mon, 03 Aug 2026 12:55:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.15.2/EVS-Setup-2.15.2.exe"
+        sparkle:version="2.15.2"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHDkx/IMEjTGhqYYXOgP2JIYi6FJcXNRFXNjdWasCHC9INWRtnwBN5j8aXj7bEMbBqSmLZKg6UWOyeDg="
+        evs:sha256="fa0eee42ad1d3323013d1d0479745084b640166ada8130c4970db8e2650b3489"
+        length="16996005"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.15.1</title>
       <description><![CDATA[
         <style>
