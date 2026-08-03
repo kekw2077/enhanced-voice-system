@@ -106,9 +106,11 @@ To (re)publish the sidecar component:
 cd sidecar
 .\build_exe.ps1 -ComponentVersion 2          # bump version when the exe changes
 
-# 2. Upload the exe to the components release (create the tag once):
-gh release create desktop-components --title "EVS components" --notes "On-demand components" 2>$null
-gh release upload desktop-components .\dist\evs_sidecar.exe --clobber
+# 2. Upload the zip to the components release (create the tag once).
+#    ВСЕГДА с --repo: origin смотрит на kekw2077/mirai — чужой проект, и без
+#    флага ассет уедет туда, а установленные копии будут качать из ниоткуда.
+gh release create desktop-components --title "EVS components" --notes "On-demand components" --repo kekw2077/enhanced-voice-system 2>$null
+gh release upload desktop-components .\dist\evs_sidecar.zip --clobber --repo kekw2077/enhanced-voice-system
 
 # 3. Commit dist\components.json on the `desktop` branch (the app reads it from
 #    raw.githubusercontent, ~5 min cache).

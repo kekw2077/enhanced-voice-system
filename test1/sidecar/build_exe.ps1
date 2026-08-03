@@ -18,7 +18,11 @@ param(
   # both into one dir -> the wrong one loads and sherpa fails with "requested API
   # version [24] is not available ... Current ORT Version is 1.17.1". onedir keeps
   # each package's DLLs in its own folder, so they don't collide.
-  [string]$Url = "https://github.com/kekw2077/mirai/releases/download/desktop-components/evs_sidecar.zip"
+  # ВНИМАНИЕ: репозиторий именно enhanced-voice-system. Раньше здесь по
+  # умолчанию стоял kekw2077/mirai — чужой проект, и собранный манифест повёл бы
+  # все установленные копии качать компонент оттуда. Та же ловушка, что и с
+  # `gh release create` без --repo.
+  [string]$Url = "https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-components/evs_sidecar.zip"
 )
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $here

@@ -30,6 +30,11 @@ class SidecarClient {
   // Live STT-engine state for the "Модель распознавания" UI (TZ1).
   final ValueNotifier<(String engine, String state, String? message)?>
       engineStatus = ValueNotifier(null);
+  /// Каким движком сайдкар распознаёт ПРЯМО СЕЙЧАС. Отдельно от
+  /// `app.sttSidecarEngine`, где хранится ВЫБОР пользователя: расходятся они
+  /// ровно тогда, когда это важно показать — сервер выбран, но не отвечает, и
+  /// распознаёт локальная модель.
+  final ValueNotifier<String> activeSttEngine = ValueNotifier('');
   final ValueNotifier<int> sttLatencyMs = ValueNotifier(0);
   String lastSttDevice = ''; // winning mic label from the last final (block 8.2)
   final ValueNotifier<Map<String, bool>> engines =
@@ -120,6 +125,9 @@ class SidecarClient {
         if (_sttRemoteKey.isNotEmpty) {
           args.addAll(['--stt-remote-key', _sttRemoteKey]);
         }
+        // Тоже при запуске: если сервера сейчас нет, сайдкар должен поднять
+        // локальный движок сразу, а не ждать сообщения следом.
+        args.addAll(['--stt-local-engine', _sttLocalEngine]);
       }
       if (_denoiseDir.isNotEmpty) args.addAll(['--denoise-dir', _denoiseDir]);
       if (_ttsVoice.isNotEmpty) args.addAll(['--tts-voice', _ttsVoice]);
@@ -278,11 +286,15 @@ class SidecarClient {
             _finalText.add(m['text'] as String? ?? '');
             break;
           case 'stt.engine_status':
-            engineStatus.value = (
-              m['engine'] as String? ?? '',
-              m['state'] as String? ?? '',
-              m['message'] as String?,
-            );
+            final eng = m['engine'] as String? ?? '';
+            final state = m['state'] as String? ?? '';
+            engineStatus.value = (eng, state, m['message'] as String?);
+            // «ready» приходит от движка, который реально распознаёт, — кроме
+            // ответа кнопки «Проверить»: связь с сервером есть, но распознаёт
+            // по-прежнему тот же движок, что и до нажатия.
+            if (state == 'ready' && m['probe'] != true) {
+              activeSttEngine.value = eng;
+            }
             break;
           case 'stt.denoise_status':
             denoiseStatus.value = (
@@ -451,7 +463,19 @@ class SidecarClient {
       'remote_url': _sttRemoteUrl,
       'remote_model': _sttRemoteModel,
       'remote_key': _sttRemoteKey,
+      // Чем распознавать без сервера. Тем же сообщением: выбор «на сервере»
+      // может сорваться сразу, и откатываться надо уже на нужный движок.
+      'local_engine': _sttLocalEngine,
     });
+  }
+
+  // Локальный движок для отката. Хранится здесь же, чтобы переподключившийся
+  // сайдкар получил его обратно вместе с остальными настройками.
+  String _sttLocalEngine = 'gigaam';
+
+  Future<void> setSttLocalEngine(String engine) async {
+    _sttLocalEngine = engine == 'whisper' ? 'whisper' : 'gigaam';
+    _send({'type': 'stt.config', 'local_engine': _sttLocalEngine});
   }
 
   // Сервер распознавания: адрес, модель, ключ. Хранятся здесь же, чтобы

@@ -246,6 +246,14 @@ class AppState extends ChangeNotifier {
   String sttRemoteUrl = '';
   String sttRemoteModel = 'whisper-1';
   String sttRemoteKey = '';
+  // Чем распознавать, когда сервер не отвечает: последний локальный выбор
+  // пользователя. Отдельное поле, а не «всегда Whisper»: у выбравшего GigaAM
+  // откат на tiny-Whisper был бы молчаливым ухудшением вместо страховки.
+  String sttLocalEngine = 'gigaam';
+  // Чем распознаётся прямо сейчас — состояние сайдкара, не настройка: в
+  // prefs не пишется и в снимок настроек не входит. Нужно, чтобы подписи не
+  // врали, когда выбран сервер, а работает локальный движок.
+  String sttEngineLive = '';
   // Noise suppression before the VAD (TZ2 block 1). 'light' is the default but
   // needs the GTCRN model; the sidecar fail-safes to off until it's present.
   String denoiseMode = 'light'; // 'off' | 'light' | 'strong'
@@ -596,6 +604,8 @@ class AppState extends ChangeNotifier {
     sttRemoteUrl = prefs.getString('sttRemoteUrl') ?? '';
     sttRemoteModel = prefs.getString('sttRemoteModel') ?? 'whisper-1';
     sttRemoteKey = prefs.getString('sttRemoteKey') ?? '';
+    sttLocalEngine = prefs.getString('sttLocalEngine') ??
+        (sttSidecarEngine == 'remote' ? 'gigaam' : sttSidecarEngine);
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
     micGain = prefs.getDouble('micGain') ?? 1.0;
@@ -769,6 +779,7 @@ class AppState extends ChangeNotifier {
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
         sttLanguage, whisperModel, sttEngine,
         sttSidecarEngine, sttRemoteUrl, sttRemoteModel, sttRemoteKey,
+        sttLocalEngine,
         denoiseMode, sttDevice, gameModeFullscreen, gameModeVram,
         gameModeVramEnter, gameModeVramExit, gameModeNotify,
         gameModeExclusions.join(','), cmdMode, wakeWord, stopWords.join(','),
@@ -865,6 +876,7 @@ class AppState extends ChangeNotifier {
     await prefs.setString('sttRemoteUrl', sttRemoteUrl);
     await prefs.setString('sttRemoteModel', sttRemoteModel);
     await prefs.setString('sttRemoteKey', sttRemoteKey);
+    await prefs.setString('sttLocalEngine', sttLocalEngine);
     await prefs.setString('denoiseMode', denoiseMode);
     await prefs.setInt('micVadAggr', micVadAggr);
     await prefs.setDouble('micGain', micGain);
@@ -1119,6 +1131,8 @@ class AppState extends ChangeNotifier {
     sttRemoteUrl = prefs.getString('sttRemoteUrl') ?? '';
     sttRemoteModel = prefs.getString('sttRemoteModel') ?? 'whisper-1';
     sttRemoteKey = prefs.getString('sttRemoteKey') ?? '';
+    sttLocalEngine = prefs.getString('sttLocalEngine') ??
+        (sttSidecarEngine == 'remote' ? 'gigaam' : sttSidecarEngine);
     denoiseMode = prefs.getString('denoiseMode') ?? 'light';
     micVadAggr = prefs.getInt('micVadAggr') ?? 3;
     micGain = prefs.getDouble('micGain') ?? 1.0;
@@ -2040,8 +2054,20 @@ class AppState extends ChangeNotifier {
   // _applySettingsSideEffects.
   static const List<String> kSttSidecarEngines = ['whisper', 'gigaam', 'remote'];
 
+  /// Сайдкар сообщил, каким движком распознаёт. Настройку не трогаем: выбор
+  /// «на сервере» остаётся выбором пользователя, даже когда сервер молчит —
+  /// иначе возврат на сервер пришлось бы делать руками.
+  void setSttEngineLive(String v) {
+    if (v.isEmpty || v == sttEngineLive) return;
+    sttEngineLive = v;
+    notifyListeners();
+  }
+
   void setSttSidecarEngine(String v) {
     sttSidecarEngine = kSttSidecarEngines.contains(v) ? v : 'whisper';
+    // Выбор локального движка запоминаем отдельно: именно на него откатится
+    // распознавание, если сервер не ответит.
+    if (sttSidecarEngine != 'remote') sttLocalEngine = sttSidecarEngine;
     _save();
     notifyListeners();
     unawaited(SidecarClient.instance.setSttEngine(sttSidecarEngine));

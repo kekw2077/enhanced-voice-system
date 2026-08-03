@@ -701,11 +701,16 @@ class SttEngine:
     # местах из четырёх.
     ENGINES = ("whisper", "gigaam", "remote")
 
+    # Как часто стучаться на сервер распознавания, пока распознаём локально
+    # вместо него.
+    REMOTE_RETRY_SEC = 60.0
+
     def __init__(self, model_size: str = "small", device: str = "cpu",
                  compute_type: str = "int8", engine: str = "whisper",
                  gigaam_dir: str | None = None, denoise: str = "off",
                  denoise_dir: str = "", remote_url: str = "",
-                 remote_model: str = "", remote_key: str = "") -> None:
+                 remote_model: str = "", remote_key: str = "",
+                 local_engine: str = "") -> None:
         self._whisper = WhisperEngine(model_size, device, compute_type)
         self._gigaam = GigaAmEngine(gigaam_dir)
         self._remote = RemoteSttEngine(remote_url, remote_model, remote_key)
@@ -716,6 +721,16 @@ class SttEngine:
         # Подряд сорвавшиеся запросы к серверу распознавания. Одна сетевая
         # икота не повод уходить на локальный движок, три подряд — повод.
         self._remote_fails = 0
+        # Каким движком распознавать, если сервер не отвечает. Не «всегда
+        # Whisper»: у пользователя может стоять GigaAM, и откат на tiny-Whisper
+        # был бы молчаливым ухудшением распознавания вместо страховки.
+        self._local_name = (
+            local_engine if local_engine in ("whisper", "gigaam")
+            else (engine if engine in ("whisper", "gigaam") else "whisper"))
+        # Сторож возврата на сервер: работает, только пока выбран сервер, а
+        # распознаём мы локально.
+        self._remote_watch: threading.Thread | None = None
+        self._remote_stop = threading.Event()
 
         self._denoiser = Denoiser(denoise_dir)
         self._desired_denoise = \
@@ -784,6 +799,14 @@ class SttEngine:
         if name == "remote":
             return self._remote
         return self._whisper
+
+    def _local_target(self) -> tuple[str, BaseSttEngine]:
+        """Локальный движок, которым распознавать без сервера: выбранный
+        пользователем, если он на месте, иначе Whisper — он есть всегда."""
+        eng = self._engine_by_name(self._local_name)
+        if self._local_name in ("whisper", "gigaam") and eng.available:
+            return self._local_name, eng
+        return "whisper", self._whisper
 
     @property
     def engine_name(self) -> str:
@@ -887,11 +910,42 @@ class SttEngine:
                 self._emit_state(STATE_READY)
                 log_stage(f"state=ready (engine '{want}')")
             except Exception as e:
+                # Сервер распознавания не отозвался на пробе — это не ошибка
+                # запуска, а повод поднять локальную модель: пользователь
+                # получит рабочее распознавание, просто своим процессором.
+                # Раньше здесь объявлялась ошибка, а движок оставался
+                # незагруженным — окно запуска показывало провал, и первая же
+                # фраза платила загрузкой модели.
+                if want == "remote" and self._start_local(str(e)):
+                    return
                 self._active = self._whisper
                 self._engine_name = "whisper"
                 self._emit_status(want, "error", str(e))
                 self._emit_state(STATE_ERROR, str(e))
                 log_stage(f"warmup failed: {e}; state=error")
+
+    def _start_local(self, why: str) -> bool:
+        """Поднять локальный движок вместо недоступного сервера на запуске.
+        True — готовность объявлена им."""
+        name, eng = self._local_target()
+        self._emit_status("remote", "fallback", why)
+        log_stage(f"remote STT unreachable at startup, loading '{name}': {why}")
+        try:
+            eng.load()
+        except Exception as e:
+            log_stage(f"local engine '{name}' failed to load: {e}")
+            return False
+        self._active = eng
+        self._engine_name = name
+        self._warm_inference(eng)
+        self._warmed = True
+        self._emit_status(name, "ready")
+        if name == "whisper":
+            self._emit_device()
+        self._emit_state(STATE_READY)
+        log_stage(f"state=ready (engine '{name}', сервер недоступен)")
+        self._start_remote_watch()
+        return True
 
     def _warm_inference(self, engine: "BaseSttEngine") -> None:
         """Run one throwaway final decode on ~1 s of silence to page in the
@@ -926,6 +980,11 @@ class SttEngine:
         name = name if name in self.ENGINES else "whisper"
         self._desired = name
         self._remote_fails = 0  # выбор вручную — второй шанс серверу
+        if name != "remote":
+            # Ушли с сервера сами — сторож возврата больше не нужен, а выбор
+            # запоминаем: на него же и откатываться, если сервер выберут снова.
+            self._local_name = name
+            self._remote_stop.set()
         if gigaam_dir:
             self._gigaam.set_dir(gigaam_dir)
         # Load on a background thread — the model load must not block the WS loop
@@ -962,12 +1021,23 @@ class SttEngine:
             self._active = prev
             self._engine_name = prev_name
             self._emit_status(name, "error", str(e))
+            # Выбрали сервер, а он молчит: остаёмся на локальном движке, но
+            # ставим сторож — как только сервер ответит, переключимся сами.
+            # Иначе выбор «на сервере» пришлось бы подтверждать вручную.
+            if name == "remote":
+                self._start_remote_watch()
 
     def set_remote(self, url=None, model=None, key=None) -> None:
         """Адрес/модель/ключ сервера распознавания. Меняются на лету; если
         сервер сейчас активен, следующая фраза уйдёт уже по новому адресу."""
         self._remote.set_config(base_url=url, model=model, api_key=key)
         self._remote_fails = 0
+
+    def set_local_engine(self, name: str) -> None:
+        """Каким движком распознавать без сервера. Приходит из настроек: это
+        последний выбор пользователя среди локальных, а не «что-нибудь»."""
+        if name in ("whisper", "gigaam"):
+            self._local_name = name
 
     def probe_remote(self) -> list[str]:
         """Проверка связи с сервером распознавания (кнопка «Проверить»).
@@ -997,20 +1067,74 @@ class SttEngine:
             self._emit_status("remote", "error", str(e))
             if self._remote_fails >= 3:
                 self._fallback_to_local(str(e))
-            if not self._whisper.available:
+            name, local = self._local_target()
+            if not local.available:
                 return ""
-            return self._whisper.transcribe(np, audio_bytes, final)
+            return local.transcribe(np, audio_bytes, final)
 
     def _fallback_to_local(self, why: str) -> None:
         if self._engine_name != "remote":
             return
-        self._active = self._whisper
-        self._engine_name = "whisper"
-        log_stage(f"remote STT unreachable, switching to whisper: {why}")
+        name, eng = self._local_target()
+        try:
+            # Грузим сразу, а не на первой фразе: иначе задержку загрузки
+            # модели заплатит первая же команда после обрыва связи.
+            eng.load()
+        except Exception as e:
+            log_stage(f"local engine '{name}' failed to load: {e}")
+            name, eng = "whisper", self._whisper
+        self._active = eng
+        self._engine_name = name
+        log_stage(f"remote STT unreachable, switching to {name}: {why}")
         # Именно «fallback», а не «ready»: пользователь выбирал сервер, и знать,
         # что распознаёт теперь его собственный процессор, он должен.
         self._emit_status("remote", "fallback", why)
-        self._emit_status("whisper", "ready")
+        self._emit_status(name, "ready")
+        self._start_remote_watch()
+
+    # ---- возврат на сервер ---------------------------------------------
+
+    def _start_remote_watch(self) -> None:
+        """Сторож возврата: пока выбран сервер, а распознаём мы локально, раз в
+        минуту стучимся на сервер и возвращаемся, как только он ответит.
+
+        Без него одна сетевая икота сажала бы на локальный движок до ручного
+        переключения в настройках — а вместе с ним в памяти оставалась бы
+        локальная модель, ради выгрузки которой сервер и подключали."""
+        if self._desired != "remote":
+            return
+        if self._remote_watch is not None and self._remote_watch.is_alive():
+            return
+        self._remote_stop.clear()
+        self._remote_watch = threading.Thread(target=self._remote_watch_loop,
+                                              daemon=True)
+        self._remote_watch.start()
+
+    def _remote_watch_loop(self) -> None:
+        while not self._remote_stop.wait(self.REMOTE_RETRY_SEC):
+            if self._desired != "remote" or self._engine_name == "remote":
+                return
+            if not self._remote.available:
+                continue
+            try:
+                self._remote.load()  # та же проба связи, что и на запуске
+            except Exception:
+                continue
+            # Сервер снова отвечает. Подмена — под замком распознавания, чтобы
+            # не менять движок посреди фразы.
+            with self._recog_lock:
+                prev = self._active
+                self._active = self._remote
+                self._engine_name = "remote"
+                self._remote_fails = 0
+            if prev is not self._remote:
+                try:
+                    prev.unload()  # ради этого всё и затевалось: минус модель
+                except Exception:
+                    pass
+            log_stage("remote STT is back; local model unloaded")
+            self._emit_status("remote", "ready")
+            return
 
     def set_model(self, model_size: str) -> None:
         """Switch the Whisper model size (Whisper engine only)."""

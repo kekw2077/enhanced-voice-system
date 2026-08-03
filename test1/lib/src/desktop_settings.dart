@@ -780,9 +780,11 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
     // «распознаёт хуже, чем вчера» останется без объяснения. Приходит вне
     // переключения, поэтому проверяется до `_pending`.
     if (st.$2 == 'fallback') {
-      if (widget.app.sttSidecarEngine == st.$1) {
-        widget.app.setSttSidecarEngine('whisper');
-      }
+      // Настройку НЕ переписываем: выбор «на сервере» остаётся выбором
+      // пользователя. Сайдкар вернётся туда сам, как только сервер ответит, а
+      // подписи всё это время показывают реальный движок через
+      // `app.sttEngineLive`. Раньше здесь молча вставало «Whisper» — и возврат
+      // на сервер приходилось делать руками.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text('${widget.app.t('engRemoteFellBack')}'

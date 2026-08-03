@@ -12,7 +12,7 @@ Protocol (JSON text frames)
     {"type": "stt.config", "model": "small", "prompt": "...",
                            "engine": "whisper"|"gigaam"|"remote", "gigaam_dir": "...",
                            "remote_url": "http://host:8000", "remote_model": "...",
-                           "remote_key": "...",
+                           "remote_key": "...", "local_engine": "whisper"|"gigaam",
                            "denoise": "off"|"light"|"strong", "denoise_dir": "...",
                            "device": "cpu"|"cuda"}
     {"type": "stt.remote_check"}                     # probe the remote STT server
@@ -188,6 +188,10 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                     stt.set_remote(url=data.get("remote_url"),
                                    model=data.get("remote_model"),
                                    key=data.get("remote_key"))
+                # Тоже ДО выбора движка: если переключение на сервер сразу
+                # сорвётся, откатываться надо уже на нужный локальный.
+                if data.get("local_engine"):
+                    stt.set_local_engine(str(data.get("local_engine")))
                 engine = data.get("engine")
                 if engine:
                     stt.set_engine(str(engine), str(gdir) if gdir else None)
@@ -209,14 +213,16 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
                 # Кнопка «Проверить» в настройках: жив ли сервер распознавания
                 # и какие у него модели. Ответ — тем же stt.engine_status, что
                 # и обычные состояния движка, чтобы карточка читала один сигнал.
+                # `probe` отличает ответ кнопки от настоящей смены движка:
+                # проверка связи НЕ означает, что распознаём мы теперь сервером.
                 try:
                     models = stt.probe_remote()
                     emit({"type": "stt.engine_status", "engine": "remote",
-                          "state": "ready",
+                          "state": "ready", "probe": True,
                           "models": models})
                 except Exception as e:
                     emit({"type": "stt.engine_status", "engine": "remote",
-                          "state": "error", "message": str(e)})
+                          "state": "error", "probe": True, "message": str(e)})
             elif t == "tts.speak":
                 tts.speak(str(data.get("text", "")),
                           rate=float(data.get("rate", 1.0)),
@@ -343,7 +349,8 @@ async def _main(args) -> None:
                     denoise=args.denoise, denoise_dir=args.denoise_dir,
                     remote_url=args.stt_remote_url,
                     remote_model=args.stt_remote_model,
-                    remote_key=args.stt_remote_key)
+                    remote_key=args.stt_remote_key,
+                    local_engine=args.stt_local_engine)
     tts = TtsEngine(engine=args.tts_engine, voice=args.tts_voice,
                     voice_dir=args.tts_voice_dir)
     game = GameModeMonitor()
@@ -402,6 +409,9 @@ def main() -> None:
                     help="model name asked of the remote recognition server")
     ap.add_argument("--stt-remote-key", dest="stt_remote_key", default="",
                     help="bearer token for the remote recognition server")
+    ap.add_argument("--stt-local-engine", dest="stt_local_engine", default="",
+                    help="whisper | gigaam — engine to recognize with when the "
+                         "remote server is unreachable")
     ap.add_argument("--gigaam-dir", dest="gigaam_dir", default="",
                     help="GigaAM sherpa-onnx model directory")
     ap.add_argument("--denoise", default="off", help="off | light | strong")

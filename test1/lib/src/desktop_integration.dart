@@ -778,19 +778,37 @@ String activatorLabel(AppState app) =>
 /// Название активного движка распознавания для строк состояния. Одна на все
 /// стили: три копии тернарника «gigaam или whisper» и так уже разъезжались,
 /// а на третьем движке разъехались бы наверняка.
-String sttEngineLabel(AppState app) => switch (app.sttSidecarEngine) {
+String sttEngineLabel(AppState app) => switch (_sttEngineNow(app)) {
       'gigaam' => 'GigaAM-v3',
       'remote' => app.t('engRemoteName'),
       _ => 'Whisper · ${app.whisperModel}',
     };
 
 /// Чем именно распознаётся — нижняя строка телеметрии.
-String sttRuntimeLabel(AppState app) => switch (app.sttSidecarEngine) {
-      'gigaam' => 'sherpa-onnx',
-      'remote' =>
-        app.sttRemoteModel.isEmpty ? 'HTTP' : app.sttRemoteModel,
-      _ => 'faster-whisper',
-    };
+String sttRuntimeLabel(AppState app) {
+  // Выбран сервер, а работает локальная модель — нижняя строка объясняет
+  // почему, вместо названия библиотеки.
+  if (app.sttSidecarEngine == 'remote' && _sttEngineNow(app) != 'remote') {
+    return app.t('engRemoteLocalNow');
+  }
+  return switch (_sttEngineNow(app)) {
+    'gigaam' => 'sherpa-onnx',
+    'remote' => app.sttRemoteModel.isEmpty ? 'HTTP' : app.sttRemoteModel,
+    _ => 'faster-whisper',
+  };
+}
+
+/// Движок, о котором говорят подписи: выбранный — пока сайдкар не сказал, что
+/// распознаёт другим. Выбор «на сервере» при молчащем сервере не отменяется
+/// (сайдкар вернётся туда сам), но и показывать сервер, когда работает
+/// локальная модель, нельзя — с этого начинается «распознаёт хуже, чем вчера».
+String _sttEngineNow(AppState app) {
+  final live = app.sttEngineLive;
+  if (live.isEmpty || !AppState.kSttSidecarEngines.contains(live)) {
+    return app.sttSidecarEngine;
+  }
+  return live;
+}
 
 class DesktopIntegration with WindowListener, TrayListener {
   DesktopIntegration._();
@@ -959,7 +977,14 @@ class DesktopIntegration with WindowListener, TrayListener {
           url: app.sttRemoteUrl,
           model: app.sttRemoteModel,
           key: app.sttRemoteKey);
+      await SidecarClient.instance.setSttLocalEngine(app.sttLocalEngine);
       await SidecarClient.instance.setSttEngine(app.sttSidecarEngine);
+      // Чем распознаётся на самом деле. Слушаем здесь, а не в карточке
+      // настроек: сервер может отвалиться, когда настройки закрыты, и тогда
+      // подписи в интерфейсе продолжали показывать «на сервере».
+      SidecarClient.instance.activeSttEngine.addListener(
+          () => app.setSttEngineLive(
+              SidecarClient.instance.activeSttEngine.value));
       await SidecarClient.instance.setDenoise(app.denoiseMode);
       SidecarClient.instance.setSttDevice(app.sttDevice); // sets CLI arg too
       await SidecarClient.instance.setTtsVoice(app.ttsPiperVoice,

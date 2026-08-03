@@ -1288,7 +1288,8 @@ class ComponentManager {
             } catch (_) {}
             continue;
           }
-          final exe = await _extract(entry.key, staged.path);
+          final exe =
+              await _extract(entry.key, staged.path, entry.value.exe);
           if (exe != null) {
             await _deleteStubborn(staged);
             try {
@@ -1366,7 +1367,7 @@ class ComponentManager {
       }
       String result = dest;
       if (info.archive) {
-        final extracted = await _extract(id, dest);
+        final extracted = await _extract(id, dest, info.exe);
         if (extracted == null) {
           st.value = const ComponentStatus(ComponentState.error,
               error: 'extract failed');
@@ -1390,7 +1391,16 @@ class ComponentManager {
 
   // Extract an archive component's zip into <dir>/<id>/ (via PowerShell
   // Expand-Archive — Windows only). Returns the launchable exe path.
-  Future<String?> _extract(String id, String zipPath) async {
+  //
+  // Имя exe приходит параметром, а НЕ читается тут из `_manifest`: распаковка
+  // длится секунды, а с кэш-первым `loadManifest()` в это же время фоном едет
+  // свежий манифест и переприсваивает карту. Читая её после распаковки, можно
+  // не найти компонент, вернуть null — и удачная распаковка выглядит как
+  // неудачная: маркер версии не пишется, припасённый архив остаётся, и
+  // следующий запуск распаковывает всё заново. Это ровно тот цикл, который
+  // стоил пользователю полутора минут; поймано на синтетическом компоненте.
+  Future<String?> _extract(String id, String zipPath, String exeName) async {
+    if (exeName.isEmpty) return null;
     final sep = io.Platform.pathSeparator;
     final dir = await _componentsDir();
     final target = '$dir$sep$id';
@@ -1403,7 +1413,7 @@ class ComponentManager {
         'Expand-Archive -Path "$zipPath" -DestinationPath "$target" -Force'
       ]);
       if (r.exitCode != 0) return null;
-      final exe = '$target$sep${_manifest[id]?.exe ?? ''}';
+      final exe = '$target$sep$exeName';
       return await io.File(exe).exists() ? exe : null;
     } catch (_) {
       return null;
