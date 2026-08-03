@@ -180,6 +180,10 @@ const Map<String, Map<String, String>> _i18n = {
     'engRemoteNoSidecar': 'Служба распознавания не запущена — спросить некого',
     'engRemoteFellBack': 'Сервер распознавания не отвечает, распознаю локально',
     'engRemoteLocalNow': 'сервер не отвечает — локально',
+    'engRemoteFallbackLabel': 'Если сервер недоступен',
+    'engRemoteFallbackDesc':
+        'Этим движком распознаётся речь, пока сервер молчит. Как только он '
+            'ответит, распознавание вернётся на него само, а модель выгрузится.',
     'engWhisperSize': 'Размер модели',
     'cardModels': 'Модели',
     'mdlInstalled': 'Установлена',
@@ -1457,6 +1461,10 @@ const Map<String, Map<String, String>> _i18n = {
     'engRemoteNoSidecar': 'The recognition service is not running — nobody to ask',
     'engRemoteFellBack': 'The recognition server is unreachable, recognizing locally',
     'engRemoteLocalNow': 'server is down — local',
+    'engRemoteFallbackLabel': 'If the server is unreachable',
+    'engRemoteFallbackDesc':
+        'This engine recognizes speech while the server is silent. Once it '
+            'answers, recognition returns to it on its own and the model unloads.',
     'engWhisperSize': 'Model size',
     'cardModels': 'Models',
     'mdlInstalled': 'Installed',

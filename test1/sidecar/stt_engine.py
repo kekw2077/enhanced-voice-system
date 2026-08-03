@@ -436,7 +436,7 @@ class RemoteSttEngine(BaseSttEngine):
             h["Authorization"] = "Bearer " + self._key
         return h
 
-    def probe(self) -> list[str]:
+    def probe(self, timeout: float = 8.0) -> list[str]:
         """Живой ли сервер и какие у него модели. Ошибка HTTP (404 на /v1/models,
         401 без ключа) — это ОТВЕТ, значит сервер на месте; провалом считается
         только отсутствие соединения."""
@@ -448,7 +448,7 @@ class RemoteSttEngine(BaseSttEngine):
         req = urllib.request.Request(self._base + "/v1/models",
                                      headers=self._headers())
         try:
-            with urllib.request.urlopen(req, timeout=8) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 data = _json.loads(r.read().decode("utf-8", "replace"))
             items = data.get("data") if isinstance(data, dict) else None
             return [str(m.get("id")) for m in (items or []) if m.get("id")]
@@ -458,9 +458,15 @@ class RemoteSttEngine(BaseSttEngine):
     def load(self) -> None:
         # Проба связи прямо на старте: без неё «готов» наступал бы сразу, а
         # выяснялось бы всё на первой же фразе — то есть молчанием в ответ.
+        #
+        # Таймаут короткий намеренно: это путь запуска, и выключенный сервер не
+        # должен задерживать готовность. Замер на выключенной станции: 8 секунд
+        # из 12 уходило сюда. Сервер в локальной сети отвечает за миллисекунды,
+        # а кнопка «Проверить» зовёт probe() с обычным таймаутом — там ждать не
+        # жалко, там этого и ждут.
         if not self._base:
             raise RuntimeError(self.unavailable_reason())
-        self.probe()
+        self.probe(timeout=2.5)
         self._loaded = True
 
     def unload(self) -> None:
@@ -943,7 +949,7 @@ class SttEngine:
         if name == "whisper":
             self._emit_device()
         self._emit_state(STATE_READY)
-        log_stage(f"state=ready (engine '{name}', сервер недоступен)")
+        log_stage(f"state=ready (engine '{name}', remote server unreachable)")
         self._start_remote_watch()
         return True
 

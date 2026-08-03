@@ -2054,6 +2054,15 @@ class AppState extends ChangeNotifier {
   // _applySettingsSideEffects.
   static const List<String> kSttSidecarEngines = ['whisper', 'gigaam', 'remote'];
 
+  /// Чем распознавать, пока сервер не отвечает. Настройка видимая — раньше она
+  /// выводилась из прошлого выбора и нигде не показывалась.
+  void setSttLocalEngine(String v) {
+    sttLocalEngine = v == 'whisper' ? 'whisper' : 'gigaam';
+    _save();
+    notifyListeners();
+    unawaited(SidecarClient.instance.setSttLocalEngine(sttLocalEngine));
+  }
+
   /// Сайдкар сообщил, каким движком распознаёт. Настройку не трогаем: выбор
   /// «на сервере» остаётся выбором пользователя, даже когда сервер молчит —
   /// иначе возврат на сервер пришлось бы делать руками.

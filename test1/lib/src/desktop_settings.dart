@@ -1080,6 +1080,22 @@ class _RemoteSttFieldsState extends State<_RemoteSttFields> {
         _RemoteField(controller: _model, onChanged: app.setSttRemoteModel),
         _label(app.t('engRemoteKey')),
         _RemoteField(controller: _key, onChanged: app.setSttRemoteKey),
+        // Чем распознавать, пока сервер молчит. Раньше это выводилось из
+        // прошлого выбора и нигде не показывалось — невидимая настройка решала,
+        // кто ловит голос при пропаже сервера, и однажды защёлкнулась на
+        // Whisper у пользователя GigaAM.
+        _label(app.t('engRemoteFallbackLabel')),
+        evsSegmentedWide<String>(
+          context,
+          [('gigaam', 'GigaAM-v3'), ('whisper', 'Whisper')],
+          app.sttLocalEngine,
+          app.setSttLocalEngine,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Text(app.t('engRemoteFallbackDesc'),
+              style: TextStyle(fontSize: 11.5, color: _sub(context))),
+        ),
         const SizedBox(height: 10),
         Row(children: [
           InkWell(
