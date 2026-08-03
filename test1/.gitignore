@@ -66,3 +66,7 @@ sidecar/**/*.spec
 
 # Built installers — shipped as GitHub Release assets, not committed (~110 MB).
 dist/out/
+
+# Записи голоса для замера шумоподавления (denoise_bench.py) — личные,
+# в репозиторий им нельзя.
+sidecar/bench-audio/
