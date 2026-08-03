@@ -69,27 +69,92 @@ def wer(ref: str, hyp: str) -> float:
     return d[len(r)][len(h)] / len(r)
 
 
-def record() -> None:
+# Ниже этого пика запись считается пустой. 500 из 32768 — заведомо ниже любой
+# речи и заведомо выше цифрового нуля.
+SILENT = 500
+
+
+def peak_of(pcm: bytes) -> int:
+    import numpy as np
+    if not pcm:
+        return 0
+    return int(np.abs(np.frombuffer(pcm, dtype=np.int16)).max())
+
+
+def list_devices() -> list:
+    import sounddevice as sd
+    out = []
+    print("\nУстройства записи:")
+    for i, d in enumerate(sd.query_devices()):
+        if d["max_input_channels"] > 0:
+            mark = "  <- по умолчанию" if i == sd.default.device[0] else ""
+            print(f"  [{i:2d}] {d['name']}{mark}")
+            out.append(i)
+    return out
+
+
+def pick_device(preset=None) -> int:
+    """Выбрать микрофон и убедиться, что он что-то слышит.
+
+    Проверка обязательна: по умолчанию система может отдать виртуальное
+    устройство (у одной машины это оказался Moises Virtual Audio), которое пишет
+    ровную тишину. Первый прогон этого стенда так и вышел — двенадцать пустых
+    записей и «100% ошибок» в отчёте, хотя мерять было нечего.
+    """
+    import sounddevice as sd
+    ids = list_devices()
+    dev = preset
+    while True:
+        if dev is None:
+            raw = input("\nНомер устройства (Enter — по умолчанию): ").strip()
+            dev = int(raw) if raw.isdigit() else sd.default.device[0]
+        if dev not in ids:
+            print(f"  [{dev}] — не устройство записи.")
+            dev = None
+            continue
+        print(f"\nПроверка: скажите что-нибудь в «{sd.query_devices(dev)['name']}»…")
+        rec = sd.rec(int(3.0 * se.SAMPLE_RATE), samplerate=se.SAMPLE_RATE,
+                     channels=1, dtype="int16", device=dev)
+        sd.wait()
+        p = peak_of(rec.tobytes())
+        bar = "#" * min(40, p * 40 // 32768)
+        print(f"  уровень: {p:5d}  {bar}")
+        if p >= SILENT:
+            print("  слышу — продолжаем.")
+            return dev
+        print("  тишина. Это устройство ничего не пишет — выберите другое.")
+        dev = None
+
+
+def record(preset=None) -> None:
     import sounddevice as sd
     os.makedirs(OUT, exist_ok=True)
     print("\nСейчас нужно прочитать вслух двенадцать фраз — тех же, что вы\n"
           "говорите программе. Говорите как обычно, в обычной обстановке:\n"
-          "замеряется именно она, тишина в записи ничего не покажет.\n")
-    input("Готовы — нажмите Enter. ")
+          "замеряется именно она, тишина в записи ничего не покажет.")
+    dev = pick_device(preset)
+    input("\nГотовы — нажмите Enter. ")
     for i, phrase in enumerate(PHRASES, 1):
-        print(f"\n[{i}/{len(PHRASES)}]  «{phrase}»")
-        for c in (3, 2, 1):
-            print(f"   {c}…", end="", flush=True)
-            time.sleep(0.6)
-        print("  ГОВОРИТЕ")
-        rec = sd.rec(int(3.0 * se.SAMPLE_RATE), samplerate=se.SAMPLE_RATE,
-                     channels=1, dtype="int16")
-        sd.wait()
-        with wave.open(os.path.join(OUT, f"{i:02d}.wav"), "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(se.SAMPLE_RATE)
-            w.writeframes(rec.tobytes())
+        for attempt in (1, 2):
+            print(f"\n[{i}/{len(PHRASES)}]  «{phrase}»")
+            for c in (3, 2, 1):
+                print(f"   {c}…", end="", flush=True)
+                time.sleep(0.6)
+            print("  ГОВОРИТЕ")
+            rec = sd.rec(int(3.0 * se.SAMPLE_RATE), samplerate=se.SAMPLE_RATE,
+                         channels=1, dtype="int16", device=dev)
+            sd.wait()
+            pcm = rec.tobytes()
+            p = peak_of(pcm)
+            print(f"   уровень {p}")
+            if p >= SILENT or attempt == 2:
+                with wave.open(os.path.join(OUT, f"{i:02d}.wav"), "wb") as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(se.SAMPLE_RATE)
+                    w.writeframes(pcm)
+                break
+            print("   пусто — повторим эту фразу.")
     print("\nЗаписано. Считаю…")
 
 
@@ -109,6 +174,20 @@ def score() -> None:
         return
     eng.load()
 
+    # Пустые записи считать нельзя: получится честная на вид таблица со «100%
+    # ошибок», где на самом деле мерять было нечего. Ровно так и вышло на первом
+    # прогоне — микрофон по умолчанию оказался виртуальным.
+    live = [i for i, _ in enumerate(PHRASES, 1)
+            if os.path.exists(os.path.join(OUT, f"{i:02d}.wav"))
+            and peak_of(load_pcm(os.path.join(OUT, f"{i:02d}.wav"))) >= SILENT]
+    if not live:
+        print("\nВсе записи пустые — в них цифровая тишина, считать нечего.\n"
+              "Скорее всего записывалось не то устройство: перезапустите без\n"
+              "--score и выберите микрофон из списка.")
+        return
+    if len(live) < len(PHRASES):
+        print(f"\nПустых записей: {len(PHRASES) - len(live)} — они пропущены.")
+
     rows = []
     for mode in ("off", "light", "strong"):
         den = se.Denoiser(MODELS)
@@ -119,9 +198,9 @@ def score() -> None:
         total, exact, secs = 0.0, 0, 0.0
         n = 0
         for i, phrase in enumerate(PHRASES, 1):
-            path = os.path.join(OUT, f"{i:02d}.wav")
-            if not os.path.exists(path):
+            if i not in live:
                 continue
+            path = os.path.join(OUT, f"{i:02d}.wav")
             pcm = load_pcm(path)
             step = se.FRAME_SAMPLES * 2
             t0 = time.monotonic()
@@ -154,11 +233,17 @@ if __name__ == "__main__":
                     help="только посчитать, по уже записанному")
     ap.add_argument("--phrases", action="store_true",
                     help="показать фразы и выйти")
+    ap.add_argument("--devices", action="store_true",
+                    help="показать устройства записи и выйти")
+    ap.add_argument("--device", type=int, default=None,
+                    help="номер устройства записи (без него — спросит)")
     a = ap.parse_args()
     if a.phrases:
         for p in PHRASES:
             print(p)
+    elif a.devices:
+        list_devices()
     else:
         if not a.score:
-            record()
+            record(a.device)
         score()
