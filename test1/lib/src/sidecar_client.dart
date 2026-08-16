@@ -859,6 +859,14 @@ class SidecarClient {
 // the command without repeating the wake word (~8 s window).
 enum VaState { idle, listening, armed, thinking, running }
 
+/// Остаток фразы после слова-активатора, или null — активатор не прозвучал.
+///
+/// Точка входа для тестов: сам разбор — приватный метод `VoiceAssistant`, а
+/// проверять его надо обязательно. Одно лишнее условие в нём однажды приняло
+/// «ай» за «Айрис» и пустило в обработку вечер чужого разговора.
+String? wakeWordRemainder(String text, String wake) =>
+    VoiceAssistant.instance._stripWakeWord(text, wake);
+
 class VoiceAssistant {
   VoiceAssistant._();
   static final VoiceAssistant instance = VoiceAssistant._();
@@ -1101,12 +1109,24 @@ class VoiceAssistant {
     final raw = text.trim();
     if (raw.isEmpty) return;
 
+    // Слово-активатор в этой же фразе. Считаем один раз: от этого зависит и
+    // «стоп» без активатора, и то, отвечать ли голосом на непонятое.
+    final wakeHeard = _stripWakeWord(raw, app.wakeWord) != null;
     // Voice "stop" — checked BEFORE the busy guard so it interrupts an
     // in-progress reply/speech (with or without the wake word: "Ирис стоп" /
     // "хватит").
+    //
+    // Но голое «стоп» принимается, только если ассистенту ЕСТЬ что прерывать.
+    // Иначе это просто слово в чужом разговоре: за вечер игры «стоп/стой»
+    // сработало дважды на репликах друзьям, не прервав ничего.
     if (_isStopPhrase(raw, app.wakeWord)) {
-      _stopEverything(app);
-      return;
+      final busyNow = _busy ||
+          state.value == VaState.thinking ||
+          state.value == VaState.running;
+      if (wakeHeard || busyNow) {
+        _stopEverything(app);
+        return;
+      }
     }
     if (_busy) return;
     // Surface what was heard so the user can confirm recognition works. Not
@@ -1149,7 +1169,7 @@ class VoiceAssistant {
     _busy = true;
     _stopFlag = false;
     try {
-      await _handle(app, command);
+      await _handle(app, command, explicitWake: wakeHeard);
     } catch (e) {
       unawaited(appendLog('errors', 'VoiceAssistant._handle: $e'));
     } finally {
@@ -1224,11 +1244,18 @@ class VoiceAssistant {
       final headTokens = tokens.take(take).toList();
       final head = _translit(headTokens.join());
       final ratio = _ratio(head, w);
-      // Lenient: acronyms are hard; accept a decent transliterated match, or a
-      // prefix/containment.
-      if (head == w ||
-          ratio >= 0.5 ||
-          (w.length >= 2 && (head.startsWith(w) || w.startsWith(head)))) {
+      // Мягко, но не настежь. Здесь СОЗНАТЕЛЬНО нет условия `w.startsWith(head)`
+      // — оно принимало НАЧАЛО слова-активатора за само слово: «айрис» даёт
+      // `airis`, и любая фраза, начинавшаяся с «ай» (а через «a» — и с «а»),
+      // считалась обращением к ассистенту. Разбор журнала за вечер игры: так
+      // прошли «ай векарту» и «ай ну ты скриншите чем», каждая взводила окно
+      // команды на 8 секунд, а в него попадала уже следующая фраза целиком —
+      // 130 из 159 чужих реплик приехали именно так, и на каждую ассистент
+      // отвечал вслух «команда не найдена».
+      //
+      // Обратное условие (`head.startsWith(w)`) оставлено: там слово-активатор
+      // уже прозвучал целиком, а хвост — падеж или склейка («айрисом»).
+      if (head == w || ratio >= 0.5 || head.startsWith(w)) {
         // Drop the first `take` tokens from the original text.
         var rest = text;
         for (final t in headTokens) {
@@ -1243,7 +1270,8 @@ class VoiceAssistant {
 
   // Message routing (user spec): COMMANDS are executed silently — they must
   // NEVER appear in the chat history. Only plain speech becomes a chat turn.
-  Future<void> _handle(AppState app, String command) async {
+  Future<void> _handle(AppState app, String command,
+      {bool explicitWake = true}) async {
     state.value = VaState.thinking;
     // 1) The user's command catalog (fuzzy match) — the ONLY thing that runs a
     //    command. No built-in/auto-interpreted launches: if the user didn't add
@@ -1265,7 +1293,13 @@ class VoiceAssistant {
       _toast('${app.t('vaCmdNotFound')}: «$command»');
       VizOverlayServer.instance
           .note('${app.t('vaCmdNotFound')}: «$command»', kind: 'err');
-      if (app.voiceResponses) _speak(app, app.t('vaCmdNotFound'));
+      // Голосом отвечаем, только если активатор прозвучал В ЭТОЙ ЖЕ фразе.
+      // Фраза, попавшая в окно после активатора, вполне может быть чужой
+      // репликой — молчание уместнее, чем «команда не найдена» посреди
+      // разговора. Видимое уведомление остаётся в любом случае.
+      if (app.voiceResponses && explicitWake) {
+        _speak(app, app.t('vaCmdNotFound'));
+      }
       state.value = _listening ? VaState.listening : VaState.idle;
       return;
     }
