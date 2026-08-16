@@ -61,6 +61,7 @@ part 'src/noctur_shell.dart';
 part 'src/remote_input.dart';
 part 'src/voice_viz.dart';
 part 'src/desktop_settings.dart';
+part 'src/studio_panel.dart';
 part 'src/chat_screen.dart';
 part 'src/voice_screen.dart';
 part 'src/settings_screens.dart';

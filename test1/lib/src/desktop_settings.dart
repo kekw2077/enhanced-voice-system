@@ -3413,7 +3413,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       case _Pages.remote:
         return _remoteInputCards(app);
       case _Pages.llmConn:
-        return _llmConnCards(app);
+        return [..._llmConnCards(app), ..._imageServerCard(app)];
       case _Pages.llmModels:
         return _llmAssetCards(app);
       // Быстрых профилей здесь больше нет: они меняли несколько настроек разом
@@ -4477,6 +4477,42 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         if (app.models.isNotEmpty) _ModelModeCard(app),
         _LlmAdvancedCard(app),
       ])),
+    ];
+  }
+
+  // Сервер генерации картинок. Здесь же, где и подключение к языковой модели:
+  // это вторая половина того же хозяйства на станции, и настраивают их вместе.
+  List<_CardSpec> _imageServerCard(AppState app) {
+    return [
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.image_outlined,
+            title: app.t('cardImageServer'),
+            rows: [
+              evsRow(context,
+                  stacked: true,
+                  label: app.t('imgServerUrl'),
+                  desc: app.t('imgServerUrlDesc'),
+                  control: _PlainField(
+                      initial: app.imageServerUrl,
+                      hint: 'http://100.79.130.7:8770',
+                      onChanged: app.setImageServerUrl)),
+              evsRow(context,
+                  stacked: true,
+                  label: app.t('imgModel'),
+                  desc: app.t('imgModelDesc'),
+                  control: _PlainField(
+                      initial: app.imageModel,
+                      hint: 'wai-illustrious',
+                      onChanged: app.setImageModel)),
+              evsRow(context,
+                  label: app.t('imgFreeVoice'),
+                  desc: app.t('imgFreeVoiceDesc'),
+                  control: evsToggle(context, app.imageFreeVoiceToo,
+                      app.setImageFreeVoiceToo)),
+            ]),
+        full: true,
+      ),
     ];
   }
 
@@ -7198,6 +7234,48 @@ class _UpdateServerFieldState extends State<_UpdateServerField> {
         ),
     ]);
   }
+}
+
+/// Простое текстовое поле с сохранением по мере ввода. `_RemoteField` рядом
+/// делает то же самое, но живёт внутри карточки распознавания на сервере и
+/// тянет за собой её оформление.
+class _PlainField extends StatefulWidget {
+  const _PlainField(
+      {required this.initial, required this.onChanged, this.hint = ''});
+  final String initial;
+  final String hint;
+  final ValueChanged<String> onChanged;
+  @override
+  State<_PlainField> createState() => _PlainFieldState();
+}
+
+class _PlainFieldState extends State<_PlainField> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+        controller: _c,
+        onChanged: widget.onChanged,
+        style: TextStyle(fontSize: 13, color: _txt(context)),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: widget.hint,
+          hintStyle: TextStyle(color: _faint(context), fontSize: 12.5),
+          filled: true,
+          fillColor: _overlayFill(context, 0.05),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: _stroke(context)),
+          ),
+        ),
+      );
 }
 
 class _LlmAdvancedCard extends StatefulWidget {

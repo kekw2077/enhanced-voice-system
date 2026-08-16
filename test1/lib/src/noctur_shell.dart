@@ -95,6 +95,10 @@ class NocturTopBar extends StatelessWidget {
     context,
   ).push(MaterialPageRoute(builder: (_) => const DesktopSettings()));
 
+  void _openStudio(BuildContext context, StudioMode mode) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute(builder: (_) => StudioPanel(mode: mode)));
+
   // «Модели» — тот же раздел настроек, который открывает рейл Nexus.
   void _openModels(BuildContext context) =>
       Navigator.of(context).push(MaterialPageRoute(
@@ -233,6 +237,22 @@ class NocturTopBar extends StatelessWidget {
             onTap: () => _openModels(context),
           ),
           _tab(context, NocturTab.log, app.t('nxNavLog')),
+          // Студия — не вкладка, а окно во весь экран, как и настройки:
+          // подсвечивать нечего, поэтому `active: false`. «Команды» и «Журнал»
+          // выше остаются вкладками — в этом стиле у них свои экраны, а не
+          // ссылки в настройки.
+          _tabLabel(
+            context,
+            app.t('navImages'),
+            active: false,
+            onTap: () => _openStudio(context, StudioMode.image),
+          ),
+          _tabLabel(
+            context,
+            app.t('navSpeech'),
+            active: false,
+            onTap: () => _openStudio(context, StudioMode.speech),
+          ),
           // Распорка тянет окно за шапку.
           const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
           _statePill(context, app, MediaQuery.of(context).size.width < 1000),
@@ -1138,6 +1158,7 @@ class _NocturHomeState extends State<_NocturHome> {
               onTab: _openTab,
               onHome: () => setState(() => _home = true),
             ),
+            const GpuNoticeBar(),
             Expanded(
               child: _home
                   ? const _NocturStage()

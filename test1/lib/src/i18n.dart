@@ -188,6 +188,45 @@ const Map<String, Map<String, String>> _i18n = {
     'genParamsDesc': 'Выключенный параметр не отправляется вовсе — решает сама '
         'модель. Включайте по одному и слушайте разницу.',
     'genParamOff': 'по умолчанию',
+    'cardImageServer': 'Сервер изображений',
+    'imgServerUrl': 'Адрес',
+    'imgServerUrlDesc': 'Куда отправлять запросы на генерацию. Пусто — окно '
+        '«Картинки» работать не будет.',
+    'imgModel': 'Модель',
+    'imgModelDesc': 'Имя чекпоинта на сервере. Пусто — сервер возьмёт свой '
+        'основной.',
+    'imgFreeVoice': 'Выгружать и синтез голоса',
+    'imgFreeVoiceDesc': 'Нужно только для моделей тяжелее ~10 ГБ. С нынешним '
+        'чекпоинтом голос помещается на карте рядом и выгружать его незачем.',
+    'navImages': 'Картинки',
+    'navSpeech': 'Озвучка',
+    'studioImages': 'Генерация изображений',
+    'studioSpeech': 'Озвучка текста',
+    'studioPrompt': 'Опишите картинку тегами: 1girl, blue hair, city, night…',
+    'studioText': 'Текст, который нужно озвучить',
+    'studioGo': 'Создать',
+    'studioSay': 'Озвучить',
+    'studioVoice': 'Голос:',
+    'studioVoiceAssistant': 'Голос ассистента',
+    'studioVoiceClone': 'Клон голоса',
+    'studioWorking': 'Работаю…',
+    'studioSpoken': 'Проговорено вслух',
+    'studioSaved': 'Файл сохранён',
+    'studioOpen': 'Открыть',
+    'studioImagesHint': 'Модель понимает теги через запятую, а не фразы.\n'
+        'Например: 1girl, silver hair, red eyes, rain, neon city, masterpiece',
+    'studioSpeechHint': 'Впишите текст и выберите голос.\n'
+        'Клон отдаёт файл, остальные голоса читают вслух.',
+    'studioNoServer': 'Адрес сервера картинок не задан',
+    'studioNoServerHint': 'Сервер генерации не задан. Настройки → Нейросеть → '
+        'Сервер изображений.',
+    'studioNoClone': 'Адрес клон-сервера не задан',
+    'studioNoSample': 'Не выбран образец голоса для клонирования',
+    'studioVoiceGone': 'Этот голос больше не установлен',
+    'gpuBusyBanner': 'Языковая модель выгружена, чтобы освободить видеокарту под '
+        'генерацию. Голосовые команды и чат сейчас недоступны — вернутся, когда '
+        'закроете окно.',
+    'gpuBusyRestoring': 'Возвращаю языковую модель на видеокарту…',
     'updServer': 'Сервер обновлений',
     'updServerDesc': 'Свой адрес вместо GitHub — например, 100.79.130.7:8099. '
         'Оттуда берутся и обновления программы, и движок распознавания (112 МБ), '
@@ -1499,6 +1538,45 @@ const Map<String, Map<String, String>> _i18n = {
     'genParamsDesc': 'A disabled parameter is not sent at all — the model '
         'decides. Enable them one at a time and listen for the difference.',
     'genParamOff': 'model default',
+    'cardImageServer': 'Image server',
+    'imgServerUrl': 'Address',
+    'imgServerUrlDesc': 'Where generation requests go. Empty means the Images '
+        'window will not work.',
+    'imgModel': 'Model',
+    'imgModelDesc': 'Checkpoint name on the server. Empty lets the server pick '
+        'its default.',
+    'imgFreeVoice': 'Also unload speech synthesis',
+    'imgFreeVoiceDesc': 'Only needed for models heavier than ~10 GB. With the '
+        'current checkpoint the voice fits alongside and need not be unloaded.',
+    'navImages': 'Images',
+    'navSpeech': 'Speech',
+    'studioImages': 'Image generation',
+    'studioSpeech': 'Text to speech',
+    'studioPrompt': 'Describe the image in tags: 1girl, blue hair, city, night…',
+    'studioText': 'Text to read out',
+    'studioGo': 'Generate',
+    'studioSay': 'Speak',
+    'studioVoice': 'Voice:',
+    'studioVoiceAssistant': 'Assistant voice',
+    'studioVoiceClone': 'Cloned voice',
+    'studioWorking': 'Working…',
+    'studioSpoken': 'Spoken aloud',
+    'studioSaved': 'File saved',
+    'studioOpen': 'Open',
+    'studioImagesHint': 'This model takes comma-separated tags, not sentences.\n'
+        'For example: 1girl, silver hair, red eyes, rain, neon city, masterpiece',
+    'studioSpeechHint': 'Type the text and pick a voice.\n'
+        'The clone returns a file; the other voices read it aloud.',
+    'studioNoServer': 'Image server address is not set',
+    'studioNoServerHint': 'No image server configured. Settings → Model → '
+        'Image server.',
+    'studioNoClone': 'Clone server address is not set',
+    'studioNoSample': 'No voice sample selected for cloning',
+    'studioVoiceGone': 'That voice is no longer installed',
+    'gpuBusyBanner': 'The language model was unloaded to free the GPU for image '
+        'generation. Voice commands and chat are unavailable right now — they '
+        'come back when you close this window.',
+    'gpuBusyRestoring': 'Bringing the language model back to the GPU…',
     'updServer': 'Update server',
     'updServerDesc': 'Your own address instead of GitHub — e.g. '
         '100.79.130.7:8099. Both app updates and the recognition engine (112 MB) '

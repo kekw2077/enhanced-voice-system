@@ -810,6 +810,115 @@ String _sttEngineNow(AppState app) {
   return live;
 }
 
+/// Кто сейчас занимает видеокарту станции.
+///
+/// Карта одна на 16 ГБ, и на ней уже живут языковая модель (~8 ГБ) и синтез
+/// голоса (~3-4 ГБ). Генератор картинок туда не помещается — значит, студия
+/// картинок работает по принципу «занял — верни». Всё в одном месте намеренно:
+/// разложенная по экранам, эта логика неизбежно разойдётся, и однажды модель
+/// останется выгруженной, а ассистент — немым.
+class GpuArbiter {
+  GpuArbiter._();
+  static final GpuArbiter instance = GpuArbiter._();
+
+  /// Текст полосы-предупреждения наверху окна, либо null. Не булев флаг:
+  /// состояний три — заняли, возвращаем, свободно, — и человеку важно
+  /// различать второе и третье.
+  final ValueNotifier<String?> notice = ValueNotifier(null);
+
+  bool _held = false;
+  AppState? _app;
+
+  /// Освободить карту под картинки. Идемпотентно: повторный вызов ничего не
+  /// делает, чтобы двойное открытие окна не выгружало модель дважды.
+  Future<void> takeForImages(AppState app) async {
+    if (_held) return;
+    _held = true;
+    _app = app;
+    notice.value = app.t('gpuBusyBanner');
+    unawaited(appendLog('sidecar', 'GPU: освобождаю под генерацию картинок'));
+    await _unloadLlm(app);
+    if (app.imageFreeVoiceToo) await _unloadVoice(app);
+    await _post(app.imageServerUrl, '/load');
+  }
+
+  /// Вернуть карту языковой модели. Зовётся из `dispose()` студии и со стороны
+  /// выхода из приложения — второй путь нужен, потому что окно закрывают и
+  /// крестиком, и Esc, и падением.
+  Future<void> release() async {
+    if (!_held) return;
+    _held = false;
+    final app = _app;
+    _app = null;
+    if (app == null) {
+      notice.value = null;
+      return;
+    }
+    notice.value = app.t('gpuBusyRestoring');
+    await _post(app.imageServerUrl, '/unload');
+    // Прогрев короткой генерацией: Ollama грузит модель на первом же запросе,
+    // и лучше заплатить эту паузу здесь, чем на первой команде голосом.
+    await _warmLlm(app);
+    notice.value = null;
+    unawaited(appendLog('sidecar', 'GPU: возвращена языковой модели'));
+  }
+
+  Future<void> _post(String base, String path) async {
+    final url = base.trim();
+    if (url.isEmpty) return;
+    try {
+      await http.post(Uri.parse('$url$path')).timeout(
+          const Duration(seconds: 120));
+    } catch (e) {
+      unawaited(appendLog('errors', 'GPU: $path на $url — $e'));
+    }
+  }
+
+  /// Выгрузка модели из Ollama — это её же обычный запрос с `keep_alive: 0`.
+  /// Отдельной команды «выгрузи» у неё нет.
+  Future<void> _unloadLlm(AppState app) async {
+    final server = app.serverUrl.trim();
+    final model = app.selectedModel.trim();
+    if (server.isEmpty || model.isEmpty) return;
+    final url = server.startsWith('http') ? server : 'http://$server';
+    try {
+      await http
+          .post(Uri.parse('$url/api/generate'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'model': model, 'keep_alive': 0}))
+          .timeout(const Duration(seconds: 60));
+    } catch (e) {
+      unawaited(appendLog('errors', 'GPU: не выгрузилась языковая модель — $e'));
+    }
+  }
+
+  Future<void> _warmLlm(AppState app) async {
+    final server = app.serverUrl.trim();
+    final model = app.selectedModel.trim();
+    if (server.isEmpty || model.isEmpty) return;
+    final url = server.startsWith('http') ? server : 'http://$server';
+    try {
+      await http
+          .post(Uri.parse('$url/api/generate'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'model': model,
+                if (app.llmKeepAlive.trim().isNotEmpty)
+                  'keep_alive': app.llmKeepAlive.trim(),
+              }))
+          .timeout(const Duration(seconds: 180));
+    } catch (e) {
+      unawaited(appendLog('errors', 'GPU: не вернулась языковая модель — $e'));
+    }
+  }
+
+  /// Голос выгружается тем же вызовом, что уже используется при остановке
+  /// клон-сервера (`CloneServer.stop`) — второй реализации не заводим.
+  Future<void> _unloadVoice(AppState app) async {
+    await _post(app.cosyvoiceEndpoint, '/unload');
+  }
+}
+
 class DesktopIntegration with WindowListener, TrayListener {
   DesktopIntegration._();
   static final DesktopIntegration instance = DesktopIntegration._();

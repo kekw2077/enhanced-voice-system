@@ -207,6 +207,14 @@ class AppState extends ChangeNotifier {
   // через GitHub. Один адрес, а не два, намеренно: движок весит 112 МБ, и
   // забрать по локальной сети установщик, но не его — значит не забрать ничего.
   String updateServerUrl = '';
+  // Генерация картинок на станции. Схема та же, что у распознавания на сервере:
+  // пустой адрес означает «функции нет», а не «взять откуда-нибудь ещё».
+  // `imageFreeVoiceToo` — выгружать ли ради картинок ещё и синтез голоса: с
+  // нынешним чекпоинтом (SDXL, ~7 ГБ) он и так помещается рядом, но с моделью
+  // потяжелее выбора не будет.
+  String imageServerUrl = '';
+  String imageModel = '';
+  bool imageFreeVoiceToo = false;
   // Optional per-mode model overrides. Empty means "use whatever is selected
   // globally", which keeps the existing single-model behaviour intact — the
   // point is to let a RAG-tuned model answer search turns without changing what
@@ -542,6 +550,9 @@ class AppState extends ChangeNotifier {
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
+    imageServerUrl = prefs.getString('imageServerUrl') ?? '';
+    imageModel = prefs.getString('imageModel') ?? '';
+    imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? false;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     // Migrate away placeholder values that earlier versions persisted as if
@@ -799,6 +810,7 @@ class AppState extends ChangeNotifier {
         savedServers.join(','), llmNumCtx, llmNumPredict, llmTemperature,
         llmTopP, llmTopK, llmRepeatPenalty, llmMinP,
         llmKeepAlive, llmThinking, updateServerUrl,
+        imageServerUrl, imageModel, imageFreeVoiceToo,
         searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
@@ -889,6 +901,9 @@ class AppState extends ChangeNotifier {
     await prefs.setString('llmKeepAlive', llmKeepAlive);
     await prefs.setBool('llmThinking', llmThinking);
     await prefs.setString('updateServerUrl', updateServerUrl);
+    await prefs.setString('imageServerUrl', imageServerUrl);
+    await prefs.setString('imageModel', imageModel);
+    await prefs.setBool('imageFreeVoiceToo', imageFreeVoiceToo);
     await prefs.setString('searchModel', searchModel);
     await prefs.setString('chatModel', chatModel);
     await prefs.setString('apiKey', apiKey);
@@ -1148,6 +1163,9 @@ class AppState extends ChangeNotifier {
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
+    imageServerUrl = prefs.getString('imageServerUrl') ?? '';
+    imageModel = prefs.getString('imageModel') ?? '';
+    imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? false;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
@@ -1350,6 +1368,29 @@ class AppState extends ChangeNotifier {
   /// Пусто — вернётся null, и вызывающий возьмёт свой адрес по умолчанию.
   String? updateUrlFor(String name) =>
       updateServerUrl.isEmpty ? null : '$updateServerUrl/$name';
+
+  void setImageServerUrl(String v) {
+    var s = v.trim();
+    if (s.isNotEmpty && !s.startsWith('http')) s = 'http://$s';
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    imageServerUrl = s;
+    _save();
+    notifyListeners();
+  }
+
+  void setImageModel(String v) {
+    imageModel = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setImageFreeVoiceToo(bool v) {
+    imageFreeVoiceToo = v;
+    _save();
+    notifyListeners();
+  }
 
   void setLlmThinking(bool v) {
     llmThinking = v;

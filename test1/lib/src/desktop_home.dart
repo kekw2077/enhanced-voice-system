@@ -63,6 +63,7 @@ class DesktopHome extends StatelessWidget {
                     child: Column(
                       children: [
                         _WindowTitleBar(),
+                        GpuNoticeBar(),
                         Expanded(child: ChatScreen(desktop: true)),
                       ],
                     ),
@@ -84,6 +85,12 @@ class _DesktopSidebar extends StatelessWidget {
   void _openSettings(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const DesktopSettings()),
+    );
+  }
+
+  void _openStudioFrom(BuildContext context, StudioMode mode) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => StudioPanel(mode: mode)),
     );
   }
 
@@ -143,6 +150,17 @@ class _DesktopSidebar extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Студия доступна из каждого стиля — в Nexus это две иконки
+                  // на рейке, в «Ноктюрне» две вкладки в шапке, здесь две
+                  // кнопки рядом с настройками.
+                  _iconBtn(context, Icons.image_outlined,
+                      () => _openStudioFrom(context, StudioMode.image),
+                      tooltip: app.t('navImages')),
+                  const SizedBox(width: 8),
+                  _iconBtn(context, Icons.record_voice_over_outlined,
+                      () => _openStudioFrom(context, StudioMode.speech),
+                      tooltip: app.t('navSpeech')),
+                  const SizedBox(width: 8),
                   _iconBtn(context, Icons.settings_outlined,
                       () => _openSettings(context),
                       tooltip: app.t('settings')),
@@ -925,6 +943,15 @@ class _NexusRail extends StatelessWidget {
         builder: (_) => DesktopSettings(initialPage: page)));
   }
 
+  // Студия открывается тем же способом, что и настройки, — обычным маршрутом
+  // поверх окна. Отдельного механизма «панель во весь экран» в проекте нет, и
+  // заводить его ради двух кнопок незачем.
+  void _openStudio(BuildContext context, StudioMode mode) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => StudioPanel(mode: mode)),
+    );
+  }
+
   // A rail icon stays lit for its whole settings group, not just the one page
   // it opens — otherwise the icon goes dark as soon as you pick a sub-page.
   bool _inGroup(String page) {
@@ -980,19 +1007,15 @@ class _NexusRail extends StatelessWidget {
                 onTap: () => onSection != null
                     ? Navigator.of(context).maybePop()
                     : Scaffold.of(context).openDrawer()),
-            _navIcon(context, Icons.bolt_outlined, app.t('nxNavCommands'),
-                active: _inGroup(_Pages.cmdExec),
-                onTap: () => _openSettings(context, _Pages.cmdExec)),
-            _navIcon(context, Icons.memory, app.t('nxNavModels'),
-                active: _inGroup(_Pages.llmConn),
-                onTap: () => _openSettings(context, _Pages.llmConn)),
-            // «Журнал» — журнал работы приложения (те же файлы, что на вкладке
-            // «Журнал» в «Ноктюрне»), а не список патчей: раньше эта кнопка
-            // открывала историю изменений. Сама история никуда не делась —
-            // Настройки → О приложении → История изменений.
-            _navIcon(context, Icons.receipt_long_outlined, app.t('nxNavLog'),
-                active: _inGroup(_Pages.appLog),
-                onTap: () => _openSettings(context, _Pages.appLog)),
+            // Здесь были «Команды», «Модели» и «Журнал». Все три открывали
+            // страницы настроек — то же самое делает кнопка «Настройки» внизу
+            // этой же рейки, то есть место занимали дубликаты. «Диалог» выше
+            // остался: он открывает список чатов, а этого в настройках нет.
+            _navIcon(context, Icons.image_outlined, app.t('navImages'),
+                onTap: () => _openStudio(context, StudioMode.image)),
+            _navIcon(context, Icons.record_voice_over_outlined,
+                app.t('navSpeech'),
+                onTap: () => _openStudio(context, StudioMode.speech)),
             const Spacer(),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
                 active: activePage != null &&
@@ -1550,6 +1573,10 @@ class _NexusHomeState extends State<_NexusHome> {
               child: Column(
                 children: [
                   _WindowTitleBar(),
+                  // Пока видеокарта отдана студии, языковой модели на ней нет —
+                  // и об этом нужно сказать на главном экране, а не только в
+                  // самой студии: закрыв её, человек увидит именно этот экран.
+                  GpuNoticeBar(),
                   Expanded(
                     child: Row(
                       children: [
