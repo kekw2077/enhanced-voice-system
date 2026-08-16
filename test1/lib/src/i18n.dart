@@ -180,6 +180,28 @@ const Map<String, Map<String, String>> _i18n = {
     'engRemoteNoSidecar': 'Служба распознавания не запущена — спросить некого',
     'engRemoteFellBack': 'Сервер распознавания не отвечает, распознаю локально',
     'engRemoteLocalNow': 'сервер не отвечает — локально',
+    'pgSensitivity': 'Чувствительность и шумоподавление',
+    'sensitivityDesc': 'Что и насколько громко считается речью, и чем чистится '
+        'звук до распознавания. Проверять эти настройки лучше замером: '
+        'sidecar/denoise_bench.py прогоняет ваши фразы через все режимы.',
+    'cardLocalModels': 'Модели на этом компьютере',
+    'genParamsDesc': 'Выключенный параметр не отправляется вовсе — решает сама '
+        'модель. Включайте по одному и слушайте разницу.',
+    'genParamOff': 'по умолчанию',
+    'genTemperatureDesc': 'Разброс при выборе слова. Ниже — суше и точнее, '
+        'выше — свободнее и неожиданнее.',
+    'genTopPDesc': 'Берутся только самые вероятные слова, пока их суммарная '
+        'вероятность не наберёт этот порог.',
+    'genTopKDesc': 'Сколько слов-кандидатов рассматривать на каждом шаге.',
+    'genMinPDesc': 'Отсекает слова, чья вероятность ниже доли от самого '
+        'вероятного. Мягкая замена Top-p.',
+    'genRepeatDesc': 'Штраф за повторы. Выше — реже повторяется, но может '
+        'начать вилять.',
+    'genNumPredict': 'Длина ответа',
+    'genNumPredictDesc': 'Предел длины ответа в токенах.',
+    'genNumCtx': 'Окно контекста',
+    'genNumCtxDesc': 'Сколько токенов истории видит модель. Больше — дороже по '
+        'памяти видеокарты.',
     'engRemoteFallbackLabel': 'Если сервер недоступен',
     'engRemoteFallbackDesc':
         'Этим движком распознаётся речь, пока сервер молчит. Как только он '
@@ -1461,6 +1483,28 @@ const Map<String, Map<String, String>> _i18n = {
     'engRemoteNoSidecar': 'The recognition service is not running — nobody to ask',
     'engRemoteFellBack': 'The recognition server is unreachable, recognizing locally',
     'engRemoteLocalNow': 'server is down — local',
+    'pgSensitivity': 'Sensitivity and noise suppression',
+    'sensitivityDesc': 'What counts as speech and how loud, and what cleans the '
+        'audio before recognition. Best settled by measurement: '
+        'sidecar/denoise_bench.py runs your own phrases through every mode.',
+    'cardLocalModels': 'Models on this computer',
+    'genParamsDesc': 'A disabled parameter is not sent at all — the model '
+        'decides. Enable them one at a time and listen for the difference.',
+    'genParamOff': 'model default',
+    'genTemperatureDesc': 'Spread when picking a word. Lower is drier and more '
+        'exact, higher is freer and more surprising.',
+    'genTopPDesc': 'Only the most likely words are considered, until their '
+        'combined probability reaches this threshold.',
+    'genTopKDesc': 'How many candidate words to consider at each step.',
+    'genMinPDesc': 'Drops words less likely than a fraction of the top one. A '
+        'gentler alternative to Top-p.',
+    'genRepeatDesc': 'Penalty for repetition. Higher repeats less, but may '
+        'start to wander.',
+    'genNumPredict': 'Answer length',
+    'genNumPredictDesc': 'Upper limit on the answer, in tokens.',
+    'genNumCtx': 'Context window',
+    'genNumCtxDesc': 'How much history the model sees. Larger costs more GPU '
+        'memory.',
     'engRemoteFallbackLabel': 'If the server is unreachable',
     'engRemoteFallbackDesc':
         'This engine recognizes speech while the server is silent. Once it '

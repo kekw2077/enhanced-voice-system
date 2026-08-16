@@ -355,11 +355,33 @@ class AppUpdater {
   // applyAndRestart). If we're back up but the version DIDN'T advance, the
   // update silently failed to apply (locked files / cancelled) — surface it
   // instead of looping invisibly. One-shot: the marker is always cleared.
+  /// Пишет ли установщик прямо сейчас. Признак — свежая запись в его логе:
+  /// отдельного способа спросить у Inno Setup «ты ещё жив» нет, а лог он ведёт
+  /// построчно на каждый распакованный файл.
+  Future<bool> _installerRunning() async {
+    try {
+      final f = io.File(await updateDownloadPath('update-install.log'));
+      if (!await f.exists()) return false;
+      final age = DateTime.now().difference(await f.lastModified());
+      return age.inSeconds < 90;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _checkPreviousUpdateOutcome(AppState app) async {
     try {
       final marker = io.File(await updateDownloadPath('pending_update.txt'));
       if (!await marker.exists()) return;
       final expected = (await marker.readAsString()).trim();
+      // Установщик ещё работает — судить рано. Его лог пишется построчно всю
+      // распаковку, так что свежая запись в нём и означает «идёт прямо сейчас».
+      // Без этой проверки вердикт выносился через считаные секунды после старта
+      // установщика: в журнале ошибок с июля лежат «обновление не применилось»,
+      // написанные в момент, когда установщик распаковал 66 МБ из 224 и
+      // прекрасно довёл дело до конца. Маркер в таком случае НЕ трогаем —
+      // разберёмся на следующем запуске.
+      if (await _installerRunning()) return;
       try {
         await marker.delete();
       } catch (_) {}

@@ -2178,6 +2178,7 @@ class _Pages {
   static const cmdSecurity = 'cmd.security';
   static const remote = 'remote';
   static const llmConn = 'llm.conn';
+  static const sttSensitivity = 'stt.sensitivity';
   static const llmModels = 'llm.models';
   static const llmParams = 'llm.params';
   static const personaStyle = 'persona.style';
@@ -2213,6 +2214,7 @@ const List<_NavGroup> _kNav = [
   _NavGroup(Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub', [
     _NavPage(_Pages.micDevice, 'pgMicDevice'),
     _NavPage(_Pages.stt, 'pgStt'),
+    _NavPage(_Pages.sttSensitivity, 'pgSensitivity'),
     _NavPage(_Pages.listen, 'pgListen'),
   ]),
   _NavGroup(
@@ -2308,12 +2310,6 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'offline': false,
     'noTelemetry': true,
     'noModelNet': false,
-  };
-  final Map<String, double> _stubNum = {
-    'threshold': 65,
-    'temp': 0.7,
-    'topp': 0.9,
-    'maxtok': 1024,
   };
   final List<String> _blacklist = [
     'удали все файлы',
@@ -3123,12 +3119,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'globalHotkey': _Pages.startup,
     'cardInputDevice': _Pages.micDevice,
     'extraMics': _Pages.micDevice,
-    'micSensitivity': _Pages.stt,
-    'micGain': _Pages.stt,
+    'micSensitivity': _Pages.sttSensitivity,
+    'micGain': _Pages.sttSensitivity,
     'recognitionLanguage': _Pages.stt,
     'sttEngine': _Pages.stt,
     'engRemoteName': _Pages.stt,
-    'cardDenoise': _Pages.stt,
+    'cardDenoise': _Pages.sttSensitivity,
+    'cardLocalModels': _Pages.sttSensitivity,
     'activationMode': _Pages.listen,
     'pttKeysLabel': _Pages.listen,
     'showPartial': _Pages.listen,
@@ -3389,6 +3386,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         return _micDeviceCards(app);
       case _Pages.stt:
         return _sttCards(app);
+      case _Pages.sttSensitivity:
+        return _sensitivityCards(app);
       case _Pages.listen:
         return _listenCards(app);
       case _Pages.voiceOut:
@@ -3417,8 +3416,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         return _llmConnCards(app);
       case _Pages.llmModels:
         return _llmAssetCards(app);
+      // Быстрых профилей здесь больше нет: они меняли несколько настроек разом
+      // (устройство, шумодав, веб-поиск) — то есть трогали то, что к параметрам
+      // генерации отношения не имеет, — и заслоняли собой тонкую настройку.
       case _Pages.llmParams:
-        return [..._llmPresetCards(app), ..._llmGenCards(app)];
+        return _llmGenCards(app);
       case _Pages.personaStyle:
         return _personaStyleCards(app);
       case _Pages.personaMemory:
@@ -4227,75 +4229,6 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     if (cmd != null) app.addVoiceCommand(cmd);
   }
 
-  // A quick-profile chip: tap applies it, the pencil (or a long press) edits
-  // what it changes. The active profile is outlined in the accent colour and
-  // its description is rendered from the CURRENT config, so an edited profile
-  // never advertises settings it no longer applies.
-  Widget _presetChip(AppState app, String id, String nameKey, IconData icon) {
-    final active = app.activeVoicePreset == id;
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () {
-        app.applyVoicePreset(id);
-        showAppSnackBar(context,
-            app.t('presetApplied').replaceAll('{name}', app.t(nameKey)));
-      },
-      onLongPress: () => _editPreset(app, id, nameKey),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          color: active
-              ? _accent(context).withValues(alpha: 0.14)
-              : _overlayFill(context, 0.05),
-          border: Border.all(
-              color: active ? _accent(context) : _stroke(context),
-              width: active ? 1.4 : 1),
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(active ? Icons.check_circle : icon,
-              size: 15, color: _accent(context)),
-          const SizedBox(width: 7),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(app.t(nameKey),
-                  style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: _body(context))),
-              Text(app.presetDescription(id),
-                  style: TextStyle(fontSize: 10.5, color: _faint(context))),
-            ],
-          ),
-          const SizedBox(width: 6),
-          InkWell(
-            borderRadius: BorderRadius.circular(6),
-            onTap: () => _editPreset(app, id, nameKey),
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child:
-                  Icon(Icons.edit_outlined, size: 14, color: _faint(context)),
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
-  Future<void> _editPreset(AppState app, String id, String nameKey) async {
-    final res = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (_) => _PresetEditDialog(
-        app: app,
-        id: id,
-        nameKey: nameKey,
-        initial: Map<String, dynamic>.from(app.presetConfig(id)),
-      ),
-    );
-    if (res != null) app.setVoicePreset(id, res);
-  }
 
   Future<void> _openSuggestCommands(AppState app) async {
     final n = await showDialog<int>(
@@ -4523,64 +4456,27 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // Desktop is remote-only by design: models come from a local server
   // (Ollama) or a remote API endpoint. On-device GGUF inference was removed
   // from the UI (the fllama engine code stays dormant in the codebase).
-  List<_CardSpec> _llmPresetCards(AppState app) {
-    return [
-      _CardSpec(
-        evsCard(context,
-            icon: Icons.tune, title: app.t('cardPresets'), rows: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
-            child: Text(app.t('presetsDesc'),
-                style: TextStyle(fontSize: 12, color: _faint(context))),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _presetChip(app, 'fast', 'presetFast', Icons.bolt_outlined),
-                _presetChip(app, 'quality', 'presetQuality', Icons.hd_outlined),
-                _presetChip(app, 'search', 'presetSearch', Icons.travel_explore),
-                _presetChip(
-                    app, 'chat', 'presetChat', Icons.chat_bubble_outline),
-              ],
-            ),
-          ),
-          // Restore the built-in profile definitions (only offered once at
-          // least one profile has been edited).
-          if (app.presetsCustomized)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: Row(children: [
-                evsGhostButton(context, app.t('presetsReset'), Icons.restore,
-                    onTap: () {
-                  app.resetVoicePresets();
-                  showAppSnackBar(context, app.t('presetsResetDone'));
-                }),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(app.t('presetsCustomHint'),
-                      style:
-                          TextStyle(fontSize: 11, color: _faint(context))),
-                ),
-              ]),
-            ),
-        ]),
-        full: true,
-      ),
-    ];
-  }
-
+  // «Модели» — только то, что отдаёт станция. Раньше здесь лежали GigaAM и
+  // модели шумоподавления: они живут на этой машине, к языковой модели
+  // отношения не имеют и попали сюда лишь потому, что тоже «модели». Теперь
+  // они в «Чувствительности и шумоподавлении», а список со станции переехал
+  // сюда из «Подключения» — тот же самый список, без второй реализации.
   List<_CardSpec> _llmAssetCards(AppState app) {
     return [
-      _CardSpec(
-        evsCard(context,
-            icon: Icons.dns_outlined,
-            title: app.t('cardModels'),
-            rows: [_AssetModelsCard(app)]),
-        full: true,
-      ),
+      _CardSpec(evsCard(context,
+          icon: Icons.memory, title: app.t('cardModelPick'), rows: [
+        if (app.models.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Text(app.t('noModelsYet'),
+                style: TextStyle(fontSize: 13, color: _faint(context))),
+          ),
+        for (final m in app.models)
+          _modelRow(app, m, app.modelDisplayName(m, withSuffix: false), ''),
+        _ConnCheckRow(app, showRefresh: true),
+        if (app.models.isNotEmpty) _ModelModeCard(app),
+        _LlmAdvancedCard(app),
+      ])),
     ];
   }
 
@@ -4626,50 +4522,45 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             rows: [const _WebSearchCard()]),
         full: true,
       ),
-      _CardSpec(evsCard(context,
-          icon: Icons.memory, title: app.t('cardModelPick'), rows: [
-        if (app.models.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(18),
-            child: Text(app.t('noModelsYet'),
-                style: TextStyle(fontSize: 13, color: _faint(context))),
-          ),
-        for (final m in app.models)
-          _modelRow(app, m, app.modelDisplayName(m, withSuffix: false), ''),
-        _ConnCheckRow(app, showRefresh: true),
-        if (app.models.isNotEmpty) _ModelModeCard(app),
-        _LlmAdvancedCard(app),
-      ])),
     ];
   }
 
+  // Параметры выборки — настоящие, а не декоративные. До этого здесь стояли два
+  // ползунка на локальной переменной `_stubNum`: они двигались, показывали
+  // значение и никуда не уходили. Теперь каждый пишется в AppState и попадает в
+  // `llmOptions()`, то есть в поле `options` запроса к Ollama.
+  //
+  // Ключевое — выключенный параметр НЕ отправляется вовсе, и решает модель.
+  // Ползунок такого состояния выразить не может, поэтому у каждого свой
+  // переключатель: выключен — «по умолчанию модели».
   List<_CardSpec> _llmGenCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
-          icon: Icons.tune, title: app.t('cardGenParams'), rows: [
-        evsNamedSlider(context, 
-          label: 'Temperature',
-          desc: app.t('temperatureDesc'),
-          value: _stubNum['temp']!,
-          min: 0,
-          max: 2,
-          valueLabel: _stubNum['temp']!.toStringAsFixed(2),
-          left: '0.0',
-          right: '2.0',
-          onChanged: (v) => setState(() => _stubNum['temp'] = v),
-        ),
-        evsNamedSlider(context, 
-          label: 'Top-p',
-          desc: app.t('topPDesc'),
-          value: _stubNum['topp']!,
-          min: 0,
-          max: 1,
-          valueLabel: _stubNum['topp']!.toStringAsFixed(2),
-          left: '0.0',
-          right: '1.0',
-          onChanged: (v) => setState(() => _stubNum['topp'] = v),
-        ),
-      ])),
+      _CardSpec(
+        evsCard(context, icon: Icons.tune, title: app.t('cardGenParams'), rows: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
+            child: Text(app.t('genParamsDesc'),
+                style: TextStyle(fontSize: 12, color: _faint(context))),
+          ),
+          _GenParam(app, 'temperature', 'Temperature', 'genTemperatureDesc',
+              min: 0, max: 2, decimals: 2, fallback: 0.7),
+          _GenParam(app, 'top_p', 'Top-p', 'genTopPDesc',
+              min: 0, max: 1, decimals: 2, fallback: 0.9),
+          _GenParam(app, 'top_k', 'Top-k', 'genTopKDesc',
+              min: 1, max: 100, decimals: 0, fallback: 40),
+          _GenParam(app, 'min_p', 'Min-p', 'genMinPDesc',
+              min: 0, max: 1, decimals: 2, fallback: 0.05),
+          _GenParam(app, 'repeat_penalty', 'Repeat penalty',
+              'genRepeatDesc',
+              min: 0.8, max: 2, decimals: 2, fallback: 1.1),
+          _GenParam(app, 'num_predict', app.t('genNumPredict'),
+              'genNumPredictDesc',
+              min: 64, max: 4096, decimals: 0, fallback: 512),
+          _GenParam(app, 'num_ctx', app.t('genNumCtx'), 'genNumCtxDesc',
+              min: 512, max: 32768, decimals: 0, fallback: 4096),
+        ]),
+        full: true,
+      ),
     ];
   }
 
@@ -5225,43 +5116,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             ),
             _SttEngineCards(app),
           ],
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-            child: Text(app.t('cardDenoise'),
-                style: TextStyle(
-                    color: _body(context),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
-          ),
-          _DenoiseSelector(app),
+          // Шумоподавление, чувствительность и модели к ним переехали в свой
+          // раздел — «Чувствительность и шумоподавление». Здесь остаётся то,
+          // что отвечает на вопрос «чем и на каком языке распознаём».
           evsRow(context,
-            stacked: true,
-            label: app.t('micSensitivity'),
-            desc: app.t('micSensitivityDesc'),
-            control: evsSegmentedWide<int>(context,
-              [
-                (3, app.t('micSensLow')),
-                (2, app.t('micSensMed')),
-                (1, app.t('micSensHigh')),
-                (0, app.t('micSensMax')),
-              ],
-              app.micVadAggr,
-              (v) => app.setMicVadAggr(v),
-            ),
-          ),
-          evsRow(context,
-            label: app.t('micGain'),
-            desc: app.t('micGainDesc'),
-            control: evsSlider(context,
-              value: app.micGain.clamp(0.5, 4.0),
-              min: 0.5,
-              max: 4.0,
-              divisions: 14,
-              label: '${app.micGain.toStringAsFixed(1)}x',
-              onChanged: (v) => app.setMicGain(v),
-            ),
-          ),
-          evsRow(context, 
             stacked: true,
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
@@ -5277,6 +5135,65 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           const _SttTestCard(),
         ],
       )),
+    ];
+  }
+
+  // =================== ЧУВСТВИТЕЛЬНОСТЬ И ШУМОПОДАВЛЕНИЕ ===================
+  //
+  // Раздел собран из того, что было разбросано: выбор шумодава и пороги микрофона
+  // лежали в «Распознавании», а модели к ним — в «Нейросети», рядом с языковыми
+  // моделями, к которым они отношения не имеют. Ничего нового не изобретаем:
+  // это те же настройки и та же карточка моделей, собранные по смыслу.
+  List<_CardSpec> _sensitivityCards(AppState app) {
+    return [
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.graphic_eq,
+            title: app.t('cardDenoise'),
+            rows: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
+                child: Text(app.t('sensitivityDesc'),
+                    style: TextStyle(fontSize: 12, color: _faint(context))),
+              ),
+              _DenoiseSelector(app),
+              evsRow(context,
+                stacked: true,
+                label: app.t('micSensitivity'),
+                desc: app.t('micSensitivityDesc'),
+                control: evsSegmentedWide<int>(context,
+                  [
+                    (3, app.t('micSensLow')),
+                    (2, app.t('micSensMed')),
+                    (1, app.t('micSensHigh')),
+                    (0, app.t('micSensMax')),
+                  ],
+                  app.micVadAggr,
+                  (v) => app.setMicVadAggr(v),
+                ),
+              ),
+              evsRow(context,
+                label: app.t('micGain'),
+                desc: app.t('micGainDesc'),
+                control: evsSlider(context,
+                  value: app.micGain.clamp(0.5, 4.0),
+                  min: 0.5,
+                  max: 4.0,
+                  divisions: 14,
+                  label: '${app.micGain.toStringAsFixed(1)}x',
+                  onChanged: (v) => app.setMicGain(v),
+                ),
+              ),
+            ]),
+        full: true,
+      ),
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.dns_outlined,
+            title: app.t('cardLocalModels'),
+            rows: [_AssetModelsCard(app)]),
+        full: true,
+      ),
     ];
   }
 
@@ -7141,6 +7058,100 @@ class _ModelModeCard extends StatelessWidget {
 // disclosure — the basics stay visible, this is opt-in). Every field is
 // optional: clearing one drops the parameter from the request entirely rather
 // than substituting a default, so the model keeps deciding.
+/// Один параметр выборки: переключатель «задан / по умолчанию модели» и
+/// ползунок. Пока тянут ползунок, значение живёт в состоянии виджета и в
+/// настройки не пишется — иначе каждый кадр перетаскивания уходил бы в файл.
+class _GenParam extends StatefulWidget {
+  const _GenParam(this.app, this.name, this.label, this.descKey,
+      {required this.min,
+      required this.max,
+      required this.decimals,
+      required this.fallback});
+
+  final AppState app;
+  final String name; // ключ параметра Ollama: temperature, top_p, …
+  final String label;
+  final String descKey;
+  final double min;
+  final double max;
+  final int decimals; // 0 — целое (top_k, num_ctx)
+  final double fallback; // что показать при включении, если значения ещё нет
+
+  @override
+  State<_GenParam> createState() => _GenParamState();
+}
+
+class _GenParamState extends State<_GenParam> {
+  double? _dragging;
+
+  num _round(double v) =>
+      widget.decimals == 0 ? v.round() : double.parse(v.toStringAsFixed(2));
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final stored = app.llmOption(widget.name);
+    final on = stored != null;
+    final value =
+        (_dragging ?? stored?.toDouble() ?? widget.fallback).clamp(widget.min, widget.max);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: _stroke(context))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(widget.label,
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: _txt(context))),
+            ),
+            Text(
+              on
+                  ? _round(value).toString()
+                  : app.t('genParamOff'),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: on ? _accent(context) : _faint(context)),
+            ),
+            const SizedBox(width: 12),
+            evsToggle(context, on, (b) {
+              setState(() => _dragging = null);
+              app.setLlmOption(widget.name, b ? _round(value) : null);
+            }),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(app.t(widget.descKey),
+                style: TextStyle(fontSize: 11.5, color: _sub(context))),
+          ),
+          Opacity(
+            opacity: on ? 1 : 0.35,
+            child: IgnorePointer(
+              ignoring: !on,
+              child: Slider(
+                value: value,
+                min: widget.min,
+                max: widget.max,
+                onChanged: (v) => setState(() => _dragging = v),
+                onChangeEnd: (v) {
+                  setState(() => _dragging = null);
+                  app.setLlmOption(widget.name, _round(v));
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LlmAdvancedCard extends StatefulWidget {
   const _LlmAdvancedCard(this.app);
   final AppState app;

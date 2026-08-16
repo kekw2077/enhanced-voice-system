@@ -189,6 +189,13 @@ class AppState extends ChangeNotifier {
   int? llmNumCtx;
   int? llmNumPredict;
   double? llmTemperature;
+  // Остальная выборка Ollama. Та же семантика null: не задано — не отправляем,
+  // и решает модель. Ползунок «не задано» выразить не может, поэтому у каждого
+  // параметра в настройках есть переключатель «задать».
+  double? llmTopP;
+  int? llmTopK;
+  double? llmRepeatPenalty;
+  double? llmMinP;
   String llmKeepAlive = '';
   // Optional per-mode model overrides. Empty means "use whatever is selected
   // globally", which keeps the existing single-model behaviour intact — the
@@ -518,6 +525,10 @@ class AppState extends ChangeNotifier {
     llmNumCtx = prefs.getInt('llmNumCtx');
     llmNumPredict = prefs.getInt('llmNumPredict');
     llmTemperature = prefs.getDouble('llmTemperature');
+    llmTopP = prefs.getDouble('llmTopP');
+    llmTopK = prefs.getInt('llmTopK');
+    llmRepeatPenalty = prefs.getDouble('llmRepeatPenalty');
+    llmMinP = prefs.getDouble('llmMinP');
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
@@ -774,6 +785,7 @@ class AppState extends ChangeNotifier {
         lang, themeMode.name, appStyle.name, haptics, showKeyboardOnLaunch,
         showPromptChips, fontSize, micAutoSend, micPauseSeconds, serverUrl,
         savedServers.join(','), llmNumCtx, llmNumPredict, llmTemperature,
+        llmTopP, llmTopK, llmRepeatPenalty, llmMinP,
         llmKeepAlive, searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
@@ -845,6 +857,21 @@ class AppState extends ChangeNotifier {
       await prefs.remove('llmTemperature');
     } else {
       await prefs.setDouble('llmTemperature', llmTemperature!);
+    }
+    // Тот же приём, что выше: null стирает ключ, иначе значение сохраняется.
+    for (final e in <String, Object?>{
+      'llmTopP': llmTopP,
+      'llmTopK': llmTopK,
+      'llmRepeatPenalty': llmRepeatPenalty,
+      'llmMinP': llmMinP,
+    }.entries) {
+      if (e.value == null) {
+        await prefs.remove(e.key);
+      } else if (e.value is int) {
+        await prefs.setInt(e.key, e.value as int);
+      } else {
+        await prefs.setDouble(e.key, e.value as double);
+      }
     }
     await prefs.setString('llmKeepAlive', llmKeepAlive);
     await prefs.setString('searchModel', searchModel);
@@ -1099,6 +1126,10 @@ class AppState extends ChangeNotifier {
     llmNumCtx = prefs.getInt('llmNumCtx');
     llmNumPredict = prefs.getInt('llmNumPredict');
     llmTemperature = prefs.getDouble('llmTemperature');
+    llmTopP = prefs.getDouble('llmTopP');
+    llmTopK = prefs.getInt('llmTopK');
+    llmRepeatPenalty = prefs.getDouble('llmRepeatPenalty');
+    llmMinP = prefs.getDouble('llmMinP');
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
@@ -1275,6 +1306,47 @@ class AppState extends ChangeNotifier {
         if (llmNumCtx != null) 'num_ctx': llmNumCtx,
         if (llmNumPredict != null) 'num_predict': llmNumPredict,
         if (llmTemperature != null) 'temperature': llmTemperature,
+        if (llmTopP != null) 'top_p': llmTopP,
+        if (llmTopK != null) 'top_k': llmTopK,
+        if (llmRepeatPenalty != null) 'repeat_penalty': llmRepeatPenalty,
+        if (llmMinP != null) 'min_p': llmMinP,
+      };
+
+  /// Один сеттер на все параметры выборки: значение или null («по умолчанию
+  /// модели»). Отдельные сеттеры на каждый плодили бы одинаковый код.
+  void setLlmOption(String name, num? v) {
+    switch (name) {
+      case 'temperature':
+        llmTemperature = v?.toDouble();
+      case 'top_p':
+        llmTopP = v?.toDouble();
+      case 'top_k':
+        llmTopK = v?.toInt();
+      case 'repeat_penalty':
+        llmRepeatPenalty = v?.toDouble();
+      case 'min_p':
+        llmMinP = v?.toDouble();
+      case 'num_predict':
+        llmNumPredict = v?.toInt();
+      case 'num_ctx':
+        llmNumCtx = v?.toInt();
+      default:
+        return;
+    }
+    _save();
+    notifyListeners();
+  }
+
+  /// Текущее значение параметра выборки или null, если не задан.
+  num? llmOption(String name) => switch (name) {
+        'temperature' => llmTemperature,
+        'top_p' => llmTopP,
+        'top_k' => llmTopK,
+        'repeat_penalty' => llmRepeatPenalty,
+        'min_p' => llmMinP,
+        'num_predict' => llmNumPredict,
+        'num_ctx' => llmNumCtx,
+        _ => null,
       };
 
   void setLlmNumCtx(int? v) {
