@@ -202,6 +202,11 @@ class AppState extends ChangeNotifier {
   // Замер на станции, один и тот же вопрос: 27,7 с с размышлением против 2,3 с
   // без него. Для голосового ассистента это решает, поэтому по умолчанию выкл.
   bool llmThinking = false;
+  // Свой сервер обновлений: один адрес, из которого берутся И канал обновлений
+  // (appcast.xml), И список компонентов (components.json). Пусто — как раньше,
+  // через GitHub. Один адрес, а не два, намеренно: движок весит 112 МБ, и
+  // забрать по локальной сети установщик, но не его — значит не забрать ничего.
+  String updateServerUrl = '';
   // Optional per-mode model overrides. Empty means "use whatever is selected
   // globally", which keeps the existing single-model behaviour intact — the
   // point is to let a RAG-tuned model answer search turns without changing what
@@ -536,6 +541,7 @@ class AppState extends ChangeNotifier {
     llmMinP = prefs.getDouble('llmMinP');
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     llmThinking = prefs.getBool('llmThinking') ?? false;
+    updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     // Migrate away placeholder values that earlier versions persisted as if
@@ -792,7 +798,7 @@ class AppState extends ChangeNotifier {
         showPromptChips, fontSize, micAutoSend, micPauseSeconds, serverUrl,
         savedServers.join(','), llmNumCtx, llmNumPredict, llmTemperature,
         llmTopP, llmTopK, llmRepeatPenalty, llmMinP,
-        llmKeepAlive, llmThinking,
+        llmKeepAlive, llmThinking, updateServerUrl,
         searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
@@ -882,6 +888,7 @@ class AppState extends ChangeNotifier {
     }
     await prefs.setString('llmKeepAlive', llmKeepAlive);
     await prefs.setBool('llmThinking', llmThinking);
+    await prefs.setString('updateServerUrl', updateServerUrl);
     await prefs.setString('searchModel', searchModel);
     await prefs.setString('chatModel', chatModel);
     await prefs.setString('apiKey', apiKey);
@@ -1140,6 +1147,7 @@ class AppState extends ChangeNotifier {
     llmMinP = prefs.getDouble('llmMinP');
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
     llmThinking = prefs.getBool('llmThinking') ?? false;
+    updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
@@ -1323,6 +1331,26 @@ class AppState extends ChangeNotifier {
 
   /// Один сеттер на все параметры выборки: значение или null («по умолчанию
   /// модели»). Отдельные сеттеры на каждый плодили бы одинаковый код.
+  /// Адрес своего сервера обновлений. Нормализуем один раз здесь, чтобы дальше
+  /// никто не гадал, есть ли на конце косая черта и указана ли схема.
+  void setUpdateServerUrl(String v) {
+    var s = v.trim();
+    if (s.isNotEmpty && !s.startsWith('http://') && !s.startsWith('https://')) {
+      s = 'http://$s';
+    }
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    updateServerUrl = s;
+    _save();
+    notifyListeners();
+  }
+
+  /// Куда идти за файлом обновлений [name] («appcast.xml», «components.json»).
+  /// Пусто — вернётся null, и вызывающий возьмёт свой адрес по умолчанию.
+  String? updateUrlFor(String name) =>
+      updateServerUrl.isEmpty ? null : '$updateServerUrl/$name';
+
   void setLlmThinking(bool v) {
     llmThinking = v;
     _save();

@@ -28,6 +28,33 @@
 
     <!-- Newest release first. Duplicate this block for each new version. -->
     <item>
+      <title>EVS 2.16.1</title>
+      <description><![CDATA[
+        <style>
+          html,body{background:#262624;color:#F2F0E9;margin:0;padding:14px 18px;
+            font-family:'Segoe UI',Roboto,sans-serif;font-size:14px;line-height:1.5;}
+          h1,h2,h3,b,strong{color:#FFFFFF;}
+          a{color:#D97757;}
+          ul{margin:6px 0;padding-left:20px;}
+          li{margin:5px 0;}
+        </style>
+        <ul>
+          <li><b>Обновления можно забирать со своего сервера.</b> «О приложении» → «Сервер обновлений»: один адрес, из которого берутся и обновления программы, и движок распознавания в 112 МБ. Пусто — как раньше, через GitHub. Адрес один намеренно: забрать по локальной сети установщик в 17 МБ, но не движок, значит не забрать почти ничего.</li>
+          <li><b>Появился выключатель «Размышление модели».</b> Модели вроде Qwen3 сначала рассуждают про себя; вам это не видно и вслух не читается, но ждать приходится в разы дольше — замер на станции дал 27,7 с против 2,3 с на одном и том же вопросе. По умолчанию выключено.</li>
+        </ul>
+      ]]></description>
+      <pubDate>Sun, 16 Aug 2026 12:10:00 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kekw2077/enhanced-voice-system/releases/download/desktop-v2.16.1/EVS-Setup-2.16.1.exe"
+        sparkle:version="2.16.1"
+        sparkle:os="windows"
+        sparkle:dsaSignature="MDwCHFEXtfXjxZTIf4zpKHwb9zT+XTX3Pt6FpiDP1Y0CHD6BNcbBps/WJmp2TuH4ID9txpF900T3QIAXDi4="
+        evs:sha256="7c6fd37d0f1548e4d8fc8d50103d42e85806fe2647498f35cbbaf21bd11ac63a"
+        length="16995116"
+        type="application/octet-stream" />
+    </item>
+
+    <item>
       <title>EVS 2.16.0</title>
       <description><![CDATA[
         <style>

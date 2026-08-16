@@ -1061,6 +1061,17 @@ class ComponentManager {
   static const String manifestUrl =
       'https://raw.githubusercontent.com/kekw2077/enhanced-voice-system/main/test1/dist/components.json';
 
+  /// Откуда брать список компонентов: свой сервер обновлений, если задан.
+  /// Адреса самих файлов лежат ВНУТРИ списка, так что перенос на свой сервер —
+  /// это и подмена списка, и подмена ссылок в нём; выкладка это делает сама.
+  static String effectiveManifestUrl(AppState? app) =>
+      app?.updateUrlFor('components.json') ?? manifestUrl;
+
+  /// Настройки — ради адреса своего сервера обновлений. Ставится один раз при
+  /// запуске; до этого момента (и в тестах) действует адрес по умолчанию.
+  AppState? _app;
+  set app(AppState v) => _app = v;
+
   Map<String, ComponentInfo> _manifest = {};
   final Map<String, ValueNotifier<ComponentStatus>> _status = {};
   String? _dir;
@@ -1137,7 +1148,7 @@ class ComponentManager {
   Future<void> _fetchManifest(io.File cache) async {
     try {
       final res = await http
-          .get(Uri.parse(manifestUrl))
+          .get(Uri.parse(effectiveManifestUrl(_app)))
           .timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return;
       _parseManifest(res.body);

@@ -5024,10 +5024,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             label: app.t('autoCheck'),
             desc: app.t('autoCheckDesc'),
             control: evsToggle(context, app.autoUpdateCheck, app.setAutoUpdateCheck)),
-        evsRow(context, 
+        evsRow(context,
             label: app.t('checkNow'),
             desc: app.t('updFlowDesc'),
             control: _updateControl(app)),
+        evsRow(context,
+            stacked: true,
+            label: app.t('updServer'),
+            desc: app.t('updServerDesc'),
+            control: _UpdateServerField(app)),
       ])),
     ];
   }
@@ -7155,6 +7160,43 @@ class _GenParamState extends State<_GenParam> {
         ],
       ),
     );
+  }
+}
+
+/// Адрес своего сервера обновлений. Пустое поле — обновления и компоненты
+/// берутся с GitHub, как раньше.
+class _UpdateServerField extends StatefulWidget {
+  const _UpdateServerField(this.app);
+  final AppState app;
+  @override
+  State<_UpdateServerField> createState() => _UpdateServerFieldState();
+}
+
+class _UpdateServerFieldState extends State<_UpdateServerField> {
+  late final TextEditingController _c =
+      TextEditingController(text: widget.app.updateServerUrl);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      _RemoteField(controller: _c, onChanged: app.setUpdateServerUrl),
+      if (app.updateServerUrl.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            '${app.updateServerUrl}/appcast.xml\n'
+            '${app.updateServerUrl}/components.json',
+            style: TextStyle(fontSize: 11, color: _faint(context)),
+          ),
+        ),
+    ]);
   }
 }
 

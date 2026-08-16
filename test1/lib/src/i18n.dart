@@ -188,6 +188,10 @@ const Map<String, Map<String, String>> _i18n = {
     'genParamsDesc': 'Выключенный параметр не отправляется вовсе — решает сама '
         'модель. Включайте по одному и слушайте разницу.',
     'genParamOff': 'по умолчанию',
+    'updServer': 'Сервер обновлений',
+    'updServerDesc': 'Свой адрес вместо GitHub — например, 100.79.130.7:8099. '
+        'Оттуда берутся и обновления программы, и движок распознавания (112 МБ), '
+        'то есть по локальной сети вместо интернета. Пусто — как раньше.',
     'genThinking': 'Размышление модели',
     'genThinkingDesc': 'Модели вроде Qwen3 сначала рассуждают про себя. Вам '
         'этого не видно и вслух не читается, но ответа приходится ждать в разы '
@@ -1495,6 +1499,10 @@ const Map<String, Map<String, String>> _i18n = {
     'genParamsDesc': 'A disabled parameter is not sent at all — the model '
         'decides. Enable them one at a time and listen for the difference.',
     'genParamOff': 'model default',
+    'updServer': 'Update server',
+    'updServerDesc': 'Your own address instead of GitHub — e.g. '
+        '100.79.130.7:8099. Both app updates and the recognition engine (112 MB) '
+        'come from there, i.e. over the LAN instead of the internet. Empty = as before.',
     'genThinking': 'Model reasoning',
     'genThinkingDesc': 'Models like Qwen3 reason to themselves first. You never '
         'see it and it is never spoken, but the answer takes far longer: '

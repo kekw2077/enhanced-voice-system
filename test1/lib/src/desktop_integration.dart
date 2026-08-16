@@ -833,6 +833,10 @@ class DesktopIntegration with WindowListener, TrayListener {
       final env = io.Platform.environment['EVS_UPDATE_FEED'];
       if (env != null && env.trim().isNotEmpty) return env.trim();
     } catch (_) {}
+    // Свой сервер обновлений из настроек. Ниже переменной окружения намеренно:
+    // та ставится ради отладочного канала и должна перебивать всё остальное.
+    final own = instance._app?.updateUrlFor('appcast.xml');
+    if (own != null) return own;
     return updateFeedUrl;
   }
 
@@ -966,6 +970,9 @@ class DesktopIntegration with WindowListener, TrayListener {
             unawaited(BootSplash.instance.finish(failed: true));
         }
       });
+      // До загрузки списка: иначе первый запрос уйдёт на GitHub, даже когда
+      // задан свой сервер.
+      ComponentManager.instance.app = app;
       await ComponentManager.instance.loadManifest();
       // Apply any update staged on a previous run (before the exe is launched).
       await ComponentManager.instance.applyStagedUpdates();
