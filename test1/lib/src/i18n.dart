@@ -188,6 +188,10 @@ const Map<String, Map<String, String>> _i18n = {
     'genParamsDesc': 'Выключенный параметр не отправляется вовсе — решает сама '
         'модель. Включайте по одному и слушайте разницу.',
     'genParamOff': 'по умолчанию',
+    'genThinking': 'Размышление модели',
+    'genThinkingDesc': 'Модели вроде Qwen3 сначала рассуждают про себя. Вам '
+        'этого не видно и вслух не читается, но ответа приходится ждать в разы '
+        'дольше: замер на станции — 27,7 с против 2,3 с на том же вопросе.',
     'genTemperatureDesc': 'Разброс при выборе слова. Ниже — суше и точнее, '
         'выше — свободнее и неожиданнее.',
     'genTopPDesc': 'Берутся только самые вероятные слова, пока их суммарная '
@@ -1491,6 +1495,10 @@ const Map<String, Map<String, String>> _i18n = {
     'genParamsDesc': 'A disabled parameter is not sent at all — the model '
         'decides. Enable them one at a time and listen for the difference.',
     'genParamOff': 'model default',
+    'genThinking': 'Model reasoning',
+    'genThinkingDesc': 'Models like Qwen3 reason to themselves first. You never '
+        'see it and it is never spoken, but the answer takes far longer: '
+        'measured on the station, 27.7 s versus 2.3 s on the same question.',
     'genTemperatureDesc': 'Spread when picking a word. Lower is drier and more '
         'exact, higher is freer and more surprising.',
     'genTopPDesc': 'Only the most likely words are considered, until their '

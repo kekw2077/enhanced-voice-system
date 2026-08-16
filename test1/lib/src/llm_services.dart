@@ -455,6 +455,12 @@ class RemoteLLMService implements ILLMService {
     // applies to roleplay requests too.
     final ka = app.llmKeepAlive.trim();
     if (ka.isNotEmpty) body['keep_alive'] = ka;
+    // Гасим размышление вслух. Поле верхнего уровня, как и keep_alive, не часть
+    // `options`. Отправляем ТОЛЬКО выключение: на моделях без размышления оно
+    // безвредно (проверено — HTTP 200 и обычный ответ), а вот `think: true`
+    // такая модель отвергает, и включённая настройка ломала бы ответы там, где
+    // размышления просто нет.
+    if (!app.llmThinking) body['think'] = false;
     return body;
   }
 

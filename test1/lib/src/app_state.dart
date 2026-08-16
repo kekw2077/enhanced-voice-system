@@ -197,6 +197,11 @@ class AppState extends ChangeNotifier {
   double? llmRepeatPenalty;
   double? llmMinP;
   String llmKeepAlive = '';
+  // Размышление вслух у моделей вроде Qwen3. Ollama кладёт рассуждения в
+  // отдельное поле, до пользователя они не доходят — но время съедают целиком.
+  // Замер на станции, один и тот же вопрос: 27,7 с с размышлением против 2,3 с
+  // без него. Для голосового ассистента это решает, поэтому по умолчанию выкл.
+  bool llmThinking = false;
   // Optional per-mode model overrides. Empty means "use whatever is selected
   // globally", which keeps the existing single-model behaviour intact — the
   // point is to let a RAG-tuned model answer search turns without changing what
@@ -530,6 +535,7 @@ class AppState extends ChangeNotifier {
     llmRepeatPenalty = prefs.getDouble('llmRepeatPenalty');
     llmMinP = prefs.getDouble('llmMinP');
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
+    llmThinking = prefs.getBool('llmThinking') ?? false;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     // Migrate away placeholder values that earlier versions persisted as if
@@ -786,7 +792,8 @@ class AppState extends ChangeNotifier {
         showPromptChips, fontSize, micAutoSend, micPauseSeconds, serverUrl,
         savedServers.join(','), llmNumCtx, llmNumPredict, llmTemperature,
         llmTopP, llmTopK, llmRepeatPenalty, llmMinP,
-        llmKeepAlive, searchModel, chatModel, apiKey, selectedModel, inferenceMode,
+        llmKeepAlive, llmThinking,
+        searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
         sttLanguage, whisperModel, sttEngine,
@@ -874,6 +881,7 @@ class AppState extends ChangeNotifier {
       }
     }
     await prefs.setString('llmKeepAlive', llmKeepAlive);
+    await prefs.setBool('llmThinking', llmThinking);
     await prefs.setString('searchModel', searchModel);
     await prefs.setString('chatModel', chatModel);
     await prefs.setString('apiKey', apiKey);
@@ -1131,6 +1139,7 @@ class AppState extends ChangeNotifier {
     llmRepeatPenalty = prefs.getDouble('llmRepeatPenalty');
     llmMinP = prefs.getDouble('llmMinP');
     llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
+    llmThinking = prefs.getBool('llmThinking') ?? false;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
@@ -1314,6 +1323,12 @@ class AppState extends ChangeNotifier {
 
   /// Один сеттер на все параметры выборки: значение или null («по умолчанию
   /// модели»). Отдельные сеттеры на каждый плодили бы одинаковый код.
+  void setLlmThinking(bool v) {
+    llmThinking = v;
+    _save();
+    notifyListeners();
+  }
+
   void setLlmOption(String name, num? v) {
     switch (name) {
       case 'temperature':
