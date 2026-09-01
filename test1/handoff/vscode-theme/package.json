@@ -1,0 +1,27 @@
+{
+  "name": "evs-theme",
+  "displayName": "EVS",
+  "description": "Тема оформления в палитре EVS — Enhanced Voice System.",
+  "version": "1.0.0",
+  "publisher": "evs",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "EVS Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/evs-dark-color-theme.json"
+      },
+      {
+        "label": "EVS Light",
+        "uiTheme": "vs",
+        "path": "./themes/evs-light-color-theme.json"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Трейная версия: без подложки, цветная, элементы крупнее ради 16-24 px.
+       Цвета подобраны так, чтобы читаться и на тёмной, и на светлой панели задач. -->
+  <defs>
+    <linearGradient id="evsTrayCore" gradientUnits="userSpaceOnUse" x1="66" y1="66" x2="190" y2="190">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="45%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="128" cy="128" r="104" fill="none" stroke="#A78BFA" stroke-width="15"/>
+
+  <circle cx="97"  cy="29"  r="20" fill="#FBBF24"/>
+  <circle cx="226" cy="164" r="20" fill="#FBBF24"/>
+  <circle cx="57"  cy="204" r="20" fill="#FBBF24"/>
+
+  <path d="M128 66 Q139 117 190 128 Q139 139 128 190 Q117 139 66 128 Q117 117 128 66 Z"
+        fill="url(#evsTrayCore)"/>
+</svg>

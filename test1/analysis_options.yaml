@@ -26,3 +26,12 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+analyzer:
+  # Reference material that lives in the repo but is not built by the app:
+  # the design handoff (its own standalone project) and the Anima token
+  # template. Analysing them buries the app's own findings — and "flutter
+  # analyze is silent" is the acceptance check for the rename ahead.
+  exclude:
+    - handoff/**
+    - anima project/**

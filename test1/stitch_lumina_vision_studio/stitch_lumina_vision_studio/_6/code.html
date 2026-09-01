@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Ethereal AI - Profile &amp; History</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<style data-purpose="typography">
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              light: '#f8fafc',
+              DEFAULT: '#4f46e5',
+              dark: '#312e81',
+              hover: '#4338ca'
+            },
+            surface: {
+              light: '#ffffff',
+              muted: '#f1f5f9',
+              dark: '#0f172a'
+            }
+          },
+          boxShadow: {
+            'glass': '0 4px 30px rgba(0, 0, 0, 0.05)',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-[#f8fafc] text-slate-800 antialiased h-screen flex overflow-hidden">
+<!-- BEGIN: Sidebar -->
+<aside class="w-64 bg-white border-r border-slate-200 flex flex-col justify-between hidden md:flex z-10 shadow-sm relative shrink-0">
+<div>
+<div class="h-20 flex items-center px-8 border-b border-slate-100">
+<h1 class="text-xl font-bold text-brand tracking-tight">Ethereal AI</h1>
+</div>
+<nav class="p-4 space-y-1">
+<a class="flex items-center px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-brand rounded-xl transition-colors font-medium" href="#">
+<svg class="w-5 h-5 mr-3 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Generate
+        </a>
+<a class="flex items-center px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-brand rounded-xl transition-colors font-medium" href="#">
+<svg class="w-5 h-5 mr-3 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Gallery
+        </a>
+<a class="flex items-center px-4 py-3 bg-brand-light text-brand rounded-xl font-medium shadow-[inset_3px_0_0_0_#4f46e5]" href="#">
+<svg class="w-5 h-5 mr-3 text-brand" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          History &amp; Profile
+        </a>
+<a class="flex items-center px-4 py-3 text-slate-600 hover:bg-slate-50 hover:text-brand rounded-xl transition-colors font-medium" href="#">
+<svg class="w-5 h-5 mr-3 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Settings
+        </a>
+</nav>
+</div>
+<div class="p-4 space-y-4">
+<button class="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-brand to-teal-600 hover:from-brand-hover hover:to-teal-700 text-white px-4 py-3 rounded-full transition-all shadow-md font-medium text-sm">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>New Project</span>
+</button>
+<div class="pt-4 border-t border-slate-100 space-y-1">
+<a class="flex items-center px-4 py-2 text-slate-500 hover:text-slate-800 text-sm font-medium transition-colors" href="#">
+<svg class="w-4 h-4 mr-3 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Help
+        </a>
+<a class="flex items-center px-4 py-2 text-slate-500 hover:text-slate-800 text-sm font-medium transition-colors" href="#">
+<svg class="w-4 h-4 mr-3 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+          Logout
+        </a>
+</div>
+</div>
+</aside>
+<!-- END: Sidebar -->
+<!-- BEGIN: Main Content Area -->
+<main class="flex-1 flex flex-col h-full overflow-hidden bg-[#f8fafc]">
+<!-- BEGIN: Top Navigation -->
+<header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200/50 flex items-center justify-between px-8 z-20 shrink-0 sticky top-0">
+<div class="flex-1 max-w-2xl relative">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<svg class="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<input class="block w-full pl-10 pr-3 py-2 border border-slate-200 rounded-full leading-5 bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand sm:text-sm transition-shadow shadow-sm" placeholder="Search history, dates, or prompts..." type="text"/>
+</div>
+<div class="flex items-center space-x-6 ml-4">
+<button class="text-slate-400 hover:text-slate-600 transition-colors relative">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span class="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-400 ring-2 ring-white"></span>
+</button>
+<button class="text-slate-400 hover:text-slate-600 transition-colors">
+<svg class="w-6 h-6" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</button>
+<button class="h-9 w-9 rounded-full overflow-hidden border-2 border-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-2 transition-all hover:scale-105">
+<img alt="User avatar" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7DvVBnOc6eSOTEd0HjdDB6QOIiugiByAakqxfqHqjsaxDtpUm2WkkkDR8tZDcxJcP0SmYbzm_qW604THSc0GBZlU7acll5O8ufaij8fyOBgVCIxKfBiRx4q8fvwIFgEjJQrund16nzxoT_BX4emsq-0QbElzwi7XAh6E8kD0YeQcogYrCo1g0JI-h4WrybrzmJReEI37mgBXQluq93WIe4T1AfAByLm87Vg3CXMmFZNqhFu3aUB1Y"/>
+</button>
+</div>
+</header>
+<!-- END: Top Navigation -->
+<!-- BEGIN: Scrollable Content -->
+<div class="flex-1 overflow-y-auto p-8 lg:px-12 flex space-x-8">
+<!-- Center Content: Profile & History -->
+<div class="flex-1 max-w-5xl space-y-8">
+<!-- BEGIN: Profile Card -->
+<section class="bg-white rounded-3xl p-8 shadow-glass border border-slate-100 flex items-center space-x-8 relative overflow-hidden">
+<div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-gradient-to-br from-brand-light to-blue-50 rounded-full opacity-50 blur-3xl pointer-events-none"></div>
+<div class="relative">
+<img alt="User Profile Picture" class="w-28 h-28 rounded-full border-4 border-white shadow-lg object-cover z-10 relative" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPUe5E6B5tzA3aZOU4fiZ_bu0YT8r3AhEV3KIpv6dKwcWNOUejwdTYePmCu8bLDKh7ElAxBStgLmMkwPR6I7u8CXjPPmrTsSCyaa4zCR4D4paXqiGPuJoftdebdBiI_Uf3Pl3jPrZm_pqtfxe6IIpe3-KZQ3usRZLRPOZckhqVCwHG_7nXb-k2_rV1bTt6Aof4QftKg1WCEfrM1Iw6MtDkMZGDCr71iwPyUP33Sa3b6EkWumh34mOg"/>
+<div class="absolute bottom-1 right-1 bg-green-500 w-5 h-5 rounded-full border-2 border-white z-20"></div>
+</div>
+<div class="flex-1 z-10">
+<h2 class="text-3xl font-bold text-slate-900 mb-1">Alex Mercer</h2>
+<div class="flex items-center space-x-3 mb-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800">
+                Pro Member
+              </span>
+<span class="text-sm text-slate-500">Joined March 2023</span>
+</div>
+<div class="grid grid-cols-3 gap-6 pt-4 border-t border-slate-100/60">
+<div>
+<p class="text-sm text-slate-500 font-medium mb-1">Images Generated</p>
+<p class="text-2xl font-bold text-slate-800">1,248</p>
+</div>
+<div>
+<p class="text-sm text-slate-500 font-medium mb-1">Remaining Tokens</p>
+<p class="text-2xl font-bold text-slate-800">452 <span class="text-xs text-slate-400 font-normal ml-1">/ 2000</span></p>
+</div>
+<div>
+<p class="text-sm text-slate-500 font-medium mb-1">Favorites Saved</p>
+<p class="text-2xl font-bold text-slate-800">86</p>
+</div>
+</div>
+</div>
+</section>
+<!-- END: Profile Card -->
+<!-- BEGIN: Generation History -->
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<div>
+<h3 class="text-2xl font-bold text-slate-900">Generation History</h3>
+<p class="text-slate-500 mt-1">Your recent AI creations across all projects.</p>
+</div>
+<div class="flex space-x-3">
+<button class="px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm flex items-center space-x-2">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Filter</span>
+</button>
+<button class="px-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm flex items-center space-x-2">
+<svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+<span>Sort</span>
+</button>
+</div>
+</div>
+<!-- Timeline Group: Today -->
+<div class="space-y-4">
+<h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Today</h4>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<!-- Thumbnail 1 -->
+<div class="group relative aspect-square rounded-2xl overflow-hidden bg-slate-100 shadow-sm cursor-pointer">
+<img alt="Generated thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJW-to0llRB_fo3O3fMSkxkdCgfag7R1xaVl7edB30BncuNUG0fOQbT1cb6cLKh4VI8h4DYHD2JbzuQ8N4-uC6QSt7NFNGEVADIXB5eoGLr-RYOXsZLPjx2ulRoXlJRZlyBP6Gp_f9VaFDzDjovLd_Ho8hQllN8yUTYpIi2AqKhx1hJucZYeha70fmASHpGx2uy81ac4qpYn7cN1MPDbKDaQqVcnxxngTQOQq6zpgwuAMg103iSeyw"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-3">
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+</div>
+</div>
+<!-- Thumbnail 2 -->
+<div class="group relative aspect-square rounded-2xl overflow-hidden bg-slate-100 shadow-sm cursor-pointer">
+<img alt="Generated thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRTfRUBkoW6PMFxcFQgrk6CJwDFL9xUqM3aeG3vo2r6tD3dHRgM3mv7Ro6cG6Rkewnr5jANgW1k_tO1KCJl_qVP-7C_KOiRgmjpIvjMkmI1UjqtzT0kOk9cUIVxAb5YdS_qbQzgB0Gop6COro_Z3SP1P_X_MLq2Yb_F6Q8ummtVCXMVCtszXCMyX0q3jM2T3okD3DoNbjPiPYGUgTIMuhegTQ0HalDTcdjPFaEg4ohbOQd1mYgo-Cx"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-3">
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+</div>
+</div>
+<!-- Thumbnail 3 -->
+<div class="group relative aspect-square rounded-2xl overflow-hidden bg-slate-100 shadow-sm cursor-pointer">
+<img alt="Generated thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDR1Mi__cnhOev19PcbaGSvOEyMofs18NEP2fFCWRoVs0b2pUk_XpHTNNeiNnodiUS6JliXdUsxxAxQMbB6dN1xm14Z1UBhUPwxxoj4SzQTV7dn9mZe9lhCzA2ayMa3GAvPRh7m8Jn9tYQ62Caa8J4p5f18xj31xlOfSOQ8gGFs7MPHbOFRfXuT-Hawxnm2Isgwh0qUpsVDLlIIOFgX7SFMaE7WY0Q3FbwiINMAEENjugLuljnpL4Th"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-3">
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+</div>
+</div>
+<!-- Thumbnail 4 -->
+<div class="group relative aspect-square rounded-2xl overflow-hidden bg-slate-100 shadow-sm cursor-pointer">
+<img alt="Generated thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFa8md7kBBC2woI-US-AqBVyRvzyaQom8OyVha4CVfnLE_Dk4HfJncOcoYkFzT5tN_j86bpiPlYCx0YVh_xu-qHhpDkmvkJwaQhP_cvNCYYyo2Uljn_4cNM8t3XxcQ5aJvOORfBsZzjNCn5Z5HdvbziTQFSVh2LJvGKcj4UGyRdXQ5UMFg4XqJeQnCH0cg9fn1UjNo_OEG4JsxIty7ZzvDe6LleCCplHJv5Kij3IVWaF28W0tfEBNI"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-3">
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+<button class="w-8 h-8 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center text-white hover:bg-white/40"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg></button>
+</div>
+</div>
+</div>
+</div>
+<!-- Timeline Group: Yesterday -->
+<div class="space-y-4 pt-4">
+<h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Yesterday</h4>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<!-- Thumbnail 5 -->
+<div class="group relative aspect-square rounded-2xl overflow-hidden bg-slate-100 shadow-sm cursor-pointer">
+<img alt="Generated thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCzkGBb52tIZu3_-Z-GTL0k_p5QfRaEgBHmD3Nm3TQrXS0ShXEcgm_6rZNQsgwtCliJ7SDk7nywBC-OvLXa5TDzW8iexm20GHqrdvEL3ONJ42GIYHqa1QL6B4tuM3V-Xq5hReRLg9rl1CacENlIE4AsjrfSAUrNJciv7AeyY8Ggid0ZXlXmwvwXPPfAb3kV1i6C8UmLRrRim-vApYZwF1JmeEXw9ydwDSxMv5QK7jDXTdx6eQvf2aqt"/>
+</div>
+<!-- Thumbnail 6 -->
+<div class="group relative aspect-square rounded-2xl overflow-hidden bg-slate-100 shadow-sm cursor-pointer">
+<img alt="Generated thumbnail" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmDUR6TnabqOVXtkJAntfVcR-iQOfpRJbyvSYl1UhJB84f6HGV2uHAiml4cnYNapKdgMGCgRLB9W7-yZrdCEriOtZmi_FwxcZPnUAZ7R1jFIqHu6J4ZIPJC4Arp8cAEQ4ALpH_2bzCXIxCRycNCMRrVKAxcKwgHijk7zwLD02178gvflz3_I7_-f1DV6XsbOgYm9RVHaPP0I1Zf2KBLlawa5Vav3Ld2E6wWY2Vdv1i291HvnhxEFzu"/>
+</div>
+</div>
+</div>
+<!-- Load More Button -->
+<div class="py-6 flex justify-center">
+<button class="px-6 py-2.5 bg-white border-2 border-slate-100 rounded-full text-sm font-semibold text-brand hover:bg-brand-light transition-colors shadow-sm">
+                   Load More History
+               </button>
+</div>
+</section>
+<!-- END: Generation History -->
+</div>
+<!-- BEGIN: Right Side Context Menu -->
+<aside class="w-72 hidden xl:block shrink-0">
+<div class="sticky top-8 space-y-6">
+<div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+<h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-4">Account Settings</h3>
+<nav class="space-y-2">
+<a class="block px-3 py-2 text-sm text-slate-600 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors font-medium" href="#">Edit Profile</a>
+<a class="block px-3 py-2 text-sm text-slate-600 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors font-medium" href="#">Subscription &amp; Billing</a>
+<a class="block px-3 py-2 text-sm text-slate-600 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors font-medium" href="#">API Keys</a>
+<a class="block px-3 py-2 text-sm text-slate-600 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors font-medium" href="#">Notification Preferences</a>
+</nav>
+</div>
+<div class="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-2xl p-6 border border-indigo-100 shadow-sm">
+<div class="w-10 h-10 bg-brand text-white rounded-xl flex items-center justify-center mb-4 shadow-md">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" viewbox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path></svg>
+</div>
+<h4 class="text-sm font-bold text-slate-900 mb-2">Need more tokens?</h4>
+<p class="text-xs text-slate-600 mb-4 leading-relaxed">Upgrade to our Unlimited plan to never worry about running out of generations again.</p>
+<button class="w-full py-2 bg-brand text-white text-sm font-semibold rounded-lg hover:bg-brand-hover transition-colors shadow-sm">View Plans</button>
+</div>
+</div>
+</aside>
+<!-- END: Right Side Context Menu -->
+</div>
+<!-- END: Scrollable Content -->
+</main>
+<!-- END: Main Content Area -->
+</body></html>

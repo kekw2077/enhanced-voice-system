@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+html,body{margin:0;padding:0;height:100%;background:#05060A;overflow:hidden}
+*{box-sizing:border-box}
+a{color:#B79CE0;text-decoration:none}a:hover{color:#D8C7F5}
+@keyframes drift1{0%,100%{transform:translate3d(-6%,4%,0) scale(1)}50%{transform:translate3d(8%,-6%,0) scale(1.14)}}
+@keyframes drift2{0%,100%{transform:translate3d(6%,6%,0) scale(1.08)}50%{transform:translate3d(-8%,-4%,0) scale(.94)}}
+</style>
+</helmet>
+
+<div style="position:relative;width:100%;height:100vh;background:#05060A;overflow:hidden;cursor:crosshair">
+
+  <sc-if value="{{ videoBg }}" hint-placeholder-val="{{ true }}">
+    <video ref="{{ vidRef }}" src="assets/aurora.mp4" autoplay="{{ true }}" muted="{{ true }}" loop="{{ true }}" playsInline="{{ true }}" style="position:absolute;inset:0;width:100%;height:100%;objectFit:cover;pointerEvents:none"></video>
+  </sc-if>
+
+  <sc-if value="{{ shaderBg }}" hint-placeholder-val="{{ false }}">
+    <canvas ref="{{ glRef }}" style="position:absolute;inset:-8%;width:116%;height:116%;display:block;filter:blur(8px) saturate(1.12);pointerEvents:none"></canvas>
+  </sc-if>
+
+  <sc-if value="{{ blobBg }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:-14%;filter:blur(90px);opacity:.55;pointerEvents:none">
+      <div style="position:absolute;left:-6%;bottom:-18%;width:70%;height:70%;borderRadius:50%;background:radial-gradient(circle at 50% 50%,rgba(96,132,255,.85),rgba(96,132,255,0) 68%);animation:drift1 26s ease-in-out infinite"></div>
+      <div style="position:absolute;right:-10%;bottom:-24%;width:78%;height:76%;borderRadius:50%;background:radial-gradient(circle at 50% 50%,rgba(168,96,232,.8),rgba(168,96,232,0) 66%);animation:drift2 32s ease-in-out infinite"></div>
+    </div>
+  </sc-if>
+
+  <canvas ref="{{ cvRef }}" style="position:absolute;inset:0;width:100%;height:100%;display:block;maskImage:radial-gradient(125% 95% at 50% 42%,#000 45%,transparent 100%);WebkitMaskImage:radial-gradient(125% 95% at 50% 42%,#000 45%,transparent 100%)"></canvas>
+
+  <div style="position:absolute;inset:0;display:flex;flexDirection:column;alignItems:center;justifyContent:center;gap:18px;pointerEvents:none;padding:0 24px">
+    <div style="font:400 clamp(44px,9vw,132px)/1 'Google Sans',system-ui,sans-serif;letterSpacing:-.03em;color:#fff;textAlign:center">speed of AI</div>
+    <div style="font:400 clamp(15px,1.6vw,22px)/1.45 system-ui,sans-serif;color:rgba(255,255,255,.72);textAlign:center;maxWidth:620px;textWrap:pretty">Сетка реагирует на курсор. Плотность, режим и источник волны — в настройках.</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;background&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Шейдер&quot;,&quot;Видео&quot;,&quot;Мягкие блобы&quot;,&quot;Нет&quot;],&quot;default&quot;:&quot;Шейдер&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Фон&quot;},&quot;palette&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Индиго&quot;,&quot;Аквамарин&quot;,&quot;Закат&quot;],&quot;default&quot;:&quot;Индиго&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Фон&quot;},&quot;bgSpeed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0.2,&quot;max&quot;:3,&quot;step&quot;:0.1,&quot;unit&quot;:&quot;x&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Фон&quot;},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Свечение&quot;,&quot;Отталкивание&quot;,&quot;Притяжение&quot;],&quot;default&quot;:&quot;Свечение&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;waveSource&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Курсор&quot;,&quot;Клик&quot;,&quot;Выключено&quot;],&quot;default&quot;:&quot;Курсор&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;spacing&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:14,&quot;min&quot;:6,&quot;max&quot;:48,&quot;step&quot;:1,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;dotSize&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0.4,&quot;max&quot;:2.6,&quot;step&quot;:0.1,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;reach&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:210,&quot;min&quot;:80,&quot;max&quot;:420,&quot;step&quot;:10,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;push&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:9,&quot;min&quot;:0,&quot;max&quot;:26,&quot;step&quot;:1,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#A78BFA&quot;,&quot;options&quot;:[&quot;#A78BFA&quot;,&quot;#6084FF&quot;,&quot;#FFFFFF&quot;,&quot;#4ADE80&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;baseOpacity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:0.16,&quot;min&quot;:0.04,&quot;max&quot;:0.5,&quot;step&quot;:0.02,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;peakOpacity&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0.4,&quot;max&quot;:1,&quot;step&quot;:0.05,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Сетка&quot;},&quot;idleWave&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Сетка&quot;}}">
+const LV = 14;
+
+const PAL = {
+  'Индиго': [[0.66,0.33,0.97],[0.39,0.40,0.95],[0.13,0.83,0.93]],
+  'Аквамарин': [[0.16,0.52,0.78],[0.20,0.82,0.76],[0.42,0.40,0.92]],
+  'Закат': [[0.86,0.34,0.52],[0.95,0.55,0.32],[0.62,0.30,0.86]]
+};
+
+const VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+
+const FS = [
+'precision highp float;',
+'uniform vec2 res;uniform float t;uniform vec3 c1;uniform vec3 c2;uniform vec3 c3;',
+'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+'float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);',
+'return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}',
+'float fbm(vec2 p){float s=0.,a=.5;for(int i=0;i<5;i++){s+=a*n(p);p*=2.03;a*=.5;}return s;}',
+'void main(){',
+' float T=t*1.05;',
+' vec2 uv=gl_FragCoord.xy/res;',
+' vec2 p=vec2(uv.x*res.x/res.y,uv.y);',
+' vec2 sp=p*vec2(.85,1.9);',
+' float f1=fbm(sp+vec2(T*.34,-T*.12));',
+' float f2=fbm(sp*1.3+vec2(4.7,2.1)-vec2(T*.27,T*.09));',
+' vec2 wp=sp+vec2(f1,f2)*2.4;',
+' float v=fbm(wp*.72+vec2(-T*.22,T*.07));',
+' float v2=fbm(wp*1.15+vec2(T*.18,-T*.06));',
+' float lift=.38+.34*fbm(p*1.4+vec2(T*.18,0.));',
+' float mask=smoothstep(lift+.06,lift-.30,uv.y);',
+' float g=fbm(wp*.42+vec2(T*.10,-T*.04)+f1*.4);',
+' float m1=smoothstep(.38,.59,v);',
+' float m2=smoothstep(.46,.67,v2);',
+' float lum=max(max(m1,m2*.85),smoothstep(.34,.02,uv.y)*.62)*mask;',
+' vec3 col=mix(c1,c2,smoothstep(.40,.74,g));',
+' float cy=smoothstep(.50,.66,fbm(wp*1.55+vec2(-T*.17,T*.09)));',
+' col=mix(col,c3,cy*.80);',
+' float rim=m1*(1.-m1)*4.;',
+' col=col*lum*1.05+mix(c2,c3,.5)*rim*mask*.40;',
+' col+=(h(gl_FragCoord.xy)-.5)*.006;',
+' gl_FragColor=vec4(clamp(col,0.,.95),1.);',
+'}'].join('\n');
+
+class Component extends DCLogic {
+  cvRef = React.createRef();
+  glRef = React.createRef();
+
+  initGL(){
+    const cv = this.glRef.current;
+    if (cv && this.gl && this.fsSrc !== FS){ this.gl = null; delete cv.dataset.on; }
+    if (!cv || this.gl || cv.dataset.on) return;
+    this.fsSrc = FS;
+    const gl = cv.getContext('webgl', { antialias:false, alpha:false, depth:false });
+    if (!gl) return;
+    cv.dataset.on = '1';
+    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, mk(gl.VERTEX_SHADER, VS));
+    gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, FS));
+    gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)){ console.warn(gl.getProgramInfoLog(pr)); return; }
+    gl.useProgram(pr);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(pr, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    this.gl = gl;
+    this.uni = { res:gl.getUniformLocation(pr,'res'), t:gl.getUniformLocation(pr,'t'), c1:gl.getUniformLocation(pr,'c1'), c2:gl.getUniformLocation(pr,'c2'), c3:gl.getUniformLocation(pr,'c3') };
+    this.sizeGL();
+  }
+
+  sizeGL(){
+    const cv = this.glRef.current, gl = this.gl;
+    if (!cv || !gl) return;
+    const r = cv.getBoundingClientRect();
+    const s = 0.45;
+    cv.width = Math.max(2, Math.round(r.width * s));
+    cv.height = Math.max(2, Math.round(r.height * s));
+    gl.viewport(0, 0, cv.width, cv.height);
+  }
+
+  drawGL(now){
+    if (!this.gl) { this.initGL(); return; }
+    const cv = this.glRef.current;
+    if (!cv || !cv.isConnected){ this.gl = null; return; }
+    const gl = this.gl, pal = PAL[this.props.palette || 'Индиго'] || PAL['Индиго'];
+    gl.uniform2f(this.uni.res, cv.width, cv.height);
+    gl.uniform1f(this.uni.t, now * 0.001 * (this.props.bgSpeed ?? 1));
+    gl.uniform3fv(this.uni.c1, pal[0]);
+    gl.uniform3fv(this.uni.c2, pal[1]);
+    gl.uniform3fv(this.uni.c3, pal[2]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  componentDidMount(){
+    const cv = this.cvRef.current;
+    this.ctx = cv.getContext('2d');
+    this.host = cv.parentNode;
+    this.pt = { x:-1e5, y:-1e5, tx:-1e5, ty:-1e5, on:false };
+    this.rip = [];
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+
+    this.resize = () => {
+      const r = this.host.getBoundingClientRect();
+      this.w = r.width; this.h = r.height;
+      cv.width = Math.round(r.width * this.dpr);
+      cv.height = Math.round(r.height * this.dpr);
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      this.build();
+      this.sizeGL();
+    };
+    this.ro = new ResizeObserver(() => this.resize());
+    this.ro.observe(this.host);
+    this.resize();
+
+    this.onMove = e => {
+      const r = cv.getBoundingClientRect();
+      this.pt.tx = e.clientX - r.left; this.pt.ty = e.clientY - r.top;
+      if (!this.pt.on){ this.pt.x = this.pt.tx; this.pt.y = this.pt.ty; }
+      this.pt.on = true;
+    };
+    this.onLeave = () => { this.pt.on = false; };
+    this.onDown = e => {
+      if ((this.props.waveSource ?? 'Курсор') === 'Выключено') return;
+      const r = cv.getBoundingClientRect();
+      this.rip.push({ x:e.clientX - r.left, y:e.clientY - r.top, t:0, life:1600, spd:0.62, amp:1 });
+      if (this.rip.length > 18) this.rip.shift();
+    };
+    window.addEventListener('pointermove', this.onMove, { passive:true });
+    this.host.addEventListener('pointerleave', this.onLeave);
+    this.host.addEventListener('pointerdown', this.onDown);
+
+    this.initGL();
+    this.playVid();
+    this.vt = setInterval(() => this.playVid(), 700);
+    this.last = performance.now();
+    this.loop = t => { this.drawGL(t); this.frame(t); this.raf = requestAnimationFrame(this.loop); };
+    this.raf = requestAnimationFrame(this.loop);
+  }
+
+  componentWillUnmount(){
+    cancelAnimationFrame(this.raf);
+    clearInterval(this.vt);
+    if (this.ro) this.ro.disconnect();
+    window.removeEventListener('pointermove', this.onMove);
+    if (this.host){ this.host.removeEventListener('pointerleave', this.onLeave); this.host.removeEventListener('pointerdown', this.onDown); }
+  }
+
+  playVid(){
+    const v = this.vidRef.current;
+    if (!v) return;
+    if (v.paused){ v.muted = true; const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+    v.playbackRate = Math.max(0.25, Math.min(2, this.props.bgSpeed ?? 1));
+  }
+
+  componentDidUpdate(){
+    this.build();
+    this.playVid();
+    if (!this.glRef.current){ this.gl = null; } else { this.initGL(); this.sizeGL(); }
+  }
+
+  cfg(){
+    const p = this.props;
+    return {
+      gap: Math.max(6, p.spacing ?? 14),
+      wave: p.waveSource ?? 'Курсор',
+      dot: p.dotSize ?? 1.1,
+      rad: p.reach ?? 210,
+      mode: p.mode ?? 'Свечение',
+      push: p.push ?? 9,
+      idle: p.idleWave !== false,
+      acc: this.rgb(p.accent ?? '#A78BFA'),
+      baseA: p.baseOpacity ?? 0.16,
+      peakA: p.peakOpacity ?? 1
+    };
+  }
+
+  rgb(hex){
+    const h = String(hex).replace('#','');
+    const v = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(v, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+
+  build(){
+    if (!this.w) return;
+    const { gap } = this.cfg();
+    const cols = Math.floor(this.w / gap) + 2, rows = Math.floor(this.h / gap) + 2;
+    const ox = (this.w - (cols - 1) * gap) / 2, oy = (this.h - (rows - 1) * gap) / 2;
+    const n = cols * rows;
+    this.n = n;
+    this.px = new Float32Array(n); this.py = new Float32Array(n);
+    let i = 0;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++, i++){ this.px[i] = ox + c * gap; this.py[i] = oy + r * gap; }
+    this.bx = []; this.by = []; this.br = []; this.bn = new Int32Array(LV);
+    for (let l = 0; l < LV; l++){ this.bx.push(new Float32Array(n)); this.by.push(new Float32Array(n)); this.br.push(new Float32Array(n)); }
+  }
+
+  frame(now){
+    if (!this.n) return;
+    const dt = Math.min(48, now - this.last); this.last = now;
+    const ctx = this.ctx, c = this.cfg();
+    const p = this.pt;
+    const k = 1 - Math.pow(0.001, dt / 1000);
+    p.x += (p.tx - p.x) * k * 0.55; p.y += (p.ty - p.y) * k * 0.55;
+
+    for (let i = this.rip.length - 1; i >= 0; i--){ const rp = this.rip[i]; rp.t += dt; if (rp.t > (rp.life || 1600)) this.rip.splice(i, 1); }
+
+    if (c.wave === 'Курсор' && p.on){
+      if (this.ex === undefined){ this.ex = p.tx; this.ey = p.ty; this.acc = 1e5; }
+      this.acc = (this.acc || 0) + Math.hypot(p.tx - this.ex, p.ty - this.ey);
+      this.ex = p.tx; this.ey = p.ty;
+      if (this.acc > 30){
+        this.acc = 0;
+        this.rip.push({ x:p.tx, y:p.ty, t:0, life:900, spd:0.3, amp:0.8 });
+        if (this.rip.length > 18) this.rip.shift();
+      }
+    } else { this.ex = undefined; }
+
+    const R = c.rad, R2 = R * R;
+    const bn = this.bn; bn.fill(0);
+    const wave = c.idle ? now * 0.0007 : 0;
+
+    for (let i = 0; i < this.n; i++){
+      const x = this.px[i], y = this.py[i];
+      let b = 0, dx = 0, dy = 0;
+
+      if (p.on){
+        const vx = x - p.x, vy = y - p.y, d2 = vx * vx + vy * vy;
+        if (d2 < R2){
+          const d = Math.sqrt(d2) || 0.0001;
+          const t = 1 - d / R;
+          b = t * t * (3 - 2 * t);
+          if (c.mode !== 'Свечение'){
+            const s = (c.mode === 'Отталкивание' ? 1 : -1) * b * c.push;
+            dx = (vx / d) * s; dy = (vy / d) * s;
+          }
+        }
+      }
+
+      for (let j = 0; j < this.rip.length; j++){
+        const rp = this.rip[j];
+        const life = rp.life || 1600;
+        const ring = rp.t * (rp.spd || 0.62);
+        const d = Math.hypot(x - rp.x, y - rp.y) || 0.0001;
+        const g = Math.exp(-Math.pow(d - ring, 2) / 2600) * (1 - rp.t / life) * (rp.amp || 1);
+        if (g > b) b = g;
+        if (g > 0.02 && c.mode !== 'Свечение' && c.push > 0){
+          const s = g * c.push * 1.25;
+          dx += ((x - rp.x) / d) * s; dy += ((y - rp.y) / d) * s;
+        }
+      }
+
+      if (c.idle){
+        const iw = 0.5 + 0.5 * Math.sin(x * 0.011 + y * 0.017 + wave);
+        b = Math.max(b, iw * iw * 0.14);
+      }
+
+      const lv = b <= 0 ? 0 : Math.min(LV - 1, 1 + Math.floor(b * (LV - 1)));
+      const q = bn[lv]++;
+      this.bx[lv][q] = x + dx; this.by[lv][q] = y + dy;
+      this.br[lv][q] = c.dot * (1 + b * 1.9);
+    }
+
+    ctx.clearRect(0, 0, this.w, this.h);
+    for (let lv = 0; lv < LV; lv++){
+      const cnt = bn[lv]; if (!cnt) continue;
+      const t = lv === 0 ? 0 : lv / (LV - 1);
+      const a = c.baseA + (c.peakA - c.baseA) * t;
+      const r = Math.round(255 + (c.acc[0] - 255) * t * 0.85);
+      const g = Math.round(255 + (c.acc[1] - 255) * t * 0.85);
+      const bl = Math.round(255 + (c.acc[2] - 255) * t * 0.85);
+      ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + bl + ',' + a.toFixed(3) + ')';
+      const xs = this.bx[lv], ys = this.by[lv], rs = this.br[lv];
+      ctx.beginPath();
+      for (let i = 0; i < cnt; i++){ const rr = rs[i]; ctx.moveTo(xs[i] + rr, ys[i]); ctx.arc(xs[i], ys[i], rr, 0, 6.2832); }
+      ctx.fill();
+    }
+  }
+
+  vidRef = React.createRef();
+
+  renderVals(){
+    const bg = this.props.background ?? 'Шейдер';
+    return {
+      cvRef: this.cvRef, glRef: this.glRef, vidRef: this.vidRef,
+      videoBg: bg === 'Видео', shaderBg: bg === 'Шейдер', blobBg: bg === 'Мягкие блобы'
+    };
+  }
+}
+</script>
+</body>
+</html>

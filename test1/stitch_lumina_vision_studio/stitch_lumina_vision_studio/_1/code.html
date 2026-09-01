@@ -1,0 +1,359 @@
+<!DOCTYPE html><html class="light" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Ethereal AI - Generate</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-highest": "#e0e3e5",
+                      "surface-container-high": "#e6e8ea",
+                      "on-secondary": "#ffffff",
+                      "on-tertiary-container": "#f9fdff",
+                      "primary-fixed-dim": "#c0c1ff",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary-container": "#600037",
+                      "tertiary-container": "#008096",
+                      "on-primary": "#ffffff",
+                      "on-surface": "#191c1e",
+                      "surface": "#f7f9fb",
+                      "on-primary-container": "#fffbff",
+                      "on-secondary-fixed": "#3e0022",
+                      "primary-fixed": "#e1e0ff",
+                      "on-error-container": "#93000a",
+                      "surface-container": "#eceef0",
+                      "tertiary": "#006577",
+                      "secondary-fixed": "#ffd9e4",
+                      "secondary": "#b4136d",
+                      "surface-dim": "#d8dadc",
+                      "on-tertiary-fixed": "#001f26",
+                      "inverse-surface": "#2d3133",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-fixed": "#acedff",
+                      "outline": "#767586",
+                      "primary-container": "#6063ee",
+                      "on-background": "#191c1e",
+                      "on-primary-fixed-variant": "#2f2ebe",
+                      "inverse-primary": "#c0c1ff",
+                      "surface-container-low": "#f2f4f6",
+                      "on-surface-variant": "#464554",
+                      "tertiary-fixed-dim": "#4cd7f6",
+                      "surface-tint": "#494bd6",
+                      "outline-variant": "#c7c4d7",
+                      "error": "#ba1a1a",
+                      "inverse-on-surface": "#eff1f3",
+                      "primary": "#4648d4",
+                      "on-primary-fixed": "#07006c",
+                      "on-error": "#ffffff",
+                      "surface-bright": "#f7f9fb",
+                      "secondary-fixed-dim": "#ffb0cd",
+                      "error-container": "#ffdad6",
+                      "on-secondary-fixed-variant": "#8c0053",
+                      "background": "#f7f9fb",
+                      "surface-container-lowest": "#ffffff",
+                      "secondary-container": "#fd56a7",
+                      "on-tertiary-fixed-variant": "#004e5c"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "gutter": "24px",
+                      "sm": "12px",
+                      "container-max": "1440px",
+                      "base": "8px",
+                      "xs": "4px",
+                      "xl": "64px",
+                      "lg": "40px",
+                      "md": "24px"
+              },
+              "fontFamily": {
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "title-md": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "headline-lg-mobile": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.08em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "title-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "letterSpacing": "0em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "0em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "letterSpacing": "0em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+          .glass-panel {
+              backdrop-filter: blur(24px);
+              -webkit-backdrop-filter: blur(24px);
+              border: 1px solid rgba(255, 255, 255, 0.4);
+          }
+          .ambient-bloom {
+              box-shadow: 0px 10px 40px rgba(0, 0, 0, 0.04);
+          }
+      </style>
+</head>
+<body class="bg-background text-on-background min-h-screen font-body-lg overflow-x-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar (Mobile Only) -->
+<header class="md:hidden bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-3xl w-full sticky top-0 z-50 border-b border-white/40 dark:border-outline-variant/20 shadow-[0px_10px_40px_rgba(0,0,0,0.04)]">
+<div class="flex justify-between items-center px-lg py-sm max-w-container-max mx-auto">
+<div class="font-display-lg text-display-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-tertiary">Ethereal AI</div>
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim hover:scale-[1.02] hover:backdrop-blur-3xl transition-all duration-300 active:scale-[0.98] transition-transform cursor-pointer" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-primary dark:text-primary-fixed-dim hover:scale-[1.02] hover:backdrop-blur-3xl transition-all duration-300 active:scale-[0.98] transition-transform cursor-pointer" data-icon="settings">settings</span>
+<img alt="User profile" class="w-8 h-8 rounded-full border border-white/40 object-cover ml-sm cursor-pointer" data-alt="A small, circular avatar image of a professional user, representing a profile picture in a sleek, modern UI context. Light, ethereal color palette, high key lighting, smooth textures." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlBlF5Nz3TbaLxBtTiYsG1zMc7EsIghvmgaYsyb_Rh8-fbgU-9oeIzdY5x1_5RtZTk3AmeDDszAozNpYyd3UQqH0giQwpQ-VCOxK6Dr2jz0k0Hc80epWRVNygomRAwENSEDr7kuC217bj_e9Maoy2ysN_Zp2W9hCsjgt-m-z39hU-464jkLwJWtr1950S97m8jihQoEK8pqDloWmA0lFAu8p1VJdNMVb9SOj6W-fEfU9024kxPZTTa">
+</div>
+</div>
+</header>
+<div class="flex h-screen overflow-hidden">
+<!-- SideNavBar (Desktop) -->
+<nav class="hidden md:flex flex-col h-full py-lg bg-surface-container-lowest/60 dark:bg-surface-container-low/60 backdrop-blur-2xl text-primary dark:text-primary-fixed-dim font-label-caps text-label-caps h-screen w-64 fixed left-0 top-0 border-r border-white/40 dark:border-outline-variant/20 shadow-[0px_10px_40px_rgba(0,0,0,0.04)] z-40">
+<div class="px-md mb-xl flex items-center gap-sm">
+<span class="material-symbols-outlined font-title-md text-title-md text-primary" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-title-md text-title-md text-primary font-bold">Ethereal AI</span>
+</div>
+<div class="flex-1 overflow-y-auto px-sm flex flex-col gap-xs">
+<a class="bg-primary-container/20 text-primary border-r-4 border-primary font-bold px-md py-sm flex items-center gap-md hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors active:scale-[0.98] transition-all rounded-r-full mr-sm" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+                    Generate
+                </a>
+<a class="text-on-surface-variant hover:bg-surface-container-high/50 px-md py-sm flex items-center gap-md hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors active:scale-[0.98] transition-all rounded-r-full mr-sm" href="#">
+<span class="material-symbols-outlined" data-icon="photo_library">photo_library</span>
+                    Gallery
+                </a>
+<a class="text-on-surface-variant hover:bg-surface-container-high/50 px-md py-sm flex items-center gap-md hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors active:scale-[0.98] transition-all rounded-r-full mr-sm" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+                    History
+                </a>
+<a class="text-on-surface-variant hover:bg-surface-container-high/50 px-md py-sm flex items-center gap-md hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors active:scale-[0.98] transition-all rounded-r-full mr-sm" href="#">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+                    Settings
+                </a>
+</div>
+<div class="px-md mt-auto pt-lg border-t border-outline-variant/20 flex flex-col gap-sm">
+<a class="text-on-surface-variant hover:bg-surface-container-high/50 py-sm flex items-center gap-md hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors active:scale-[0.98] transition-all rounded-full px-sm" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+                    Help
+                </a>
+<a class="text-on-surface-variant hover:bg-surface-container-high/50 py-sm flex items-center gap-md hover:bg-surface-container-high dark:hover:bg-surface-container transition-colors active:scale-[0.98] transition-all rounded-full px-sm" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+                    Logout
+                </a>
+</div>
+<div class="px-md pb-md pt-lg flex items-center gap-md">
+<img alt="AI Status" class="w-10 h-10 rounded-full border border-white/50 object-cover" data-alt="A small, stylized avatar representing an AI system status. It should look like a glowing, modern tech orb or simple abstract icon, conveying a 'ready' state in a light mode, high key design." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD53rWbes_Gbx8nmXv-7CEHG8Y5EL2ReLFeQ019gLLns1he_XJBv2tThkAS2z29zsvYD6OQIbkZ67N6CDkXsLLv4_rupJ4fypRbZJG-2-RGkiAyej5yjhY8jwKXbrX5n2kms5hIuWR92VBs2yUwZtXUWtzH_l-vtw5DP5euU_e2yyE9CveMYedYmpVOKPuh9Ulb_bOvhbHS_jj-kbw2Qnekl0zxUhmvZ-Z0P90t4ePTAHK0zby25lt9">
+<div>
+<div class="font-bold text-on-surface">System Ready</div>
+<div class="font-label-caps text-label-caps text-on-surface-variant/70">V1.0 Stable</div>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-64 relative flex flex-col h-full overflow-hidden bg-surface-container-lowest lg:mr-72 transition-all duration-500 ease-out">
+<!-- Atmospheric Background -->
+<div class="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+<div class="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] rounded-full bg-gradient-to-br from-primary-fixed/20 to-tertiary-fixed/10 blur-[120px] opacity-70 mix-blend-multiply"></div>
+<div class="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-secondary-fixed/20 to-surface-tint/10 blur-[100px] opacity-60 mix-blend-multiply"></div>
+</div>
+<!-- Content Container -->
+<div class="relative z-10 flex-1 flex flex-col items-center justify-center p-md md:p-lg w-full max-w-[1200px] mx-auto overflow-y-auto">
+<!-- Center Canvas State -->
+<div class="flex-1 w-full flex flex-col items-center justify-center min-h-[409px] mb-lg transition-all duration-500 ease-out transform scale-100 opacity-100" id="canvas-state">
+<span class="material-symbols-outlined text-[80px] text-primary/20 mb-md" data-icon="texture" style="font-variation-settings: 'FILL' 0, 'wght' 200;">texture</span>
+<h1 class="font-headline-lg text-headline-lg md:font-display-lg md:text-display-lg text-on-surface mb-xs text-center font-bold tracking-tight">Ready to create</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant text-center max-w-md">Describe your vision. Ethereal AI will craft it.</p>
+</div>
+<!-- Input Area (Sticky-ish at bottom on mobile, centered on desktop) -->
+<div class="w-full max-w-3xl glass-panel ambient-bloom rounded-3xl p-md bg-surface/60 backdrop-blur-3xl relative z-20">
+<div class="relative flex items-center">
+<textarea class="w-full bg-white/50 border-0 focus:ring-0 resize-none h-[80px] rounded-2xl py-md pl-md pr-[120px] font-body-lg text-body-lg text-on-surface placeholder:text-on-surface-variant/50 focus:bg-white/80 transition-colors shadow-inner" placeholder="Imagine anything..."></textarea>
+<button class="absolute right-sm top-1/2 -translate-y-1/2 bg-gradient-to-r from-primary to-tertiary text-white rounded-full px-lg py-sm font-label-caps text-label-caps font-bold hover:scale-[1.02] active:scale-[0.98] transition-transform shadow-[0px_4px_20px_rgba(70,72,212,0.3)] flex items-center gap-xs">
+<span class="material-symbols-outlined" data-icon="magic_button">magic_button</span>
+                            Generate
+                        </button>
+</div>
+<!-- Style Chips -->
+<div class="mt-md flex flex-wrap gap-sm items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant/70 mr-xs">Styles:</span>
+<button class="px-md py-xs rounded-full border border-white/40 bg-surface/50 text-on-surface font-body-sm text-body-sm hover:bg-white/70 hover:scale-[1.02] active:scale-[0.98] transition-all">Cinematic</button>
+<button class="px-md py-xs rounded-full border border-white/40 bg-surface/50 text-on-surface font-body-sm text-body-sm hover:bg-white/70 hover:scale-[1.02] active:scale-[0.98] transition-all">3D Render</button>
+<button class="px-md py-xs rounded-full border border-white/40 bg-surface/50 text-on-surface font-body-sm text-body-sm hover:bg-white/70 hover:scale-[1.02] active:scale-[0.98] transition-all">Minimalist</button>
+<button class="px-md py-xs rounded-full border border-white/40 bg-surface/50 text-on-surface font-body-sm text-body-sm hover:bg-white/70 hover:scale-[1.02] active:scale-[0.98] transition-all">Oil Painting</button>
+<button class="px-sm py-xs rounded-full bg-surface-container-high/30 text-on-surface-variant font-label-caps text-label-caps flex items-center hover:bg-surface-container-high/60 transition-colors ml-auto group">
+<span class="material-symbols-outlined text-[16px] group-hover:rotate-180 transition-transform duration-500" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Settings Sidebar (Right) - Hidden on Mobile unless toggled -->
+<aside class="hidden lg:flex flex-col w-72 h-full absolute right-0 top-0 border-l border-outline-variant/20 bg-surface-container-low/60 backdrop-blur-2xl z-30 p-lg overflow-y-auto text-on-surface transition-transform duration-500 ease-out transform"><button id="sidebar-toggle" class="absolute left-0 top-1/2 -translate-x-1/2 w-8 h-14 bg-surface-container-low border border-outline-variant/20 rounded-l-xl flex items-center justify-center text-primary hover:bg-surface-container-high transition-colors z-50 shadow-[-4px_0_10px_rgba(0,0,0,0.05)]" onclick="const aside = this.parentElement; const main = aside.previousElementSibling; const isCollapsed = aside.classList.contains('translate-x-full'); if(isCollapsed) { aside.classList.remove('translate-x-full'); this.querySelector('span').textContent = 'chevron_right'; main.classList.add('lg:mr-72'); } else { aside.classList.add('translate-x-full'); this.querySelector('span').textContent = 'chevron_left'; main.classList.remove('lg:mr-72'); }"><span class="material-symbols-outlined">chevron_right</span></button><h3 class="font-title-md text-title-md font-bold text-on-surface mb-xl flex items-center gap-sm">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+                    Parameters
+                </h3>
+<div class="flex flex-col gap-lg">
+<!-- Aspect Ratio -->
+<div class="pb-md border-b border-outline-variant/20">
+<label class="font-label-caps text-label-caps text-on-surface-variant/70 mb-sm block">Aspect Ratio</label>
+<div class="grid grid-cols-3 gap-sm">
+<button class="flex flex-col items-center justify-center p-sm rounded-xl bg-primary/20 border border-primary text-primary transition-all">
+<div class="w-6 h-6 border-2 border-current rounded-sm mb-xs"></div>
+<span class="font-label-caps text-[10px]">1:1</span>
+</button>
+<button class="flex flex-col items-center justify-center p-sm rounded-xl bg-surface-container-high/30 border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-high/50 transition-all">
+<div class="w-8 h-4 border-2 border-current rounded-sm mb-xs"></div>
+<span class="font-label-caps text-[10px]">16:9</span>
+</button>
+<button class="flex flex-col items-center justify-center p-sm rounded-xl bg-surface-container-high/30 border border-outline-variant/20 text-on-surface-variant hover:bg-surface-container-high/50 transition-all">
+<div class="w-4 h-8 border-2 border-current rounded-sm mb-xs"></div>
+<span class="font-label-caps text-[10px]">9:16</span>
+</button>
+</div>
+</div>
+<!-- Number of Images -->
+<div class="pb-md border-b border-outline-variant/20">
+<label class="font-label-caps text-label-caps text-on-surface-variant/70 mb-sm flex justify-between">
+<span class="">Images</span>
+<span class="font-bold text-primary">4</span>
+</label>
+<input class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary" max="4" min="1" type="range" value="4">
+<div class="flex justify-between mt-xs font-label-caps text-[10px] text-on-surface-variant/50">
+<span class="">1</span>
+<span class="">4</span>
+</div>
+</div>
+<!-- Guidance Scale -->
+<div class="pb-md border-b border-outline-variant/20">
+<label class="font-label-caps text-label-caps text-on-surface-variant/70 mb-sm flex justify-between">
+<span class="">Guidance Scale</span>
+<span class="font-bold text-primary">7.5</span>
+</label>
+<input class="w-full h-1 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary" max="20" min="1" step="0.5" type="range" value="7.5">
+<div class="flex justify-between mt-xs font-label-caps text-[10px] text-on-surface-variant/50">
+<span class="">1</span>
+<span class="">20</span>
+</div>
+</div>
+<!-- Quality -->
+<div class="pb-md border-b border-outline-variant/20">
+<label class="font-label-caps text-label-caps text-on-surface-variant/70 mb-sm block">Quality</label>
+<div class="flex flex-col gap-xs">
+<label class="flex items-center p-sm rounded-xl bg-primary/10 border border-primary/50 cursor-pointer transition-all">
+<input checked="" class="text-primary focus:ring-primary focus:ring-offset-surface-container-low w-4 h-4 mr-md bg-transparent border-outline" name="quality" type="radio">
+<div>
+<div class="font-body-sm text-body-sm font-medium text-on-surface">Standard</div>
+<div class="font-label-caps text-[10px] text-on-surface-variant/70">Fastest generation</div>
+</div>
+</label>
+<label class="flex items-center p-sm rounded-xl bg-surface-container-high/30 border border-outline-variant/20 hover:bg-surface-container-high/50 cursor-pointer transition-all">
+<input class="text-primary focus:ring-primary focus:ring-offset-surface-container-low w-4 h-4 mr-md bg-transparent border-outline" name="quality" type="radio">
+<div>
+<div class="font-body-sm text-body-sm font-medium text-on-surface">High-Res</div>
+<div class="font-label-caps text-[10px] text-on-surface-variant/70">More details, slower</div>
+</div>
+</label>
+</div>
+</div>
+<!-- Negative Prompt -->
+<div class="pb-md border-b border-outline-variant/20">
+<label class="font-label-caps text-label-caps text-on-surface-variant/70 mb-sm block">Negative Prompt</label>
+<textarea class="w-full bg-surface-container-highest/50 border border-outline-variant/20 rounded-lg p-sm font-body-sm text-body-sm text-on-surface placeholder:text-on-surface-variant/40 focus:ring-1 focus:ring-primary focus:border-primary transition-all resize-none h-20" placeholder="Elements to exclude..."></textarea>
+</div>
+<!-- Seed -->
+<div class="pb-md">
+<label class="font-label-caps text-label-caps text-on-surface-variant/70 mb-sm block">Seed</label>
+<div class="flex gap-xs">
+<input class="flex-1 bg-surface-container-highest/50 border border-outline-variant/20 rounded-lg px-sm py-xs font-body-sm text-body-sm text-on-surface focus:ring-1 focus:ring-primary focus:border-primary transition-all" placeholder="Random" type="number">
+<button class="p-xs rounded-lg bg-surface-container-high/50 border border-outline-variant/20 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="shuffle">shuffle</span>
+</button>
+</div>
+</div>
+</div></aside>
+<!-- FAB (Mobile Settings Toggle) -->
+<button class="lg:hidden absolute bottom-xl right-md w-14 h-14 bg-surface/80 backdrop-blur-xl border border-white/40 rounded-full flex items-center justify-center text-on-surface ambient-bloom hover:scale-105 active:scale-95 transition-transform z-40">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+</button>
+</main>
+</div>
+
+
+</body></html>

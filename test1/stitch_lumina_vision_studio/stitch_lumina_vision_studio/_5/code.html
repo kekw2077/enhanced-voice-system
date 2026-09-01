@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Detailed Image Editor</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Google Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          colors: {
+            primary: '#4338CA', // Indigo 700
+            primaryLight: '#E0E7FF', // Indigo 100
+            surface: '#F8FAFC', // Slate 50
+            surfaceBlur: 'rgba(255, 255, 255, 0.7)',
+            textMain: '#0F172A', // Slate 900
+            textMuted: '#64748B', // Slate 500
+            borderLight: '#E2E8F0', // Slate 200
+          },
+          boxShadow: {
+            'soft': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+            'glow': '0 0 20px rgba(67, 56, 202, 0.15)',
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-utilities">
+    body {
+      background-color: #F8FAFC;
+      background-image: 
+        radial-gradient(at 0% 0%, hsla(253,16%,7%,0) 0, transparent 50%), 
+        radial-gradient(at 50% 0%, hsla(225,39%,30%,0.05) 0, transparent 50%), 
+        radial-gradient(at 100% 0%, hsla(339,49%,30%,0) 0, transparent 50%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .glass-panel {
+      background-color: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.8);
+    }
+    
+    /* Scrollbar styling for a cleaner look */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94A3B8;
+    }
+  </style>
+</head>
+<body class="text-textMain font-sans overflow-hidden">
+<!-- BEGIN: Main Layout -->
+<div class="flex h-screen w-full">
+<!-- BEGIN: Left Navigation Sidebar -->
+<aside class="w-64 flex-shrink-0 border-r border-borderLight bg-white flex flex-col justify-between" data-purpose="main-navigation">
+<div>
+<!-- Logo Area -->
+<div class="h-20 flex items-center px-6 mb-4">
+<span class="material-symbols-outlined text-primary text-3xl mr-2">auto_awesome</span>
+<span class="font-bold text-xl text-primary leading-tight">Ethereal<br/>AI</span>
+</div>
+<!-- Navigation Links -->
+<nav class="px-4 space-y-1">
+<a class="flex items-center px-4 py-3 text-textMuted hover:bg-surface rounded-xl transition-colors" href="#">
+<span class="material-symbols-outlined mr-3">auto_awesome</span>
+<span class="font-medium text-sm">Generate</span>
+</a>
+<a class="flex items-center px-4 py-3 bg-primaryLight text-primary rounded-r-full -ml-4 pl-8 border-l-4 border-primary shadow-sm relative z-10 transition-colors" href="#">
+<span class="material-symbols-outlined mr-3">photo_library</span>
+<span class="font-medium text-sm">Gallery</span>
+</a>
+<a class="flex items-center px-4 py-3 text-textMuted hover:bg-surface rounded-xl transition-colors" href="#">
+<span class="material-symbols-outlined mr-3">history</span>
+<span class="font-medium text-sm">History</span>
+</a>
+<a class="flex items-center px-4 py-3 text-textMuted hover:bg-surface rounded-xl transition-colors" href="#">
+<span class="material-symbols-outlined mr-3">tune</span>
+<span class="font-medium text-sm">Settings</span>
+</a>
+</nav>
+</div>
+<!-- Bottom Nav Items -->
+<div class="p-4 border-t border-borderLight space-y-2">
+<a class="flex items-center px-4 py-2 text-textMuted hover:text-textMain transition-colors" href="#">
+<span class="material-symbols-outlined mr-3 text-xl">help</span>
+<span class="font-medium text-sm">Help</span>
+</a>
+<a class="flex items-center px-4 py-2 text-textMuted hover:text-textMain transition-colors" href="#">
+<span class="material-symbols-outlined mr-3 text-xl">logout</span>
+<span class="font-medium text-sm">Logout</span>
+</a>
+<div class="mt-4 flex items-center px-2 py-2">
+<div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center mr-3 overflow-hidden shadow-sm">
+<img alt="User Avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPqRbWT2A6cQZrNNHtbX-0zu5yV7XTd59eeKunT9-ZvDsDD3Myni4USFyrJIrZIhrtY-vpAFGiOjVQlRtZNKy5m3Mgatqo6ZxWqe9S5dy2ad4dsf4hLAe_pT1zqpV8xETF1z-qzgxFesOF6XIsCYNretE8E8Gg1t9sBvffP_MLlZFd8gxOPzYLU8pvZz5AdoeVYLqKMKibMuMT4TcYLz2W2Sb-dlQdZQghRe5nDfTt550DpW-BSLsx"/>
+</div>
+<div>
+<div class="text-xs font-bold text-textMain">System Ready</div>
+<div class="text-[10px] text-textMuted">V1.0 Stable</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- END: Left Navigation Sidebar -->
+<!-- BEGIN: Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 bg-transparent relative">
+<!-- BEGIN: Top Bar -->
+<header class="h-16 flex-shrink-0 flex items-center justify-between px-6 glass-panel z-20 border-b border-borderLight" data-purpose="top-bar">
+<div class="flex items-center">
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/50 text-textMuted hover:text-textMain transition-colors mr-4">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h1 class="text-lg font-semibold text-textMain">Image Preview</h1>
+</div>
+<div class="flex items-center space-x-3">
+<button class="px-4 py-2 rounded-full border border-borderLight bg-white/50 hover:bg-white text-textMain text-sm font-medium flex items-center transition-all shadow-sm">
+<span class="material-symbols-outlined text-sm mr-2">share</span>
+            Share
+          </button>
+<button class="px-5 py-2 rounded-full bg-primary hover:bg-indigo-600 text-white text-sm font-medium flex items-center transition-all shadow-md shadow-primary/20">
+<span class="material-symbols-outlined text-sm mr-2">download</span>
+            Download High-Res
+          </button>
+</div>
+</header>
+<!-- END: Top Bar -->
+<!-- BEGIN: Editor Workspace -->
+<div class="flex-1 flex overflow-hidden">
+<!-- BEGIN: Left Metadata Sidebar -->
+<aside class="w-80 flex-shrink-0 glass-panel border-r border-borderLight overflow-y-auto z-10" data-purpose="metadata-sidebar">
+<div class="p-6 space-y-6">
+<!-- Metadata Section: Prompt -->
+<div>
+<h3 class="text-xs font-bold uppercase tracking-wider text-textMuted mb-3 flex items-center">
+<span class="material-symbols-outlined text-sm mr-2">description</span>
+                Original Prompt
+              </h3>
+<div class="bg-white/60 rounded-xl p-4 border border-white shadow-sm text-sm text-textMain leading-relaxed">
+                A serene landscape featuring floating islands in a pastel-colored sky, with waterfalls cascading into nothingness. Cinematic lighting, highly detailed, 8k resolution, ethereal atmosphere.
+              </div>
+</div>
+<!-- Metadata Section: Negative Prompt -->
+<div>
+<h3 class="text-xs font-bold uppercase tracking-wider text-textMuted mb-3 flex items-center">
+<span class="material-symbols-outlined text-sm mr-2">block</span>
+                Negative Prompt
+              </h3>
+<div class="bg-white/60 rounded-xl p-3 border border-white shadow-sm text-sm text-textMuted italic">
+                ugly, blurry, poor lighting, low resolution, deformed, text, watermark
+              </div>
+</div>
+<div class="h-px bg-borderLight/50 my-4"></div>
+<!-- Metadata Section: Details -->
+<div>
+<h3 class="text-xs font-bold uppercase tracking-wider text-textMuted mb-4">Generation Details</h3>
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<span class="text-sm text-textMuted">Model</span>
+<span class="text-sm font-medium text-textMain bg-white/50 px-2 py-1 rounded-md border border-borderLight/50">Ethereal V1.0</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-textMuted">Dimensions</span>
+<span class="text-sm font-medium text-textMain">1024 × 1024 (1:1)</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-textMuted">Seed</span>
+<div class="flex items-center">
+<span class="text-sm font-mono text-textMain mr-2">847291038</span>
+<button class="text-textMuted hover:text-primary transition-colors" title="Copy Seed">
+<span class="material-symbols-outlined text-sm">content_copy</span>
+</button>
+</div>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-textMuted">Steps</span>
+<span class="text-sm font-medium text-textMain">30</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-textMuted">CFG Scale</span>
+<span class="text-sm font-medium text-textMain">7.5</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- END: Left Metadata Sidebar -->
+<!-- BEGIN: Central Image Preview -->
+<div class="flex-1 overflow-auto flex items-center justify-center p-8 bg-slate-50/50" data-purpose="image-preview-area">
+<!-- Main Image Container -->
+<div class="relative max-w-4xl max-h-full aspect-square rounded-2xl shadow-xl shadow-slate-200/50 bg-white p-2 border border-white flex items-center justify-center group overflow-hidden">
+<!-- Checkerboard background for transparency (simulated) -->
+<div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0iI2ZmZiIvPgo8cmVjdCB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiNmMmYyZjIiLz4KPHJlY3QgeD0iMTAiIHk9IjEwIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiIGZpbGw9IiNmMmYyZjIiLz4KPC9zdmc+')] opacity-20 pointer-events-none rounded-xl"></div>
+<img alt="Generated Ethereal Landscape" class="w-full h-full object-contain rounded-xl relative z-10" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDEKqxNVXMpVUtUWnW1oob3-8HHLSx8OTw9b95SAjuWo1dtP4fhuHz_nhy7welaIvofVsDSDGiuEzH1boMsSDyjf8hVaRs0uZ1oqjSlGVqO0dV5po5cvXWVE4ErFmdNv-gUnnnbze_LmlYKSgKCwuSLmcU-vCDmVrNAWvxFvM0vxJa6sEF4PAtlt7vOPR1O3Z7J863nQm7TulsurmFEu3ZMYr4liXXpxR0botfZvnz5tuJEOMX-y2qA"/>
+<!-- Floating overlay actions on image hover -->
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl z-20 flex items-center justify-center space-x-4 pointer-events-none">
+<!-- Using button tags but making them pointer-events-auto so they can be clicked when parent has pointer-events-none -->
+<button class="w-12 h-12 bg-white/20 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:bg-white/40 transition-colors pointer-events-auto shadow-lg" title="View Fullscreen">
+<span class="material-symbols-outlined">fullscreen</span>
+</button>
+</div>
+</div>
+</div>
+<!-- END: Central Image Preview -->
+<!-- BEGIN: Right Refine Actions Sidebar -->
+<aside class="w-80 flex-shrink-0 bg-white border-l border-borderLight overflow-y-auto shadow-[-4px_0_15px_rgba(0,0,0,0.02)] z-10" data-purpose="actions-sidebar">
+<div class="p-6">
+<h2 class="text-lg font-bold text-textMain mb-6 flex items-center">
+<span class="material-symbols-outlined mr-2 text-primary">auto_fix_high</span>
+              Refine Image
+            </h2>
+<div class="space-y-4">
+<!-- Action Button: Edit Prompt -->
+<button class="w-full flex items-center justify-between p-4 rounded-xl border border-borderLight hover:border-primary hover:bg-primaryLight/30 transition-all group text-left">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-textMuted group-hover:text-primary transition-colors mr-3">
+<span class="material-symbols-outlined">edit_document</span>
+</div>
+<div>
+<div class="text-sm font-semibold text-textMain">Edit Prompt</div>
+<div class="text-xs text-textMuted">Modify text and regenerate</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-borderLight group-hover:text-primary text-sm">chevron_right</span>
+</button>
+<!-- Action Button: Variations -->
+<button class="w-full flex items-center justify-between p-4 rounded-xl border border-borderLight hover:border-primary hover:bg-primaryLight/30 transition-all group text-left">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-textMuted group-hover:text-primary transition-colors mr-3">
+<span class="material-symbols-outlined">filter_none</span>
+</div>
+<div>
+<div class="text-sm font-semibold text-textMain">Create Variations</div>
+<div class="text-xs text-textMuted">Generate similar images</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-borderLight group-hover:text-primary text-sm">chevron_right</span>
+</button>
+<!-- Action Button: Upscale -->
+<button class="w-full flex items-center justify-between p-4 rounded-xl border border-borderLight hover:border-primary hover:bg-primaryLight/30 transition-all group text-left">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-textMuted group-hover:text-primary transition-colors mr-3">
+<span class="material-symbols-outlined">zoom_out_map</span>
+</div>
+<div>
+<div class="text-sm font-semibold text-textMain">Upscale (4x)</div>
+<div class="text-xs text-textMuted">Increase resolution &amp; details</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-borderLight group-hover:text-primary text-sm">chevron_right</span>
+</button>
+<!-- Action Button: Remove Background -->
+<button class="w-full flex items-center justify-between p-4 rounded-xl border border-borderLight hover:border-primary hover:bg-primaryLight/30 transition-all group text-left">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-textMuted group-hover:text-primary transition-colors mr-3">
+<span class="material-symbols-outlined">wallpaper</span>
+</div>
+<div>
+<div class="text-sm font-semibold text-textMain">Remove BG</div>
+<div class="text-xs text-textMuted">Make background transparent</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-borderLight group-hover:text-primary text-sm">chevron_right</span>
+</button>
+<!-- Action Button: Inpaint -->
+<button class="w-full flex items-center justify-between p-4 rounded-xl border border-borderLight hover:border-primary hover:bg-primaryLight/30 transition-all group text-left">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-textMuted group-hover:text-primary transition-colors mr-3">
+<span class="material-symbols-outlined">brush</span>
+</div>
+<div>
+<div class="text-sm font-semibold text-textMain">Inpaint / Edit</div>
+<div class="text-xs text-textMuted">Brush area to regenerate</div>
+</div>
+</div>
+<span class="material-symbols-outlined text-borderLight group-hover:text-primary text-sm">chevron_right</span>
+</button>
+</div>
+<!-- Danger Zone / Delete -->
+<div class="mt-8 pt-6 border-t border-borderLight">
+<button class="w-full py-3 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium transition-colors flex items-center justify-center">
+<span class="material-symbols-outlined text-sm mr-2">delete</span>
+                Delete Image
+              </button>
+</div>
+</div>
+</aside>
+<!-- END: Right Refine Actions Sidebar -->
+</div>
+<!-- END: Editor Workspace -->
+</main>
+<!-- END: Main Content Area -->
+</div>
+<!-- END: Main Layout -->
+</body></html>

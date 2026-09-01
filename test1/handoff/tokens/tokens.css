@@ -1,0 +1,31 @@
+/* EVS — дизайн-токены. Скопировано из прототипа один-в-один. */
+:root{
+  --bg:#07080C;--card:rgba(255,255,255,.042);--solid:#111319;
+  --txt:#F2F4F8;--body:#C7CBD6;--sub:#9399A6;--faint:#666C79;
+  --stroke:rgba(255,255,255,.09);--stroke2:rgba(255,255,255,.18);
+  --field:rgba(255,255,255,.035);--hover:rgba(255,255,255,.07);--chip:rgba(255,255,255,.06);
+  --btn:#FFFFFF;--btnx:#0A0B0E;--dot:rgba(255,255,255,.32);
+  --ok:#34D399;--warn:#F5B944;--dgr:#FF7A7A;
+  --a1:#3269CE;--a2:#7F5AAC;--a3:#BC505C;
+  --accsoft:rgba(155,114,203,.16);--accstrong:rgba(155,114,203,.26);--accline:rgba(155,114,203,.42);
+  --au:.9;--blur:26px;
+  --sh:0 24px 64px rgba(0,0,0,.5);--glow:0 0 44px rgba(155,114,203,.42);
+  --r-chip:999px;--r-tile:13px;--r-card:20px;--r-field:26px;--r-panel:28px;
+  --font-ui:Figtree,system-ui,sans-serif;--font-mono:'JetBrains Mono',monospace;
+}
+[data-theme="light"]{
+  --bg:#EEF2F8;--card:rgba(255,255,255,.44);--solid:#FFFFFF;
+  --txt:#17181B;--body:#42464E;--sub:#5F6470;--faint:#8B9099;
+  --stroke:#D2DAE8;--stroke2:#B8C2D2;--field:rgba(18,30,55,.035);--hover:rgba(18,30,55,.07);
+  --chip:rgba(18,30,55,.055);--btn:#17181B;--btnx:#FFFFFF;--dot:rgba(30,55,100,.3);
+  --accsoft:rgba(127,90,172,.2);--accstrong:rgba(127,90,172,.28);--accline:rgba(127,90,172,.5);
+  --au:.5;--sh:0 20px 44px rgba(25,45,85,.16),0 2px 6px rgba(25,45,85,.07);--glow:0 0 34px rgba(155,114,203,.3);
+}
+[data-accent="aurora"]{--a1:#1CACC2;--a2:#3F63D1;--a3:#8A6FD4}
+[data-accent="sunset"]{--a1:#D18A19;--a2:#CD5374;--a3:#7F5AAC}
+[data-accent="mint"]{--a1:#1F9E7A;--a2:#3C8CA8;--a3:#6D7CC0}
+[data-glass="glass"]{--card:rgba(255,255,255,.042);--blur:26px}
+[data-glass="frost"]{--card:rgba(22,25,34,.66);--blur:16px}
+[data-glass="solid"]{--card:rgba(14,16,22,.95);--blur:0px}
+[data-theme="light"][data-glass="frost"]{--card:rgba(255,255,255,.76);--blur:14px}
+[data-theme="light"][data-glass="solid"]{--card:#FFFFFF;--blur:0px}

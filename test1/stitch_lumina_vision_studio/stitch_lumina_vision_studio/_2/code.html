@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gallery - Ethereal AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-container-high": "#e6e8ea",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-container": "#f9fdff",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "surface-variant": "#e0e3e5",
+                        "on-secondary-container": "#600037",
+                        "tertiary-container": "#008096",
+                        "on-primary": "#ffffff",
+                        "on-surface": "#191c1e",
+                        "surface": "#f7f9fb",
+                        "on-primary-container": "#fffbff",
+                        "on-secondary-fixed": "#3e0022",
+                        "primary-fixed": "#e1e0ff",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#eceef0",
+                        "tertiary": "#006577",
+                        "secondary-fixed": "#ffd9e4",
+                        "secondary": "#b4136d",
+                        "surface-dim": "#d8dadc",
+                        "on-tertiary-fixed": "#001f26",
+                        "inverse-surface": "#2d3133",
+                        "on-tertiary": "#ffffff",
+                        "tertiary-fixed": "#acedff",
+                        "outline": "#767586",
+                        "primary-container": "#6063ee",
+                        "on-background": "#191c1e",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "inverse-primary": "#c0c1ff",
+                        "surface-container-low": "#f2f4f6",
+                        "on-surface-variant": "#464554",
+                        "tertiary-fixed-dim": "#4cd7f6",
+                        "surface-tint": "#494bd6",
+                        "outline-variant": "#c7c4d7",
+                        "error": "#ba1a1a",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary": "#4648d4",
+                        "on-primary-fixed": "#07006c",
+                        "on-error": "#ffffff",
+                        "surface-bright": "#f7f9fb",
+                        "secondary-fixed-dim": "#ffb0cd",
+                        "error-container": "#ffdad6",
+                        "on-secondary-fixed-variant": "#8c0053",
+                        "background": "#f7f9fb",
+                        "surface-container-lowest": "#ffffff",
+                        "secondary-container": "#fd56a7",
+                        "on-tertiary-fixed-variant": "#004e5c"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "gutter": "24px",
+                        "sm": "12px",
+                        "container-max": "1440px",
+                        "base": "8px",
+                        "xs": "4px",
+                        "xl": "64px",
+                        "lg": "40px",
+                        "md": "24px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Inter"],
+                        "title-md": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.08em", "fontWeight": "600" }],
+                        "title-md": ["20px", { "lineHeight": "28px", "letterSpacing": "0em", "fontWeight": "500" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "letterSpacing": "0em", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "letterSpacing": "0em", "fontWeight": "400" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .masonry-grid {
+            column-count: 1;
+            column-gap: 24px;
+        }
+        @media (min-width: 640px) { .masonry-grid { column-count: 2; } }
+        @media (min-width: 1024px) { .masonry-grid { column-count: 3; } }
+        @media (min-width: 1280px) { .masonry-grid { column-count: 4; } }
+        .masonry-item {
+            break-inside: avoid;
+            margin-bottom: 24px;
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-sans min-h-screen flex selection:bg-primary-container selection:text-on-primary-container">
+<!-- SideNavBar (Hidden on Mobile) -->
+<nav class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-lowest/60 dark:bg-surface-container-low/60 backdrop-blur-2xl border-r border-white/40 dark:border-outline-variant/20 shadow-[0px_10px_40px_rgba(0,0,0,0.04)] py-lg z-40">
+<div class="px-lg mb-xl">
+<span class="font-title-md text-title-md text-primary">Ethereal AI</span>
+</div>
+<div class="flex-1 flex flex-col gap-sm">
+<a class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container-high/50 px-md py-sm transition-colors mx-sm rounded-lg hover:bg-surface-container-high transition-colors active:scale-[0.98] transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+<span class="font-label-caps text-label-caps">Generate</span>
+</a>
+<a class="flex items-center gap-md bg-primary-container/20 text-primary border-r-4 border-primary font-bold px-md py-sm transition-colors mx-sm rounded-lg active:scale-[0.98] transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="photo_library" style="font-variation-settings: 'FILL' 1;">photo_library</span>
+<span class="font-label-caps text-label-caps">Gallery</span>
+</a>
+<a class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container-high/50 px-md py-sm transition-colors mx-sm rounded-lg hover:bg-surface-container-high transition-colors active:scale-[0.98] transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-label-caps text-label-caps">History</span>
+</a>
+<a class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container-high/50 px-md py-sm transition-colors mx-sm rounded-lg hover:bg-surface-container-high transition-colors active:scale-[0.98] transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+<span class="font-label-caps text-label-caps">Settings</span>
+</a>
+</div>
+<div class="px-md mt-auto space-y-sm">
+<button class="w-full py-sm bg-gradient-to-r from-primary to-tertiary text-on-primary rounded-full font-label-caps text-label-caps flex items-center justify-center gap-sm hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0px_10px_40px_rgba(0,0,0,0.04)]">
+<span class="material-symbols-outlined">add</span>
+                New Project
+            </button>
+<div class="pt-sm border-t border-white/40">
+<a class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container-high/50 px-sm py-sm transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+<span class="font-label-caps text-label-caps">Help</span>
+</a>
+<a class="flex items-center gap-md text-on-surface-variant hover:bg-surface-container-high/50 px-sm py-sm transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-label-caps text-label-caps">Logout</span>
+</a>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col md:ml-64 w-full max-w-full">
+<!-- TopNavBar (Visible on Mobile, or minimal tools on Desktop) -->
+<header class="w-full sticky top-0 z-50 bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-3xl flex justify-between items-center px-lg py-sm max-w-container-max mx-auto md:px-xl md:py-md border-b border-white/40 dark:border-outline-variant/20 shadow-[0px_10px_40px_rgba(0,0,0,0.04)]">
+<div class="flex items-center gap-sm md:hidden">
+<span class="font-display-lg text-headline-lg-mobile bg-clip-text text-transparent bg-gradient-to-r from-primary to-tertiary">Ethereal AI</span>
+</div>
+<div class="flex-1 max-w-2xl mx-auto px-md hidden md:block">
+<div class="relative flex items-center w-full h-12 rounded-full focus-within:shadow-[0px_10px_40px_rgba(0,0,0,0.08)] bg-white/60 backdrop-blur-md border border-white/40 overflow-hidden transition-all hover:scale-[1.02]">
+<div class="grid place-items-center h-full w-12 text-on-surface-variant/70">
+<span class="material-symbols-outlined">search</span>
+</div>
+<input class="peer h-full w-full outline-none text-body-lg text-on-surface bg-transparent pr-2 font-body-lg placeholder-on-surface-variant/50" id="search" placeholder="Search gallery prompts, styles, or tags..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-md">
+<button class="text-on-surface-variant dark:text-on-surface-variant/70 hover:scale-[1.02] hover:backdrop-blur-3xl transition-all duration-300 active:scale-[0.98] transition-transform w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high/50">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-on-surface-variant dark:text-on-surface-variant/70 hover:scale-[1.02] hover:backdrop-blur-3xl transition-all duration-300 active:scale-[0.98] transition-transform w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high/50">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="w-10 h-10 rounded-full overflow-hidden border border-white/40 shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer hover:scale-[1.02] transition-transform">
+<img alt="User profile" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdhAbqhgfJI_IN-SHyswFljb4qFxv3nqiArclgNF5hCXygWorgxPw-aThHlyyABh7kFNndL7Sm1k2hYCKcGRAxdq25bQjEQnfv_AFKA1_QoVLz6ztDa71y_QArV9bFgaCNz093mNyBhEhX9So8N7n2IjwI12KOJaIAzQmHv3utaoBXx8RcSZo_y4xcvVwcJ6RDpmTqXw1eU_-6Sd3smamtWTFBI7-Dm7rraY36BI3c0xM2chEqEfeO"/>
+</div>
+</div>
+</header>
+<!-- Gallery Canvas -->
+<div class="px-md md:px-xl py-lg md:py-xl max-w-container-max mx-auto w-full">
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-lg gap-sm">
+<div>
+<h1 class="font-display-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-xs">Your Masterpieces</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">A collection of your refined AI generations.</p>
+</div>
+<div class="flex gap-sm">
+<button class="px-md py-sm rounded-full border border-white/40 glass-panel font-label-caps text-label-caps text-on-surface hover:scale-[1.02] hover:bg-white/10 active:scale-[0.98] transition-all flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm">filter_list</span> Filter
+                    </button>
+<button class="px-md py-sm rounded-full border border-white/40 glass-panel font-label-caps text-label-caps text-on-surface hover:scale-[1.02] hover:bg-white/10 active:scale-[0.98] transition-all flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm">sort</span> Sort
+                    </button>
+</div>
+</div>
+<!-- Masonry Grid -->
+<div class="masonry-grid">
+<!-- Item 1 -->
+<div class="masonry-item relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer">
+<img class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="A hyper-realistic close-up portrait of a futuristic cyborg woman with glowing blue optic sensors and intricate metallic plating on her face, illuminated by soft neon pink and cyan rim lighting in a sleek, light-mode cyberpunk laboratory setting. Highly detailed, cinematic lighting, 8k resolution." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpYuUeHwdNuYhLuDi-YLcRvDnFN1t5oJieY9oGWAaICcmlESlbhA8ByGCoo1ArFfbfJvL_DNFwAKT7vAT-ZrwKiMX4vWMpDI2aqarOccsmc0KYaD6MsBq4wN6RVGuyUbdYNp8OnvoiQu4bz6YVqMXogM8jkOB2JWYgvSPQCJeN1e_wVdyqDhOTaFYfUild1tPZqEzVKb7dovCp1S_lkarssp94oA6Wi7mwVGWsS8hCCA1T0ukkKO_R"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-sm">
+<div class="flex justify-end gap-xs">
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">edit</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+</button>
+</div>
+<div class="glass-panel rounded-lg p-sm translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-100">
+<p class="font-body-sm text-body-sm text-on-surface line-clamp-2">"Futuristic cyborg portrait, glowing blue eyes, neon rim lighting..."</p>
+<div class="flex justify-between items-center mt-xs text-on-surface-variant text-[10px] font-label-caps tracking-wider">
+<span>1024x1024</span>
+<span>Ethereal V1</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Item 2 -->
+<div class="masonry-item relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer">
+<img class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="A serene, minimalist architectural interior featuring a large circular window framing a dense, misty bamboo forest. The room is designed with smooth concrete and blonde wood materials, bathed in soft, diffused morning sunlight that casts gentle shadows across the floor. Ethereal, modern, Zen aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDPaN7KUIjwD_EBFU_Wt-JA_jAgGvj0r9kovXEVn--Exxe3PPuh1SUkm2W-JySHl7zTPFCIhjQyBS5419-lyFuKcb7N9Kx1DPKjVcoZmtLzvyWZEjZYDfHpWZpK9BWcLQzgwHUwqmwpPWy1DhfbhutCYD_38nV1qIffBzD_QM-kFx9tWZ0UjUp-Ry-e2t_jsAunZjOZGQRhDv9z1DpfwKR4adDiv6pzT0Kml6MrMqYQpraS2p6jZkc0"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-sm">
+<div class="flex justify-end gap-xs">
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">edit</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+</button>
+</div>
+<div class="glass-panel rounded-lg p-sm translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-100">
+<p class="font-body-sm text-body-sm text-on-surface line-clamp-2">"Zen architectural interior, circular window, bamboo forest..."</p>
+</div>
+</div>
+</div>
+<!-- Item 3 -->
+<div class="masonry-item relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer">
+<img class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="An abstract 3D rendering of flowing liquid glass and chrome spheres interacting in a zero-gravity environment. The scene is brightly lit with high-key white lighting, reflecting soft pastel gradient colors (lavender, mint, peach) off the highly polished surfaces. Ethereal, clean, premium digital art." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMLgnUZvT9P8gtVY8wmfbk0o6oyxv43j_4DL01KiFMCV550mzHWR0YxdVdQJEu9S-TpCKdwSq3rsv8Ds2T6ROvqlgGSJcfLng70bAzE2ESoWIBZB8g1nUTOD_sSEsB7Oj-Z5obUYwi1D6QoJ4wog3Li51gMUXxyPgYi7tIZPzbrWpE2nZmOQDcRg_aqpE7fwtspI4ifwc3xS1fNTvNSqjUkQUOffImoM9qw9MHJ083ARuUCuBm86Ey"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-sm">
+<div class="flex justify-end gap-xs">
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">edit</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Item 4 -->
+<div class="masonry-item relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer">
+<img class="w-full h-auto object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="A lush, overgrown solarium filled with giant exotic tropical plants and vibrant bioluminescent flowers. The glass roof allows bright, soft-box style daylight to flood the space, creating a beautiful, airy light-mode atmosphere. Clean lines, modern botanical aesthetic, highly detailed." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCvhi_EPgZxOnwE6N8M3rMeIy3LylU_O4WoC1FSM90Ksa4SsslX5kZ3aHSUTD2ixlmymWNuv2VOH4htz9SLZ7_10Sj5UeMIRUiQF3KdEA68H6o4tyAHEmO63n-WfiQ7s7z-tq5UqfHQaL6TamryWhV7K3ICiSyA89CYrUqMYs5SM8FsJyiHPbP4D4uWwBpovYqUi8qTqyB45mY2S5WjSqXILXkUy218KiTWL7v1P2PHYQZIlzyDla6T"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-sm">
+<div class="flex justify-end gap-xs">
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">edit</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-md text-white flex items-center justify-center hover:bg-white/40 transition-colors">
+<span class="material-symbols-outlined text-sm">download</span>
+</button>
+</div>
+<div class="glass-panel rounded-lg p-sm translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 delay-100">
+<p class="font-body-sm text-body-sm text-on-surface line-clamp-2">"Overgrown modern solarium, giant tropical plants..."</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Community Favorites Section -->
+<div class="mt-xl pt-lg border-t border-white/40 dark:border-outline-variant/20">
+<h2 class="font-display-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-lg">Community Favorites</h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-md">
+<!-- Community Item 1 -->
+<div class="relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer aspect-square">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="A breathtaking macro shot of an intricate snowflake melting on a pristine white feather. The lighting is extremely soft and bright, emphasizing the delicate details and crystalline structures in a minimalist, light-mode composition. Ethereal, clean, macro photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuA8UDhQ2ZLljwJ7_mdjOfFt2My4Vla9mY2p0YlxlIY259wysWuH66T2RCi6cQVBjsWV0AYNU-gSto4S_zegWg95NnYMI4K0oxpvcSKC2gQwwRzUVlqWynCrb6WS_44xON4TKM0e9DwwztlHIsnuGt2_XkpFp7gSZRUqLY7G92JWpo8g9jhoz_8PATlnotAoWNCnr8Y4m0ZRVh7UQMbvSd2mD7kYMnJMpxa0EqcIFVwLsQWnHMi1mFdY"/>
+<div class="absolute inset-x-0 bottom-0 p-md bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-white text-sm" style="font-variation-settings: 'FILL' 1;">favorite</span>
+<span class="text-white font-label-caps text-label-caps">12.4k</span>
+</div>
+</div>
+</div>
+<!-- Community Item 2 -->
+<div class="relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer aspect-square">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="A minimalist digital painting of a lone figure standing on a vast, perfectly reflective salt flat that mirrors a clear, pale blue sky. The horizon line is perfectly centered. The overall color palette is airy, bright, and pastel. Serene, vast, ethereal light-mode aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMs409kwazlCra23DkBbI9t8kICDuHAV09u3MZL_FHjjnw1XSpa4ONNVNpnwLWfOAqMbJVBFTIagxYPVfE10cNolSkOLYuF3nEHyakc7XyXc6lGEBiVbwLQfW5B11gb4WiN7Bg62Cr521J8vq9foIUOA7A9Eb4_AyVmYGP-n-mrDkPXiNoMPd_seo0jSX2o_RsZLXSlPYcaisTZl2-3iSwLuTs-DwrPK5LN9teiYZDj8ivWxcGidjz"/>
+<div class="absolute inset-x-0 bottom-0 p-md bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-white text-sm" style="font-variation-settings: 'FILL' 1;">favorite</span>
+<span class="text-white font-label-caps text-label-caps">8.2k</span>
+</div>
+</div>
+</div>
+<!-- Community Item 3 -->
+<div class="relative group rounded-xl overflow-hidden shadow-[0px_10px_40px_rgba(0,0,0,0.04)] cursor-pointer aspect-square">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" data-alt="An isometric 3D architectural render of a tiny, hyper-detailed futuristic coffee shop sitting on a floating island of white cloud. The shop features curved glass walls and sleek silver accents. Illuminated by soft, studio-quality ambient light in a clean, minimalist light-mode setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5S5NI87GwjbjEm5pxDHYQripRczA5fM0xia_ONX5lnUitzYzl8a3i7QMfEBPIqlmiUq3WW07C9WNKj32iz1UiJx2BXkCpKfLFKrNxfSdJ5VHDX7ZbLkhq7ilmPwKZOWYMX33BtMwfthDlf-c6Figsmg84Dr3NPvHDFqxJznTvj0CelCHOTiB2T34IlnOpX7jfMC6-960avY8GWVijNdwOpvby-9YFCYjnOGApEat9iP7uAoZVZ0we"/>
+<div class="absolute inset-x-0 bottom-0 p-md bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-white text-sm" style="font-variation-settings: 'FILL' 1;">favorite</span>
+<span class="text-white font-label-caps text-label-caps">5.9k</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

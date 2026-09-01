@@ -1,0 +1,2047 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+--bg:#07080C;--card:rgba(255,255,255,.042);--solid:#111319;--txt:#F2F4F8;--body:#C7CBD6;--sub:#9399A6;--faint:#666C79;
+--stroke:rgba(255,255,255,.09);--stroke2:rgba(255,255,255,.18);--field:rgba(255,255,255,.035);--hover:rgba(255,255,255,.07);
+--chip:rgba(255,255,255,.06);--btn:#FFFFFF;--btnx:#0A0B0E;--dot:rgba(255,255,255,.32);
+--ok:#34D399;--warn:#F5B944;--dgr:#FF7A7A;
+--a1:#3269CE;--a2:#7F5AAC;--a3:#BC505C;
+--accsoft:rgba(155,114,203,.16);--accstrong:rgba(155,114,203,.26);--accline:rgba(155,114,203,.42);--au:.9;--blur:26px;--sh:0 24px 64px rgba(0,0,0,.5);--glow:0 0 44px rgba(155,114,203,.42);
+}
+[data-theme="light"]{--bg:#EEF2F8;--card:rgba(255,255,255,.44);--solid:#FFFFFF;--txt:#17181B;--body:#42464E;--sub:#5F6470;--faint:#8B9099;
+--stroke:#D2DAE8;--stroke2:#B8C2D2;--field:rgba(18,30,55,.035);--hover:rgba(18,30,55,.05);
+--chip:rgba(18,30,55,.055);--btn:#17181B;--btnx:#FFFFFF;--dot:rgba(30,55,100,.4);
+--hover:rgba(18,30,55,.07);--accsoft:rgba(127,90,172,.2);--accstrong:rgba(127,90,172,.28);--accline:rgba(127,90,172,.5);--au:.5;--dot:rgba(30,55,100,.3);--sh:0 20px 44px rgba(25,45,85,.16),0 2px 6px rgba(25,45,85,.07);--glow:0 0 34px rgba(155,114,203,.3);}
+[data-accent="aurora"]{--a1:#1CACC2;--a2:#3F63D1;--a3:#8A6FD4}
+[data-accent="sunset"]{--a1:#D18A19;--a2:#CD5374;--a3:#7F5AAC}
+[data-accent="mint"]{--a1:#1F9E7A;--a2:#3C8CA8;--a3:#6D7CC0}
+[data-anim="breathe"]{--anmA:breathe 17s ease-in-out infinite;--anmT:breathesoft 13s ease-in-out infinite;--anmL:breathe 11s ease-in-out infinite,glowbreathe 7s ease-in-out infinite;--bgsz:100% 100%}
+[data-anim="flow"]{--anmA:hueflow 24s linear infinite;--anmT:flowpos 9s linear infinite;--anmL:flowpos 6s linear infinite,glowbreathe 7s ease-in-out infinite;--bgsz:220% 100%}
+[data-anim="pulse"]{--anmA:pulsebr 6s ease-in-out infinite;--anmT:pulsebr 4.6s ease-in-out infinite;--anmL:pulsebr 4s ease-in-out infinite,glowbreathe 4s ease-in-out infinite;--bgsz:100% 100%}
+[data-anim="off"]{--anmA:none;--anmT:none;--anmL:none;--bgsz:100% 100%}
+[data-glass="off"]{--blur:0px}
+[data-glass="glass"]{--card:rgba(255,255,255,.042);--blur:26px}
+[data-glass="frost"]{--card:rgba(22,25,34,.66);--blur:16px}
+[data-glass="solid"]{--card:rgba(14,16,22,.95);--blur:0px}
+[data-theme="light"][data-glass="glass"]{--card:rgba(255,255,255,.44);--blur:26px}
+[data-theme="light"][data-glass="frost"]{--card:rgba(255,255,255,.76);--blur:14px}
+[data-theme="light"][data-glass="solid"]{--card:#FFFFFF;--blur:0px}
+[data-grid="off"]{--dot:transparent}
+[data-aurora="calm"]{--au:.38}
+[data-aurora="off"]{--au:0}
+*{box-sizing:border-box}
+body{margin:0;background:#07080C;font-family:Figtree,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--a1);text-decoration:none}a:hover{color:var(--a2)}
+input,textarea,button{font:inherit;color:inherit;outline:none;border:none;background:none}
+textarea{resize:none}
+::placeholder{color:var(--faint)}
+::selection{background:rgba(155,114,203,.32)}
+::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-thumb{background:var(--stroke2);border-radius:8px}::-webkit-scrollbar-track{background:transparent}
+@keyframes dr1{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(6%,-6%,0) scale(1.16)}}
+@keyframes dr2{0%,100%{transform:translate3d(0,0,0) scale(1.1)}50%{transform:translate3d(-7%,5%,0) scale(1)}}
+@keyframes shine{0%{background-position:0% 50%}100%{background-position:220% 50%}}
+@keyframes ring{0%{transform:scale(.7);opacity:.55}100%{transform:scale(1.5);opacity:0}}
+@keyframes bar{0%{transform:scaleY(.18)}100%{transform:scaleY(1)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes blink{50%{opacity:.2}}
+@keyframes breathe{0%,100%{filter:saturate(1) hue-rotate(0deg)}33%{filter:saturate(1.24) hue-rotate(13deg)}66%{filter:saturate(.9) hue-rotate(-11deg)}}
+@keyframes breathesoft{0%,100%{filter:saturate(1) hue-rotate(0deg) brightness(1)}50%{filter:saturate(1.16) hue-rotate(10deg) brightness(1.06)}}
+@keyframes glowbreathe{0%,100%{box-shadow:0 0 30px rgba(155,114,203,.3)}50%{box-shadow:0 0 52px rgba(155,114,203,.5)}}
+@keyframes flowpos{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+@keyframes hueflow{0%,100%{filter:hue-rotate(-28deg) saturate(1.18)}50%{filter:hue-rotate(28deg) saturate(1.18)}}
+@keyframes pulsebr{0%,100%{filter:brightness(1) saturate(1)}50%{filter:brightness(1.2) saturate(1.34)}}
+@keyframes drawline{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes drawlineB{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes drawlineC{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes drawlineD{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes neon{0%{filter:drop-shadow(0 0 0 transparent)}40%{filter:drop-shadow(0 0 8px var(--a1))}100%{filter:drop-shadow(0 0 0 transparent)}}
+</style>
+</helmet>
+
+<div data-theme="{{ theme }}" data-accent="{{ accentAttr }}" data-glass="{{ glassAttr }}" data-grid="{{ gridAttr }}" data-aurora="{{ auroraAttr }}" data-anim="{{ animAttr }}" style="position:relative;height:100vh;width:100%;overflow:hidden;background:var(--bg);color:var(--txt);font-family:Figtree,system-ui,sans-serif">
+
+  <sc-if value="{{ auroraBg }}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;inset:0;overflow:hidden;pointer-events:none;opacity:var(--au);animation:var(--anmA,breathe 17s ease-in-out infinite)">
+    <div style="position:absolute;left:-14%;bottom:-36%;width:72%;height:94%;background:radial-gradient(circle at 50% 50%,var(--a1) 0%,transparent 62%);filter:blur(92px);animation:dr1 24s ease-in-out infinite"></div>
+    <div style="position:absolute;right:-12%;bottom:-40%;width:76%;height:98%;background:radial-gradient(circle at 50% 50%,var(--a2) 0%,transparent 62%);filter:blur(100px);animation:dr2 29s ease-in-out infinite"></div>
+    <div style="position:absolute;left:28%;bottom:-50%;width:50%;height:86%;background:radial-gradient(circle at 50% 50%,var(--a3) 0%,transparent 60%);filter:blur(116px);opacity:.62;animation:dr1 34s ease-in-out infinite reverse"></div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ shaderBg }}" hint-placeholder-val="{{ false }}">
+  <canvas ref="{{ glRef }}" style="position:absolute;left:-8%;top:-8%;width:116%;height:116%;display:block;pointer-events:none;opacity:calc(var(--au) * .85);filter:blur(7px) saturate(1.08)"></canvas>
+  </sc-if>
+  <canvas ref="{{ gridRef }}" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;mask-image:linear-gradient(180deg,#000 0%,#000 62%,transparent 100%);-webkit-mask-image:linear-gradient(180deg,#000 0%,#000 62%,transparent 100%)"></canvas>
+
+  <sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+  <div style="position:relative;z-index:2;display:flex;height:{{ appH }};zoom:{{ zoom }}">
+
+    <div style="width:262px;flex:none;display:flex;flex-direction:column;gap:16px;padding:20px 14px;overflow-y:auto;border-right:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur))">
+      <div style="display:flex;align-items:center;gap:11px;padding:2px 6px 6px">
+        <div style="width:36px;height:36px;flex:none;border-radius:13px;display:grid;place-items:center;color:#fff;font-size:16px;background:linear-gradient(140deg,var(--a1),var(--a2) 55%,var(--a3));background-size:var(--bgsz,100% 100%);box-shadow:var(--glow);animation:var(--anmL,breathe 11s ease-in-out infinite,glowbreathe 7s ease-in-out infinite)">✦</div>
+        <div style="min-width:0">
+          <div style="font-size:15px;font-weight:700;letter-spacing:-.02em">EVS</div>
+          <div style="font-size:10px;font-weight:600;letter-spacing:.09em;color:var(--faint);text-transform:uppercase;margin-top:1px">Готов · локально</div>
+        </div>
+      </div>
+
+      <div onClick="{{ newChat }}" style="display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:999px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--btnx);background:var(--btn);box-shadow:0 6px 18px rgba(0,0,0,.22)" style-hover="opacity:.9">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg>Новый чат
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ nav }}" as="n" hint-placeholder-count="7">
+          <div onClick="{{ n.go }}" style="display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:14px;cursor:pointer;font-size:13.5px;font-weight:500;transition:background .18s,color .18s;background:{{ n.bg }};color:{{ n.col }};box-shadow:{{ n.gl }}" style-hover="background:var(--hover);color:var(--txt)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="flex:none;color:{{ n.icoCol }};animation:{{ n.glowAnm }};transition:color {{ n.icoTr }} ease"><path pathLength="1" d="{{ n.d }}" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:{{ n.dash }};animation:{{ n.drawAnm }}"></path></svg>
+            <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.label }}</span>
+            <div style="flex:1"></div>
+            <span style="font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--faint)">{{ n.k }}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex:1"></div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;padding:13px 14px;border-radius:18px;border:1px solid var(--stroke);background:var(--field)">
+        <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600">
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 9px var(--ok)"></span>Нейросеть подключена
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.6;color:var(--faint)">локальная · llama-3.1-8b<br>whisper-large-v3 · xtts-v2</div>
+        <div style="height:5px;border-radius:5px;background:var(--chip);overflow:hidden"><div style="height:100%;width:{{ ctxPct }};border-radius:5px;background:linear-gradient(90deg,var(--a1),var(--a2))"></div></div>
+        <div style="display:flex;font-size:10.5px;color:var(--faint);font-family:'JetBrains Mono',monospace"><span>окно контекста</span><div style="flex:1"></div><span>{{ ctxPct }}</span></div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+      <div style="flex:none;height:86px;padding:0 28px;display:flex;align-items:center;gap:20px;border-bottom:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur))">
+        <sc-if value="{{ showBack }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ goHub }}" title="Назад" style="width:40px;height:40px;flex:none;margin-right:-8px;display:grid;place-items:center;border-radius:13px;border:1px solid var(--stroke);background:var(--field);color:var(--body);cursor:pointer;transition:background .18s,color .18s" style-hover="background:var(--hover);color:var(--txt)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M14.5 5.5 8 12l6.5 6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        </sc-if>
+        <div style="flex:1 1 auto;min-width:132px;overflow:hidden;display:flex;flex-direction:column;gap:3px">
+          <div style="font-size:23px;font-weight:800;letter-spacing:-.03em;background:linear-gradient(96deg,var(--a1),var(--a2) 50%,var(--a3));background-size:var(--bgsz,100% 100%);-webkit-background-clip:text;background-clip:text;color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:var(--anmT,breathesoft 13s ease-in-out infinite)">{{ title }}</div>
+          <div style="font-size:12.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ subtitle }}</div>
+        </div>
+        <div style="display:flex;align-items:center;flex:none;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid {{ stBd }};background:{{ stSoft }};font-size:12px;font-weight:600;color:{{ stateCol }};transition:background .45s,border-color .45s,color .45s">
+          <span style="width:7px;height:7px;border-radius:50%;background:{{ stateCol }};box-shadow:0 0 9px {{ stateCol }};transition:background .45s"></span>{{ stateLabel }}
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;flex:0 1 216px;min-width:104px;padding:9px 15px;border-radius:999px;border:1px solid var(--stroke);background:var(--field)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex:none;color:var(--faint)"><path d="M20 20l-3.2-3.2M18 11a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path></svg>
+          <input placeholder="Поиск по диалогам" style="flex:1;min-width:0;font-size:12.5px">
+        </div>
+        <div onClick="{{ toggleTheme }}" style="width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:13px;border:1px solid var(--stroke);background:var(--field);cursor:pointer;color:var(--sub)" style-hover="background:var(--hover);color:var(--txt)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="animation:{{ themeGlow }}"><path pathLength="1" d="{{ themeIcon }}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:1;animation:{{ themeDraw }}"></path></svg>
+        </div>
+        <div onClick="{{ go.settings }}" style="width:40px;height:40px;flex:none;display:grid;place-items:center;border-radius:13px;border:1px solid var(--stroke);background:var(--field);cursor:pointer;color:var(--sub)" style-hover="background:var(--hover);color:var(--txt)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.2 14.8a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.66 8.8a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.55 1.03Z" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+      </div>
+
+      <div style="flex:1;min-height:0;overflow:auto;padding:24px 28px 28px">
+
+        <sc-if value="{{ isHub }}" hint-placeholder-val="{{ true }}">
+        <div data-screen-label="Центр" style="display:flex;gap:18px;align-items:stretch;height:100%;min-height:560px">
+          <div style="width:376px;flex:0 1 376px;min-width:308px;display:flex;flex-direction:column;gap:18px">
+            <div style="flex:none;padding:22px;border-radius:26px;border:1px solid {{ stBd }};background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:{{ stCardSh }};display:flex;flex-direction:column;align-items:center;gap:14px;transition:border-color .5s,box-shadow .5s">
+              <div style="width:100%;display:flex;align-items:center;gap:10px">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Ассистент</div>
+                <div style="flex:1"></div>
+                <div style="padding:5px 11px;border-radius:999px;font-size:11px;font-weight:600;color:{{ stateCol }};background:{{ stSoft }};transition:background .45s,color .45s">{{ stateLabel }}</div>
+              </div>
+              <div onClick="{{ cycleState }}" style="position:relative;width:190px;height:190px;display:grid;place-items:center;cursor:pointer">
+                <div style="position:absolute;inset:0;border-radius:50%;border:1px solid {{ stC2 }};animation:ring 2.9s ease-out infinite;animation-play-state:{{ playState }};transition:border-color .5s"></div>
+                <div style="position:absolute;inset:16px;border-radius:50%;border:1px solid {{ stC1 }};animation:ring 2.9s ease-out .95s infinite;animation-play-state:{{ playState }};transition:border-color .5s"></div>
+                <div style="position:absolute;inset:32px;border-radius:50%;border:1px solid {{ stC2 }};animation:ring 2.9s ease-out 1.9s infinite;animation-play-state:{{ playState }};transition:border-color .5s"></div>
+                <div style="position:absolute;inset:36px;border-radius:50%;background:{{ conic }};filter:blur(16px);opacity:.6;animation:spin 9s linear infinite;transition:background .5s"></div>
+                <div style="position:relative;width:86px;height:86px;border-radius:50%;display:grid;place-items:center;color:#fff;background:{{ orbBg }};box-shadow:{{ orbSh }};transition:background .5s,box-shadow .5s">
+                  <svg width="27" height="27" viewBox="0 0 24 24" fill="none"><path pathLength="1" d="M12 3.2a2.9 2.9 0 0 1 2.9 2.9v4.5a2.9 2.9 0 0 1-5.8 0V6.1A2.9 2.9 0 0 1 12 3.2ZM5.9 11a6.1 6.1 0 0 0 12.2 0M12 17.3V21" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="stroke-dasharray:1;animation:{{ micDraw }}"></path></svg>
+                </div>
+              </div>
+              <div style="text-align:center;display:flex;flex-direction:column;gap:5px">
+                <div style="font-size:20px;font-weight:700;letter-spacing:-.025em;color:{{ stateTxt }};transition:color .45s">{{ stateHint }}</div>
+                <div style="font-size:12.5px;color:var(--sub)">Скажите «{{ wake }}» или нажмите пробел</div>
+              </div>
+              <div style="width:100%;display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:14px;border:1px solid var(--stroke);background:var(--field);font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--sub)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--ok)"></span>онлайн<div style="flex:1"></div><span>{{ lat }} мс · {{ tps }} ток/с</span>
+              </div>
+            </div>
+
+            <div style="flex:none;padding:20px 22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:15px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Подсистемы</div>
+              <sc-for list="{{ hw }}" as="h" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <div style="display:flex;align-items:baseline;gap:10px">
+                    <span style="font-size:13px;color:var(--body)">{{ h.n }}</span><div style="flex:1"></div>
+                    <span style="font-size:12.5px;font-weight:600;font-family:'JetBrains Mono',monospace">{{ h.v }}</span>
+                  </div>
+                  <div style="height:5px;border-radius:5px;background:var(--chip);overflow:hidden">
+                    <div style="height:100%;border-radius:5px;background:linear-gradient(90deg,var(--a1),var(--a2));transition:width .8s cubic-bezier(.4,0,.2,1);width:{{ h.w }}"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+          </div>
+
+          <div style="flex:1 1 auto;min-width:404px;display:flex;flex-direction:column;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);overflow:hidden">
+            <div style="flex:none;display:flex;align-items:center;gap:14px;padding:19px 22px;border-bottom:1px solid var(--stroke)">
+              <div style="min-width:0">
+                <div style="font-size:15.5px;font-weight:700;letter-spacing:-.015em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ chatTitle }}</div>
+                <div style="font-size:11px;color:var(--sub);font-family:'JetBrains Mono',monospace;margin-top:3px">{{ chatMeta }}</div>
+              </div>
+              <div style="flex:1"></div>
+              <div style="flex:none;position:relative">
+                <div onClick="{{ toggleChatMenu }}" title="Настройки чата" style="width:34px;height:34px;display:grid;place-items:center;border-radius:12px;border:1px solid {{ menuBd }};background:{{ menuBg }};color:{{ menuCol }};cursor:pointer;transition:background .18s,color .18s" style-hover="background:var(--hover);color:var(--txt)">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 6.4h.01M12 12h.01M12 17.6h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"></path></svg>
+                </div>
+                <sc-if value="{{ chatMenu }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:42px;right:0;z-index:9;width:236px;padding:6px;border-radius:18px;border:1px solid var(--stroke2);background:var(--solid);box-shadow:0 20px 48px rgba(0,0,0,.42);display:flex;flex-direction:column;gap:2px">
+                  <div style="padding:8px 11px 6px;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Текущий чат</div>
+                  <div onClick="{{ togglePin }}" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:500;color:var(--body)" style-hover="background:var(--hover);color:var(--txt)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex:none"><path d="M9.5 4.5h5l-.7 5.2 3 2.6H7.2l3-2.6-.7-5.2ZM12 12.3V20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{ pinLabel }}
+                  </div>
+                  <div onClick="{{ clearChat }}" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:500;color:var(--body)" style-hover="background:var(--hover);color:var(--txt)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex:none"><path d="M4.5 8.5h15M9 8.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v2.5M10 12.5v5M14 12.5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Очистить историю
+                  </div>
+                  <div style="height:1px;margin:4px 6px;background:var(--stroke)"></div>
+                  <div onClick="{{ deleteChat }}" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:600;color:var(--dgr)" style-hover="background:rgba(255,122,122,.12)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex:none"><path d="M5.5 7.5h13l-1 12.5h-11l-1-12.5ZM9 7.5V5.6A1.6 1.6 0 0 1 10.6 4h2.8A1.6 1.6 0 0 1 15 5.6v1.9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>Удалить чат
+                  </div>
+                  <div style="padding:2px 11px 8px;font-size:10.5px;line-height:1.45;color:var(--faint)">После удаления откроется новый чат.</div>
+                </div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:0;overflow:auto;padding:22px;display:flex;flex-direction:column;gap:15px">
+              <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:7px;align-items:{{ m.align }}">
+                  <div style="display:flex;gap:11px;align-items:flex-start;max-width:82%;flex-direction:{{ m.dir }}">
+                    <div style="width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-size:12px;font-weight:700;color:{{ m.avCol }};background:{{ m.avBg }}">{{ m.av }}</div>
+                    <div style="padding:13px 17px;border-radius:{{ m.radius }};font-size:14px;line-height:1.55;text-wrap:pretty;background:{{ m.bg }};color:{{ m.col }};border:1px solid {{ m.bd }}">
+                      <div>{{ m.t }}</div>
+                      <sc-for list="{{ m.l }}" as="li" hint-placeholder-count="0">
+                        <div style="display:flex;gap:9px;margin-top:9px;font-size:13.5px;line-height:1.5">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding-top:3px;color:var(--a2)">{{ li.n }}</span><span>{{ li.t }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:4px;padding-left:41px">
+                      <sc-for list="{{ m.acts }}" as="a" hint-placeholder-count="0">
+                        <div title="{{ a.t }}" style="width:28px;height:28px;display:grid;place-items:center;border-radius:9px;cursor:pointer;color:var(--faint);transition:background .16s,color .16s" style-hover="background:var(--hover);color:var(--txt)">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="{{ a.d }}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+
+              <sc-if value="{{ typing }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:11px;align-items:center">
+                  <div style="width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-size:13px;color:#fff;background:linear-gradient(140deg,var(--a1),var(--a2));animation:spin 3.6s linear infinite">✦</div>
+                  <div style="font-size:14px;font-weight:600;background-image:linear-gradient(100deg,var(--faint) 18%,var(--txt) 38%,var(--a2) 52%,var(--faint) 74%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 2.3s linear infinite">Думаю…</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ chatEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;text-align:center;padding:40px 20px">
+                  <div style="width:44px;height:44px;border-radius:16px;display:grid;place-items:center;font-size:18px;color:#fff;background:linear-gradient(140deg,var(--a1),var(--a2) 55%,var(--a3));background-size:var(--bgsz,100% 100%);box-shadow:var(--glow);animation:var(--anmL,breathe 11s ease-in-out infinite,glowbreathe 7s ease-in-out infinite)">✦</div>
+                  <div style="font-size:14.5px;font-weight:600">Новый чат</div>
+                  <div style="font-size:12.5px;color:var(--sub);max-width:300px;line-height:1.5;text-wrap:pretty">Напишите запрос или скажите «Привет, EVS» — история начнётся с нуля.</div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="flex:none;padding:14px 20px 18px">
+              <div style="display:flex;align-items:center;gap:10px;padding:8px 9px 8px 16px;border-radius:26px;border:1px solid {{ composerBd }};background:{{ composerBg }};transition:background .22s,border-color .22s">
+                <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" disabled="{{ chatOff }}" placeholder="{{ composerHint }}" style="flex:1;min-width:0;font-size:14px;padding:6px 0;opacity:{{ inputOp }};cursor:{{ inputCur }};transition:opacity .22s">
+                <div onClick="{{ toggleChat }}" title="{{ chatToggleLabel }}" style="width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:50%;cursor:pointer;color:{{ chatTogCol }};background:{{ chatTogBg }}" style-hover="background:var(--hover)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="{{ chatTogIcon }}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </div>
+                <div title="{{ ctxTitle }}" style="flex:none;width:34px;height:34px;display:grid;place-items:center;position:relative">
+                  <svg width="30" height="30" viewBox="0 0 36 36" style="transform:rotate(-90deg)"><circle cx="18" cy="18" r="14" fill="none" stroke="var(--chip)" stroke-width="3"></circle><circle cx="18" cy="18" r="14" fill="none" stroke="{{ ctxCol }}" stroke-width="3" stroke-linecap="round" stroke-dasharray="88" stroke-dashoffset="{{ ctxDash }}" style="transition:stroke-dashoffset .5s ease,stroke .4s"></circle></svg>
+                  <span style="position:absolute;font-size:8.5px;font-family:'JetBrains Mono',monospace;color:var(--sub)">{{ ctxNum }}</span>
+                </div>
+                <div onClick="{{ send }}" style="flex:none;display:flex;align-items:center;gap:7px;padding:10px 18px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(96deg,var(--a1),var(--a2) 52%,var(--a3));background-size:180% 100%;box-shadow:0 8px 22px rgba(155,114,203,.34);opacity:{{ inputOp }};pointer-events:{{ sendPE }};transition:background-position .35s,opacity .22s" style-hover="background-position:100% 50%">{{ sendLabel }}
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="{{ sendIcon }}" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Диалог" style="display:flex;gap:18px;height:100%;min-height:560px">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);overflow:hidden">
+            <div style="flex:1;min-height:0;overflow:auto;padding:26px 26px 8px;display:flex;flex-direction:column;gap:15px">
+              <div style="display:flex;flex-direction:column;gap:6px;padding-bottom:8px">
+                <div style="font-size:28px;font-weight:800;letter-spacing:-.035em;background:linear-gradient(96deg,var(--a1),var(--a2) 50%,var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent">Чем могу помочь?</div>
+                <div style="font-size:13.5px;color:var(--sub);max-width:520px;text-wrap:pretty">Приватный ИИ для письма, планирования, кода и повседневных вопросов.</div>
+              </div>
+              <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:7px;align-items:{{ m.align }}">
+                  <div style="display:flex;gap:11px;align-items:flex-start;max-width:78%;flex-direction:{{ m.dir }}">
+                    <div style="width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-size:12px;font-weight:700;color:{{ m.avCol }};background:{{ m.avBg }}">{{ m.av }}</div>
+                    <div style="padding:13px 17px;border-radius:{{ m.radius }};font-size:14px;line-height:1.55;text-wrap:pretty;background:{{ m.bg }};color:{{ m.col }};border:1px solid {{ m.bd }}">
+                      <div>{{ m.t }}</div>
+                      <sc-for list="{{ m.l }}" as="li" hint-placeholder-count="0">
+                        <div style="display:flex;gap:9px;margin-top:9px;font-size:13.5px;line-height:1.5">
+                          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;padding-top:3px;color:var(--a2)">{{ li.n }}</span><span>{{ li.t }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:4px;padding-left:41px">
+                      <sc-for list="{{ m.acts }}" as="a" hint-placeholder-count="0">
+                        <div title="{{ a.t }}" style="display:flex;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;cursor:pointer;color:var(--faint);font-size:11.5px;font-weight:500;transition:background .16s,color .16s" style-hover="background:var(--hover);color:var(--txt)">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="{{ a.d }}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>{{ a.t }}
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:11px;align-items:center">
+                  <div style="width:30px;height:30px;flex:none;border-radius:10px;display:grid;place-items:center;font-size:13px;color:#fff;background:linear-gradient(140deg,var(--a1),var(--a2));animation:spin 3.6s linear infinite">✦</div>
+                  <div style="font-size:14px;font-weight:600;background-image:linear-gradient(100deg,var(--faint) 18%,var(--txt) 38%,var(--a2) 52%,var(--faint) 74%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 2.3s linear infinite">Думаю…</div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="flex:none;padding:14px 22px 20px">
+              <sc-if value="{{ chatOff }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:12px;padding:16px 18px;border-radius:22px;border:1px dashed var(--stroke2);background:var(--field);color:var(--sub);font-size:13px">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" style="flex:none"><path d="M7 10.5V8a5 5 0 0 1 10 0v2.5M5.5 10.5h13V20h-13z" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path></svg>
+                  Чат отключён — работают только голосовые команды
+                  <div style="flex:1"></div>
+                  <div onClick="{{ toggleChat }}" style="flex:none;padding:8px 15px;border-radius:999px;background:var(--btn);color:var(--btnx);font-size:12.5px;font-weight:700;cursor:pointer">Включить чат</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ chatOn }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 9px 8px 16px;border-radius:26px;border:1px solid var(--stroke);background:var(--field)">
+                  <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="Спросите что угодно" style="flex:1;min-width:0;font-size:14px;padding:6px 0">
+                  <div style="flex:none;width:34px;height:34px;display:grid;place-items:center;position:relative">
+                    <svg width="30" height="30" viewBox="0 0 36 36" style="transform:rotate(-90deg)"><circle cx="18" cy="18" r="14" fill="none" stroke="var(--chip)" stroke-width="3"></circle><circle cx="18" cy="18" r="14" fill="none" stroke="var(--a2)" stroke-width="3" stroke-linecap="round" stroke-dasharray="88" stroke-dashoffset="{{ ctxDash }}"></circle></svg>
+                    <span style="position:absolute;font-size:8.5px;font-family:'JetBrains Mono',monospace;color:var(--sub)">{{ ctxNum }}</span>
+                  </div>
+                  <div onClick="{{ toggleChat }}" title="{{ chatToggleLabel }}" style="width:34px;height:34px;flex:none;display:grid;place-items:center;border-radius:50%;cursor:pointer;color:{{ chatTogCol }};background:{{ chatTogBg }}" style-hover="background:var(--hover)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="{{ chatTogIcon }}" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                  </div>
+                  <div onClick="{{ send }}" style="flex:none;display:flex;align-items:center;gap:7px;padding:10px 18px;border-radius:999px;cursor:pointer;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(96deg,var(--a1),var(--a2) 52%,var(--a3));background-size:180% 100%;box-shadow:0 8px 22px rgba(155,114,203,.34);transition:background-position .35s" style-hover="background-position:100% 50%">{{ sendLabel }}
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="{{ sendIcon }}" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="width:286px;flex:none;display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh)">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Диалоги</div>
+              <div style="flex:1"></div>
+              <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--faint)">12</span>
+            </div>
+            <sc-for list="{{ threads }}" as="t" hint-placeholder-count="5">
+              <div style="display:flex;flex-direction:column;gap:4px">
+                <sc-if value="{{ t.isGroup }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);padding:8px 2px 2px">{{ t.group }}</div>
+                </sc-if>
+                <sc-if value="{{ t.isItem }}" hint-placeholder-val="{{ true }}">
+                  <div onClick="{{ t.go }}" style="display:flex;align-items:flex-start;gap:9px;padding:11px 12px;border-radius:15px;cursor:pointer;background:{{ t.bg }};border:1px solid {{ t.bd }};transition:background .18s" style-hover="background:var(--hover)">
+                    <div style="min-width:0;flex:1">
+                      <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ t.col }}">{{ t.title }}</div>
+                      <div style="font-size:10.5px;color:var(--faint);margin-top:3px;font-family:'JetBrains Mono',monospace">{{ t.meta }}</div>
+                    </div>
+                    <div onClick="{{ t.menu }}" title="Настройки чата" style="flex:none;width:24px;height:24px;margin:-2px -4px 0 0;display:grid;place-items:center;border-radius:8px;font-size:13px;line-height:1;color:{{ t.dotCol }};background:{{ t.menuBg }};transition:background .16s,color .16s" style-hover="background:var(--hover);color:var(--txt)">⋮</div>
+                  </div>
+                  <sc-if value="{{ t.isOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin:2px 0 4px;padding:5px;border-radius:14px;border:1px solid var(--stroke2);background:var(--solid);box-shadow:0 14px 34px rgba(0,0,0,.34);display:flex;flex-direction:column;gap:1px">
+                      <div onClick="{{ t.pin }}" style="padding:8px 10px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--body)" style-hover="background:var(--hover);color:var(--txt)">{{ t.pinLabel }}</div>
+                      <div onClick="{{ t.clear }}" style="padding:8px 10px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:500;color:var(--body)" style-hover="background:var(--hover);color:var(--txt)">Очистить историю</div>
+                      <div onClick="{{ t.del }}" style="padding:8px 10px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--dgr)" style-hover="background:rgba(255,122,122,.12)">Удалить чат</div>
+                    </div>
+                  </sc-if>
+                </sc-if>
+              </div>
+            </sc-for>
+            <div style="flex:1"></div>
+            <div onClick="{{ go.log }}" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:14px;border:1px solid var(--stroke);background:var(--field);font-size:12.5px;font-weight:600;color:var(--sub);cursor:pointer" style-hover="background:var(--hover);color:var(--txt)">Архив чатов</div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isCmd }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Команды" style="display:flex;gap:18px;align-items:flex-start">
+          <div style="width:230px;flex:0 1 230px;min-width:190px;padding:14px;border-radius:22px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ cmdTabs }}" as="c" hint-placeholder-count="3">
+              <div onClick="{{ c.go }}" style="padding:11px 14px;border-radius:14px;cursor:pointer;font-size:13px;font-weight:600;background:{{ c.bg }};color:{{ c.col }};transition:background .18s" style-hover="background:var(--hover)">{{ c.t }}</div>
+            </sc-for>
+          </div>
+
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
+            <div style="padding:22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;gap:14px">
+                <div>
+                  <div style="font-size:16px;font-weight:700;letter-spacing:-.015em">Каталог команд</div>
+                  <div style="font-size:12px;color:var(--sub);margin-top:3px">Фраза → действие в системе. Работают и при выключенном чате.</div>
+                </div>
+                <div style="flex:1"></div>
+                <div style="flex:none;display:flex;align-items:center;gap:7px;padding:10px 17px;border-radius:999px;cursor:pointer;font-size:12.5px;font-weight:700;color:#fff;background:linear-gradient(96deg,var(--a1),var(--a2) 55%,var(--a3));box-shadow:0 8px 20px rgba(155,114,203,.3)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path></svg>Добавить команду
+                </div>
+              </div>
+
+              <sc-for list="{{ cmds }}" as="c" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:18px;padding:15px 18px;border-radius:20px;border:1px solid {{ c.rowBd }};background:{{ c.rowBg }};box-shadow:{{ c.rowGl }};transition:background .22s,border-color .22s">
+                  <div style="width:210px;flex:none">
+                    <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">фраза</div>
+                    <div style="font-size:14px;font-weight:600;margin-top:4px">«{{ c.phrase }}»</div>
+                  </div>
+                  <div style="width:150px;flex:none">
+                    <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">действие</div>
+                    <div style="font-size:13px;margin-top:4px;color:var(--body)">{{ c.act }}</div>
+                  </div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">цель</div>
+                    <div style="font-size:13px;margin-top:4px;color:var(--body);font-family:'JetBrains Mono',monospace">{{ c.target }}</div>
+                  </div>
+                  <div onClick="{{ c.toggle }}" style="flex:none;width:46px;height:26px;border-radius:999px;cursor:pointer;padding:3px;background:{{ c.trackBg }};transition:background .22s">
+                    <div style="width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .22s cubic-bezier(.4,0,.2,1);transform:translateX({{ c.knob }});box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding:20px 22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);width:100%">Медиа-шорткаты</div>
+              <sc-for list="{{ shortcuts }}" as="s" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:9px;padding:9px 14px;border-radius:14px;border:1px solid var(--stroke);background:var(--field)">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--a2)">{{ s.k }}</span>
+                  <span style="font-size:12.5px;color:var(--body)">{{ s.t }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isMon }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Модули" style="display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Состояние подсистем</div>
+            <div style="flex:1"></div>
+            <div onClick="{{ toggleAuto }}" style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--sub);cursor:pointer">Автообновление
+              <div style="width:44px;height:25px;border-radius:999px;padding:3px;background:{{ autoTrack }};transition:background .22s">
+                <div style="width:19px;height:19px;border-radius:50%;background:#fff;transition:transform .22s;transform:translateX({{ autoKnob }})"></div>
+              </div>
+            </div>
+            <div onClick="{{ poll }}" style="display:flex;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;border:1px solid var(--stroke);background:var(--field);font-size:12.5px;font-weight:600;cursor:pointer" style-hover="background:var(--hover)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="animation:spin 1.1s linear;animation-iteration-count:{{ spinCount }}"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4.5V10h-5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>Обновить
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+            <sc-for list="{{ mods }}" as="m" hint-placeholder-count="3">
+              <div style="padding:20px;border-radius:24px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:15px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="font-size:15px;font-weight:700;letter-spacing:-.015em">{{ m.n }}</div>
+                  <div style="flex:1"></div>
+                  <div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:{{ m.stCol }}">
+                    <span style="width:6px;height:6px;border-radius:50%;background:{{ m.stCol }};box-shadow:0 0 8px {{ m.stCol }}"></span>{{ m.st }}
+                  </div>
+                </div>
+                <sc-for list="{{ m.rows }}" as="r" hint-placeholder-count="3">
+                  <div style="display:flex;flex-direction:column;gap:6px">
+                    <div style="display:flex;align-items:baseline;gap:8px">
+                      <span style="font-size:12px;color:var(--sub)">{{ r.n }}</span><div style="flex:1"></div>
+                      <span style="font-size:12.5px;font-weight:600;font-family:'JetBrains Mono',monospace;color:{{ r.col }}">{{ r.v }}</span>
+                    </div>
+                    <sc-if value="{{ r.hasBar }}" hint-placeholder-val="{{ true }}">
+                      <div style="height:4px;border-radius:4px;background:var(--chip);overflow:hidden"><div style="height:100%;border-radius:4px;background:linear-gradient(90deg,var(--a1),var(--a2));transition:width .8s cubic-bezier(.4,0,.2,1);width:{{ r.w }}"></div></div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;gap:16px">
+            <div style="flex:1;padding:20px 22px;border-radius:24px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="font-size:14.5px;font-weight:700">Загрузка процессора</div><div style="flex:1"></div>
+                <span style="font-size:11px;color:var(--faint);font-family:'JetBrains Mono',monospace">последние 60 с</span>
+              </div>
+              <svg viewBox="0 0 600 120" preserveAspectRatio="none" style="width:100%;height:120px">
+                <defs><linearGradient id="spk" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="var(--a1)"></stop><stop offset="100%" stop-color="var(--a3)"></stop></linearGradient>
+                <linearGradient id="spkf" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--a2)" stop-opacity=".28"></stop><stop offset="100%" stop-color="var(--a2)" stop-opacity="0"></stop></linearGradient></defs>
+                <polygon points="{{ sparkArea }}" fill="url(#spkf)"></polygon>
+                <polyline points="{{ sparkLine }}" fill="none" stroke="url(#spk)" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"></polyline>
+              </svg>
+            </div>
+            <div style="width:300px;flex:none;padding:20px 22px;border-radius:24px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:11px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Журнал</div>
+              <sc-for list="{{ logs }}" as="l" hint-placeholder-count="4">
+                <div style="display:flex;gap:9px;align-items:flex-start">
+                  <span style="width:6px;height:6px;border-radius:50%;flex:none;margin-top:6px;background:{{ l.col }}"></span>
+                  <div style="min-width:0">
+                    <div style="font-size:12.5px;line-height:1.4;color:var(--body)">{{ l.t }}</div>
+                    <div style="font-size:10.5px;color:var(--faint);font-family:'JetBrains Mono',monospace;margin-top:2px">{{ l.time }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isImg }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Nexus Lumina" style="display:flex;gap:18px;align-items:flex-start">
+          <div style="width:404px;flex:0 1 404px;min-width:300px;display:flex;flex-direction:column;gap:16px;padding:22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh)">
+            <div>
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">Описание</div>
+              <textarea rows="4" style="width:100%;padding:14px 16px;border-radius:18px;border:1px solid var(--stroke);background:var(--field);font-size:13.5px;line-height:1.5">ретро-пульт управления, светящиеся экраны, мягкий голографический свет, палитра синий-циан, объёмный воздух, 16:9</textarea>
+            </div>
+            <div>
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">Исключить</div>
+              <input value="плохая анатомия, низкое разрешение, водяные знаки" style="width:100%;padding:12px 16px;border-radius:16px;border:1px solid var(--stroke);background:var(--field);font-size:13px;color:var(--sub)">
+            </div>
+            <sc-for list="{{ imgSliders }}" as="s" hint-placeholder-count="2">
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:baseline">
+                  <span style="font-size:12.5px;color:var(--body)">{{ s.n }}</span><div style="flex:1"></div>
+                  <span style="font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ s.v }}</span>
+                </div>
+                <div onClick="{{ s.set }}" style="height:20px;display:flex;align-items:center;cursor:pointer">
+                  <div style="width:100%;height:5px;border-radius:5px;background:var(--chip);position:relative">
+                    <div style="height:100%;border-radius:5px;background:linear-gradient(90deg,var(--a1),var(--a2));width:{{ s.w }}"></div>
+                    <div style="position:absolute;top:50%;left:{{ s.w }};width:14px;height:14px;margin-left:-7px;border-radius:50%;background:#fff;transform:translateY(-50%);box-shadow:0 2px 8px rgba(0,0,0,.35)"></div>
+                  </div>
+                </div>
+              </div>
+            </sc-for>
+            <div>
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:9px">Разрешение</div>
+              <div style="display:flex;gap:8px">
+                <sc-for list="{{ resList }}" as="r" hint-placeholder-count="3">
+                  <div onClick="{{ r.go }}" style="flex:1;text-align:center;padding:10px 0;border-radius:14px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:'JetBrains Mono',monospace;background:{{ r.bg }};color:{{ r.col }};border:1px solid {{ r.bd }};transition:background .18s">{{ r.t }}</div>
+                </sc-for>
+              </div>
+            </div>
+            <div onClick="{{ generate }}" style="display:flex;align-items:center;justify-content:center;gap:9px;padding:15px;border-radius:18px;cursor:pointer;font-size:14.5px;font-weight:700;color:#fff;background:linear-gradient(96deg,var(--a1),var(--a2) 52%,var(--a3));background-size:180% 100%;box-shadow:0 12px 30px rgba(155,114,203,.36);transition:background-position .4s" style-hover="background-position:100% 50%"><span>✦</span>{{ genLabel }}</div>
+          </div>
+
+          <div style="flex:1 1 auto;min-width:340px;display:flex;flex-direction:column;gap:16px">
+            <div style="padding:14px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh)">
+              <div style="position:relative;height:392px;border-radius:20px;overflow:hidden;background:repeating-linear-gradient(135deg,var(--field) 0 10px,transparent 10px 20px);border:1px solid var(--stroke);display:grid;place-items:center">
+                <div style="text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center">
+                  <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--faint);letter-spacing:.06em">{{ genState }}</div>
+                  <div style="width:196px;height:4px;border-radius:4px;background:var(--chip);overflow:hidden"><div style="height:100%;width:{{ genPct }};border-radius:4px;background:linear-gradient(90deg,var(--a1),var(--a3));transition:width .5s linear"></div></div>
+                  <div style="font-size:12px;color:var(--sub);max-width:280px;text-wrap:pretty">Здесь появится результат — сюда же можно перетащить референс</div>
+                </div>
+                <div style="position:absolute;left:14px;top:14px;display:flex;gap:7px">
+                  <div style="padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:600;color:#fff;background:linear-gradient(96deg,var(--a1),var(--a2))">Скачать HD</div>
+                  <div style="padding:7px 13px;border-radius:999px;font-size:11.5px;font-weight:600;color:var(--body);background:var(--chip);border:1px solid var(--stroke)">Апскейл 4×</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:18px 20px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:12px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">История</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+                <sc-for list="{{ history }}" as="h" hint-placeholder-count="4">
+                  <div style="aspect-ratio:1;border-radius:16px;border:1px solid var(--stroke);background:repeating-linear-gradient(135deg,var(--field) 0 8px,transparent 8px 16px);display:grid;place-items:end;padding:9px;cursor:pointer" style-hover="border-color:var(--stroke2)">
+                    <span style="font-size:9.5px;font-family:'JetBrains Mono',monospace;color:var(--faint)">{{ h.t }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isTts }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Nexus Sonora" style="display:flex;gap:18px;align-items:flex-start">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;gap:4px;padding:5px;border-radius:18px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur))">
+              <sc-for list="{{ ttsTabs }}" as="t" hint-placeholder-count="2">
+                <div onClick="{{ t.go }}" style="flex:1;text-align:center;padding:11px;border-radius:14px;cursor:pointer;font-size:13px;font-weight:600;background:{{ t.bg }};color:{{ t.col }};transition:background .18s">{{ t.t }}</div>
+              </sc-for>
+            </div>
+
+            <div style="padding:22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:17px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Голос</div>
+                <div style="flex:1"></div>
+                <div style="display:flex;align-items:center;gap:9px;padding:8px 14px;border-radius:999px;border:1px solid var(--stroke);background:var(--field);font-size:12.5px;font-weight:600;cursor:pointer">{{ voiceName }}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"></path></svg>
+                </div>
+              </div>
+              <sc-for list="{{ ttsSliders }}" as="s" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <div style="display:flex;align-items:baseline">
+                    <span style="font-size:12.5px;color:var(--body)">{{ s.n }}</span><div style="flex:1"></div>
+                    <span style="font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ s.v }}</span>
+                  </div>
+                  <div onClick="{{ s.set }}" style="height:20px;display:flex;align-items:center;cursor:pointer">
+                    <div style="width:100%;height:5px;border-radius:5px;background:var(--chip);position:relative">
+                      <div style="height:100%;border-radius:5px;background:linear-gradient(90deg,var(--a1),var(--a2));width:{{ s.w }}"></div>
+                      <div style="position:absolute;top:50%;left:{{ s.w }};width:14px;height:14px;margin-left:-7px;border-radius:50%;background:#fff;transform:translateY(-50%);box-shadow:0 2px 8px rgba(0,0,0,.35)"></div>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="padding:22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:14px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Текст для озвучки</div>
+              <textarea rows="5" style="width:100%;padding:15px 17px;border-radius:18px;border:1px solid var(--stroke);background:var(--field);font-size:14px;line-height:1.55">Нейроконфигурация загружена. Задержка звукового конвейера на этом устройстве — восемнадцать миллисекунд.</textarea>
+              <div style="display:flex;align-items:center;gap:14px">
+                <span style="font-size:11.5px;color:var(--faint);font-family:'JetBrains Mono',monospace">148 / 5000</span>
+                <div style="flex:1"></div>
+                <div onClick="{{ speak }}" style="display:flex;align-items:center;gap:8px;padding:12px 22px;border-radius:999px;cursor:pointer;font-size:13.5px;font-weight:700;color:#fff;background:linear-gradient(96deg,var(--a1),var(--a2) 52%,var(--a3));box-shadow:0 10px 26px rgba(155,114,203,.34)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M8 5.5v13l11-6.5-11-6.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>{{ speakLabel }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="width:320px;flex:none;display:flex;flex-direction:column;gap:16px">
+            <div style="padding:20px 22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:15px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Волна</div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:2px;height:96px">
+                <sc-for list="{{ bars }}" as="b" hint-placeholder-count="30">
+                  <div style="flex:1;border-radius:3px;background:linear-gradient(180deg,var(--a1),var(--a3));transform-origin:center;height:{{ b.h }};animation:bar 1.05s ease-in-out infinite alternate;animation-delay:{{ b.d }};animation-play-state:{{ speakState }}"></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--faint)"><span>{{ speakLabelShort }}</span><div style="flex:1"></div><span>48 кГц · 16 бит</span></div>
+            </div>
+            <div style="padding:20px 22px;border-radius:26px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:13px">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Последние озвучки</div>
+              <sc-for list="{{ ttsHistory }}" as="h" hint-placeholder-count="3">
+                <div style="display:flex;gap:11px;align-items:flex-start;padding:11px 12px;border-radius:16px;border:1px solid var(--stroke);background:var(--field);cursor:pointer" style-hover="background:var(--hover)">
+                  <div style="width:28px;height:28px;flex:none;border-radius:9px;display:grid;place-items:center;color:var(--a2);background:var(--chip)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M8 5.5v13l11-6.5-11-6.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"></path></svg>
+                  </div>
+                  <div style="min-width:0;flex:1">
+                    <div style="font-size:12.5px;font-weight:600">{{ h.n }}</div>
+                    <div style="font-size:11px;color:var(--faint);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.t }}</div>
+                  </div>
+                  <span style="font-size:10px;color:var(--faint);font-family:'JetBrains Mono',monospace;flex:none">{{ h.time }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ isSet }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Настройки" style="display:flex;gap:18px;align-items:flex-start">
+          <div style="width:252px;flex:none;padding:12px;border-radius:22px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:2px">
+            <sc-for list="{{ setTabs }}" as="s" hint-placeholder-count="11">
+              <div onClick="{{ s.go }}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;cursor:pointer;font-size:12.8px;font-weight:600;background:{{ s.bg }};color:{{ s.col }};box-shadow:{{ s.gl }};transition:background .18s,color .18s" style-hover="background:var(--hover);color:var(--txt)">
+                <span style="width:13px;flex:none;font-size:9.5px;font-family:'JetBrains Mono',monospace;color:var(--faint)">{{ s.no }}</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="flex:none;color:{{ s.icoCol }};animation:{{ s.glowAnm }};transition:color .5s"><path pathLength="1" d="{{ s.d }}" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray:{{ s.dash }};animation:{{ s.drawAnm }}"></path></svg>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.t }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <div style="min-width:0">
+                <div style="font-size:19px;font-weight:700;letter-spacing:-.022em">{{ setTitle }}</div>
+                <div style="font-size:12.5px;color:var(--sub);margin-top:3px">{{ setSub }}</div>
+              </div>
+              <div style="flex:1"></div>
+              <sc-if value="{{ setMulti }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:3px;padding:4px;border-radius:16px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur))">
+                  <sc-for list="{{ setPages }}" as="p" hint-placeholder-count="3">
+                    <div onClick="{{ p.go }}" style="padding:8px 14px;border-radius:12px;cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap;background:{{ p.bg }};color:{{ p.col }};box-shadow:{{ p.gl }};transition:background .18s,color .18s">{{ p.t }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+
+            <sc-for list="{{ setCards }}" as="c" hint-placeholder-count="2">
+            <div style="padding:20px 22px;border-radius:24px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));box-shadow:var(--sh);display:flex;flex-direction:column;gap:12px">
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">{{ c.t }}</div>
+
+              <sc-for list="{{ c.rows }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;flex-direction:column;gap:11px;padding:14px 16px;border-radius:18px;border:1px solid {{ r.bd }};background:{{ r.bg }};box-shadow:{{ r.gl }};transition:background .22s,border-color .22s">
+                  <div style="display:flex;align-items:center;gap:14px">
+                    <div style="min-width:0;max-width:54%">
+                      <div style="font-size:13.5px;font-weight:600">{{ r.n }}</div>
+                      <sc-if value="{{ r.hasSub }}" hint-placeholder-val="{{ true }}">
+                        <div style="font-size:11.5px;line-height:1.45;color:var(--faint);margin-top:3px;text-wrap:pretty">{{ r.s }}</div>
+                      </sc-if>
+                    </div>
+                    <div style="flex:1"></div>
+                    <sc-if value="{{ r.isTog }}" hint-placeholder-val="{{ true }}">
+                      <div onClick="{{ r.toggle }}" style="flex:none;width:46px;height:26px;border-radius:999px;cursor:pointer;padding:3px;background:{{ r.trackBg }};transition:background .22s">
+                        <div style="width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .22s cubic-bezier(.4,0,.2,1);transform:translateX({{ r.knob }});box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ r.isSeg }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-wrap:wrap;justify-content:flex-end;gap:3px;padding:3px;border-radius:13px;background:var(--chip)">
+                        <sc-for list="{{ r.opts }}" as="o" hint-placeholder-count="2">
+                          <div onClick="{{ o.go }}" style="padding:7px 13px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap;background:{{ o.bg }};color:{{ o.col }};box-shadow:{{ o.sh }};transition:background .18s,color .18s">{{ o.t }}</div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ r.isVal }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:none;padding:8px 14px;border-radius:12px;background:var(--chip);font-size:12.5px;font-family:'JetBrains Mono',monospace;color:var(--body)">{{ r.v }}</div>
+                    </sc-if>
+                    <sc-if value="{{ r.isTxt }}" hint-placeholder-val="{{ false }}">
+                      <input value="{{ r.txt }}" onChange="{{ r.onTxt }}" style="flex:none;width:256px;padding:9px 14px;border-radius:13px;border:1px solid var(--stroke);background:var(--solid);font-size:12.5px;font-family:'JetBrains Mono',monospace;color:var(--body)">
+                    </sc-if>
+                    <sc-if value="{{ r.isKey }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:8px;flex:none">
+                        <span style="padding:8px 13px;border-radius:11px;background:var(--chip);font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--body)">{{ r.v }}</span>
+                        <div style="padding:8px 14px;border-radius:11px;border:1px solid var(--stroke2);font-size:12px;font-weight:600;cursor:pointer" style-hover="background:var(--hover)">Назначить</div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ r.isBtn }}" hint-placeholder-val="{{ false }}">
+                      <div onClick="{{ r.click }}" style="flex:none;padding:9px 16px;border-radius:12px;cursor:pointer;font-size:12.5px;font-weight:600;color:{{ r.btnCol }};border:1px solid {{ r.btnBd }};background:{{ r.btnBg }};transition:background .18s" style-hover="background:var(--hover)">{{ r.btn }}</div>
+                    </sc-if>
+                    <sc-if value="{{ r.isSld }}" hint-placeholder-val="{{ false }}">
+                      <div style="flex:none;padding:7px 13px;border-radius:11px;background:var(--chip);font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ r.v }}</div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{ r.isSld }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ r.set }}" style="height:20px;display:flex;align-items:center;cursor:pointer">
+                      <div style="width:100%;height:5px;border-radius:5px;background:var(--chip);position:relative">
+                        <div style="height:100%;border-radius:5px;background:linear-gradient(90deg,var(--a1),var(--a2));width:{{ r.w }}"></div>
+                        <div style="position:absolute;top:50%;left:{{ r.w }};width:14px;height:14px;margin-left:-7px;border-radius:50%;background:#fff;transform:translateY(-50%);box-shadow:0 2px 8px rgba(0,0,0,.35)"></div>
+                      </div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ r.isArea }}" hint-placeholder-val="{{ false }}">
+                    <textarea rows="3" value="{{ r.txt }}" onChange="{{ r.onTxt }}" style="width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--stroke);background:var(--solid);font-size:13px;line-height:1.5;color:var(--body)"></textarea>
+                  </sc-if>
+                </div>
+              </sc-for>
+
+              <sc-if value="{{ c.isModels }}" hint-placeholder-val="{{ false }}">
+                <sc-for list="{{ c.items }}" as="m" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:18px;border:1px solid {{ m.bd }};background:{{ m.bg }}">
+                    <div style="min-width:0;flex:1">
+                      <div style="display:flex;align-items:center;gap:9px">
+                        <span style="font-size:13.5px;font-weight:600">{{ m.n }}</span>
+                        <span style="padding:3px 9px;border-radius:999px;font-size:10px;font-weight:700;color:{{ m.stCol }};background:var(--chip)">{{ m.st }}</span>
+                      </div>
+                      <div style="font-size:11.5px;color:var(--faint);margin-top:3px">{{ m.s }}</div>
+                    </div>
+                    <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--faint);flex:none">{{ m.m }}</span>
+                    <div style="flex:none;padding:8px 15px;border-radius:11px;border:1px solid var(--stroke2);font-size:12px;font-weight:600;cursor:pointer" style-hover="background:var(--hover)">{{ m.act }}</div>
+                  </div>
+                </sc-for>
+              </sc-if>
+
+              <sc-if value="{{ c.isWidget }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;align-items:center;gap:20px;padding:16px;border-radius:20px;border:1px solid {{ stBd }};background:var(--field);transition:border-color .5s">
+                  <div style="position:relative;width:96px;height:96px;flex:none;display:grid;place-items:center">
+                    <div style="position:absolute;inset:0;border-radius:50%;border:1px solid {{ stC1 }};animation:ring 2.9s ease-out infinite;animation-play-state:{{ playState }}"></div>
+                    <div style="width:54px;height:54px;border-radius:50%;background:{{ orbBg }};box-shadow:{{ orbSh }};transition:background .5s,box-shadow .5s"></div>
+                  </div>
+                  <div style="min-width:0;display:flex;flex-direction:column;gap:11px">
+                    <div style="font-size:13.5px;font-weight:700;color:{{ stateCol }};transition:color .45s">{{ stateHint }}</div>
+                    <div style="display:flex;gap:7px;flex-wrap:wrap">
+                      <sc-for list="{{ vizStates }}" as="v" hint-placeholder-count="4">
+                        <div onClick="{{ v.go }}" style="padding:8px 14px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid {{ v.bd }};background:{{ v.bg }};color:{{ v.col }};transition:background .2s,color .2s,border-color .2s">{{ v.t }}</div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+                  <sc-for list="{{ vizStyles }}" as="v" hint-placeholder-count="8">
+                    <div onClick="{{ v.go }}" style="display:flex;flex-direction:column;gap:9px;padding:11px;border-radius:16px;cursor:pointer;border:1px solid {{ v.bd }};background:{{ v.bg }};transition:border-color .2s,background .2s">
+                      <div style="height:50px;border-radius:11px;background:{{ v.prev }}"></div>
+                      <div style="font-size:12px;font-weight:600;text-align:center;color:{{ v.col }}">{{ v.t }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ c.isLog }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+                  <sc-for list="{{ logFilters }}" as="f" hint-placeholder-count="7">
+                    <div onClick="{{ f.go }}" style="padding:7px 13px;border-radius:999px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid {{ f.bd }};background:{{ f.bg }};color:{{ f.col }};transition:background .18s,color .18s">{{ f.t }}</div>
+                  </sc-for>
+                  <div style="flex:1"></div>
+                  <div style="padding:8px 14px;border-radius:11px;border:1px solid var(--stroke2);font-size:12px;font-weight:600;cursor:pointer" style-hover="background:var(--hover)">Скопировать</div>
+                  <div style="padding:8px 14px;border-radius:11px;border:1px solid var(--stroke2);font-size:12px;font-weight:600;cursor:pointer" style-hover="background:var(--hover)">Папка логов</div>
+                </div>
+                <div style="display:flex;flex-direction:column;padding:14px 16px;border-radius:18px;border:1px solid var(--stroke);background:var(--solid);font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.95">
+                  <sc-for list="{{ logLines }}" as="l" hint-placeholder-count="6">
+                    <div style="display:flex;gap:12px">
+                      <span style="color:var(--faint);flex:none">{{ l.time }}</span>
+                      <span style="color:{{ l.col }};flex:none;width:82px">{{ l.tag }}</span>
+                      <span style="color:var(--body);min-width:0">{{ l.t }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ c.isAppearance }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Тема</div>
+                <div style="display:flex;gap:12px">
+                  <sc-for list="{{ themeCards }}" as="t" hint-placeholder-count="2">
+                    <div onClick="{{ t.go }}" style="flex:1;padding:14px;border-radius:20px;cursor:pointer;border:1px solid {{ t.bd }};background:{{ t.bg }};box-shadow:{{ t.gl }};display:flex;flex-direction:column;gap:11px">
+                      <div style="height:56px;border-radius:13px;background:{{ t.preview }};position:relative;overflow:hidden">
+                        <div style="position:absolute;left:9px;top:9px;width:38%;height:9px;border-radius:5px;background:{{ t.bar1 }}"></div>
+                        <div style="position:absolute;left:9px;top:24px;width:64%;height:7px;border-radius:5px;background:{{ t.bar2 }}"></div>
+                        <div style="position:absolute;right:-14px;bottom:-22px;width:60px;height:44px;border-radius:50%;background:{{ t.blob }};filter:blur(11px)"></div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600">{{ t.t }}<div style="flex:1"></div><span style="color:{{ t.tick }};font-size:13px">{{ t.mark }}</span></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Акцент</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <sc-for list="{{ accCards }}" as="a" hint-placeholder-count="4">
+                    <div onClick="{{ a.go }}" style="display:flex;align-items:center;gap:10px;padding:10px 15px 10px 11px;border-radius:999px;cursor:pointer;border:1px solid {{ a.bd }};background:{{ a.bg }};font-size:12.5px;font-weight:600">
+                      <span style="width:22px;height:22px;border-radius:50%;background:{{ a.grad }};box-shadow:{{ a.gl }}"></span>{{ a.t }}
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Анимация градиента</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <sc-for list="{{ animCards }}" as="n" hint-placeholder-count="4">
+                    <div onClick="{{ n.go }}" style="display:flex;align-items:center;gap:10px;padding:10px 15px 10px 11px;border-radius:999px;cursor:pointer;border:1px solid {{ n.bd }};background:{{ n.bg }};font-size:12.5px;font-weight:600">
+                      <span style="width:22px;height:22px;border-radius:50%;background:linear-gradient(135deg,var(--a1),var(--a2) 52%,var(--a3));background-size:{{ n.sz }};animation:{{ n.an }};box-shadow:{{ n.gl }}"></span>{{ n.t }}
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11.5px;color:var(--faint)">{{ animHint }}</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Панели</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <sc-for list="{{ glassCards }}" as="g" hint-placeholder-count="3">
+                    <div onClick="{{ g.go }}" style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;cursor:pointer;border:1px solid {{ g.bd }};background:{{ g.bg }};box-shadow:{{ g.gl }};font-size:12.5px;font-weight:600">{{ g.t }}</div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11.5px;color:var(--faint)">{{ glassHint }}</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Фон</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap">
+                  <sc-for list="{{ bgCards }}" as="b" hint-placeholder-count="3">
+                    <div onClick="{{ b.go }}" style="flex:1 1 150px;padding:12px;border-radius:20px;cursor:pointer;border:1px solid {{ b.bd }};background:{{ b.bg }};box-shadow:{{ b.gl }};display:flex;flex-direction:column;gap:10px">
+                      <div style="height:52px;border-radius:13px;overflow:hidden;background:{{ b.prevBg }};position:relative">
+                        <div style="position:absolute;inset:0;background:{{ b.prevFx }};filter:blur(9px);opacity:{{ b.prevOp }}"></div>
+                        <div style="position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.36) .8px,transparent .8px);background-size:7px 7px;opacity:{{ b.prevDots }}"></div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600">{{ b.t }}<div style="flex:1"></div><span style="color:var(--a2);font-size:13px">{{ b.mark }}</span></div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11.5px;color:var(--faint)">{{ bgHint }}</div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">Сетка точек</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <sc-for list="{{ dotCards }}" as="d" hint-placeholder-count="3">
+                    <div onClick="{{ d.go }}" style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:999px;cursor:pointer;border:1px solid {{ d.bd }};background:{{ d.bg }};box-shadow:{{ d.gl }};font-size:12.5px;font-weight:600">{{ d.t }}</div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11.5px;color:var(--faint)">{{ dotHint }}</div>
+              </div>
+
+              <div onClick="{{ go.onboard }}" style="display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:600;color:var(--a1);cursor:pointer">Показать экран приветствия →</div>
+
+              </sc-if>
+            </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isOnboard }}" hint-placeholder-val="{{ false }}">
+  <div data-screen-label="Первый запуск" style="position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;padding:40px;text-align:center;animation:rise .4s ease both">
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 15px 7px 8px;border-radius:999px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));font-size:12px;font-weight:600;color:var(--body)">
+      <span style="width:26px;height:26px;border-radius:9px;display:grid;place-items:center;color:#fff;font-size:12px;background:linear-gradient(140deg,var(--a1),var(--a2) 55%,var(--a3))">✦</span>EVS · Enhanced Voice System
+      <span style="padding:3px 9px;border-radius:999px;background:var(--chip);font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--sub)">v1.2.0</span>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;align-items:center">
+      <div style="font-size:64px;line-height:1.02;font-weight:800;letter-spacing:-.045em;max-width:900px">Ассистент, который<br><span style="background:linear-gradient(96deg,var(--a1),var(--a2) 48%,var(--a3));background-size:var(--bgsz,100% 100%);-webkit-background-clip:text;background-clip:text;color:transparent;animation:var(--anmT,breathesoft 13s ease-in-out infinite)">живёт на вашем компьютере</span></div>
+      <div style="font-size:17px;color:var(--sub);max-width:560px;line-height:1.5;text-wrap:pretty">Слышит, отвечает голосом, выполняет команды в системе и рисует картинки. Без облака — модель работает локально.</div>
+    </div>
+
+    <div style="width:100%;max-width:720px;padding:1px;border-radius:29px;background:linear-gradient(120deg,var(--a1),var(--a2) 50%,var(--a3));box-shadow:0 22px 60px rgba(155,114,203,.28)">
+      <div style="border-radius:28px;background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));padding:18px 18px 14px;display:flex;flex-direction:column;gap:14px;text-align:left">
+        <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="Спросите что угодно" style="width:100%;font-size:16px;padding:8px 6px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="padding:8px 13px;border-radius:999px;border:1px solid var(--stroke);background:var(--chip);font-size:12px;font-weight:600;color:var(--body)">Локальная модель</div>
+          <div style="padding:8px 13px;border-radius:999px;font-size:12px;font-weight:600;color:var(--faint)">Свой сервер</div>
+          <div style="flex:1"></div>
+          <div onClick="{{ finish }}" style="width:40px;height:40px;display:grid;place-items:center;border-radius:50%;cursor:pointer;color:#fff;background:linear-gradient(140deg,var(--a1),var(--a2) 55%,var(--a3));box-shadow:0 8px 22px rgba(155,114,203,.4)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M12 20V5M5.6 11.4 12 5l6.4 6.4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:760px">
+      <sc-for list="{{ onbChips }}" as="c" hint-placeholder-count="4">
+        <div onClick="{{ finish }}" style="display:flex;align-items:center;gap:8px;padding:9px 15px;border-radius:999px;border:1px solid var(--stroke);background:var(--card);backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur));font-size:12.5px;font-weight:500;color:var(--body);cursor:pointer;transition:border-color .18s" style-hover="border-color:var(--stroke2)"><span style="color:var(--a2)">✦</span>{{ c.t }}</div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;gap:14px">
+      <div onClick="{{ finish }}" style="display:flex;align-items:center;gap:9px;padding:13px 26px;border-radius:999px;cursor:pointer;font-size:14px;font-weight:700;color:var(--btnx);background:var(--btn);box-shadow:0 12px 32px rgba(0,0,0,.28)">Открыть EVS
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </div>
+      <div onClick="{{ dontShow }}" style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--faint);cursor:pointer">
+        <span style="width:15px;height:15px;border-radius:4px;border:1px solid {{ dontBd }};background:{{ dontBg }};display:grid;place-items:center;color:#fff;font-size:10px">{{ dontMark }}</span>Больше не показывать при запуске
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;glass&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Эффекты&quot;},&quot;grid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Эффекты&quot;},&quot;aurora&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;bright&quot;,&quot;calm&quot;,&quot;off&quot;],&quot;default&quot;:&quot;bright&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Эффекты&quot;}}">
+const NAV = [
+  {id:'hub',label:'Центр',k:'⌘1',d:'M4 10.4 12 4l8 6.4M6.3 9.2V20h11.4V9.2'},
+  {id:'chat',label:'Диалог',k:'⌘2',d:'M20.5 12a8.5 8.5 0 0 1-12.3 7.6L4 21l1.4-4.2A8.5 8.5 0 1 1 20.5 12Z'},
+  {id:'cmd',label:'Команды',k:'⌘3',d:'M6 8.5 9.5 12 6 15.5M12.5 15.5H18'},
+  {id:'mon',label:'Модули',k:'⌘4',d:'M3 13h3.6l2.6-7.4 3.7 13 2.6-5.6H21'},
+  {id:'img',label:'Nexus Lumina',k:'⌘5',d:'M9.4 6.4l1.75 4.35 4.35 1.75-4.35 1.75L9.4 18.6l-1.75-4.35L3.3 12.5l4.35-1.75L9.4 6.4ZM17.9 3.2l.8 2.05 2.05.8-2.05.8-.8 2.05-.8-2.05-2.05-.8 2.05-.8.8-2.05ZM18.4 13l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7.7-1.8Z'},
+  {id:'tts',label:'Nexus Sonora',k:'⌘6',d:'M12 3.2a2.9 2.9 0 0 1 2.9 2.9v4.5a2.9 2.9 0 0 1-5.8 0V6.1A2.9 2.9 0 0 1 12 3.2ZM5.9 11a6.1 6.1 0 0 0 12.2 0M12 17.3V21'},
+  {id:'set',label:'Настройки',k:'⌘,',d:'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM19.2 14.8a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.55V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1.03H3a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.66 8.8a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1.03-1.55V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1.03 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.55 1.03H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.55 1.03Z'}
+];
+const TITLES = {
+  hub:['Центр управления','Одно окно на весь ассистент: голос, диалог и подсистемы'],
+  chat:['Диалог','Приватный ИИ для письма, планирования, кода и повседневных вопросов'],
+  cmd:['Голосовые команды','Фразы, которые управляют компьютером'],
+  mon:['Модули','Состояние нейросети, распознавания и синтеза'],
+  img:['Nexus Lumina','Генерация изображений локальной моделью'],
+  tts:['Nexus Sonora','Синтез речи и клон голоса'],
+  set:['Настройки','11 разделов: от микрофона до приватности']
+};
+const ACT = [
+  {t:'Копировать',d:'M9 9h9.5v11H9zM6 15H4.5V4H15v1.6'},
+  {t:'Редактировать',d:'M4.5 19.5h4l10-10a2.4 2.4 0 0 0-3.4-3.4l-10 10v3.4ZM13.5 7.5l3 3'},
+  {t:'Перегенерировать',d:'M20 12a8 8 0 1 1-2.4-5.7M20 4.5V10h-5.5'},
+  {t:'Продолжить',d:'M5 6l7 6-7 6zM14 6l7 6-7 6'},
+  {t:'Удалить',d:'M5 7h14M9.5 7V4.5h5V7M7 7l1 13h8l1-13'}
+];
+const T=(k,n,sub,v,real)=>({k,kind:'tog',n,s:sub,v:!!v,real});
+const G=(k,n,sub,o,v,real)=>({k,kind:'seg',n,s:sub,o,v:v||o[0],real});
+const L=(k,n,sub,min,max,st,v,unit,d,real)=>({k,kind:'sld',n,s:sub,min,max,st,v,unit:unit||'',d:d||0,real});
+const X=(k,n,sub,v)=>({k,kind:'txt',n,s:sub,v});
+const V=(n,sub,v)=>({kind:'val',n,s:sub,v});
+const B=(n,sub,b,dg,real)=>({kind:'btn',n,s:sub,b,dg:!!dg,real});
+const K=(n,sub,v)=>({kind:'key',n,s:sub,v});
+const A=(k,n,sub,v)=>({k,kind:'area',n,s:sub,v});
+
+const SET = [
+{id:'app',t:'Общие',sub:'настройки приложения',d:'M4 7h9M17 7h3M4 17h5M13 17h7M13 4.6v4.8M9 14.6v4.8',pages:[
+  {id:'main',t:'Основные',cards:[
+    {t:'Язык и локализация',rows:[
+      G('lang','Язык интерфейса','Язык меню, кнопок и уведомлений',['RU','EN']),
+      G('sttlang','Язык распознавания (STT)','По умолчанию совпадает с языком интерфейса',['Авто','RU','EN'])]},
+    {t:'Внешний вид',kind:'appearance',rows:[
+      G('uistyle','Стиль интерфейса','Компоновка и оформление окон. Тема ниже задаёт только цвета.',['Классический','Nexus','Ноктюрн'],'Nexus'),
+      L('fz','Размер шрифта','Влияет на размер шрифта и элементов',85,125,5,100,'%',0,'fz'),
+      G('uianim','Анимации интерфейса','Декоративные анимации (сфера, рамки, идл-волны) нагружают процессор. «Умные» крутятся только когда ассистент активен.',['Всегда','Умные','Экономия'],'Всегда','uianim')]}]},
+  {id:'boot',t:'Запуск и трей',cards:[
+    {t:'Запуск и поведение',rows:[
+      G('boot','После запуска показывать','Окно программы и плавающий виджет выбираются вместе. Готовность слушать ассистент озвучивает в любом случае — даже если на экране нет ничего.',['Только виджет','Окно и виджет','Только окно','Ничего'],'Окно и виджет'),
+      T('welcome','Экран приветствия','Показывать заставку EVS при каждом запуске программы',true,'welcome'),
+      T('autostart','Автозапуск с Windows','Запускать EVS при входе в систему',true,'autostart'),
+      T('mintray','Сворачивать в трей','Убирать в значок при сворачивании',true,'tray'),
+      T('closetray','Закрывать в трей','При закрытии окна сворачивать в трей, а не выходить',true),
+      K('Глобальная горячая клавиша','Показать окно EVS из любого приложения','Ctrl + Shift + E')]}]}]},
+
+{id:'mic',t:'Микрофон и распознавание',sub:'что и как слышит ассистент',d:'M12 3.2a2.9 2.9 0 0 1 2.9 2.9v4.5a2.9 2.9 0 0 1-5.8 0V6.1A2.9 2.9 0 0 1 12 3.2ZM5.9 11a6.1 6.1 0 0 0 12.2 0M12 17.3V21',pages:[
+  {id:'dev',t:'Устройство',cards:[
+    {t:'Устройство ввода',rows:[
+      V('Устройство ввода','Микрофон, используемый для записи','Blue Yeti · USB'),
+      T('inlevel','Уровень входного сигнала','Показывать индикатор громкости во время записи',true),
+      V('Дополнительные микрофоны','Второе устройство для комнаты или гарнитуры','не выбрано')]}]},
+  {id:'stt',t:'Распознавание',cards:[
+    {t:'Движок STT',rows:[
+      V('Голосовой движок (Python)','Отдельный процесс EVS для Whisper, VAD и озвучки','запущен'),
+      V('Компонент движка','Догружается отдельно (не входит в установщик)','112 МБ · установлен'),
+      G('engine','Движок распознавания','Движок EVS (Whisper/GigaAM локально либо распознавание на сервере)',['Windows STT','Локальный (EVS)'],'Локальный (EVS)'),
+      G('sttlang2','Язык распознавания (STT)','По умолчанию совпадает с языком интерфейса',['Авто','RU','EN'])]},
+    {t:'Модель распознавания',kind:'models',items:[
+      {n:'Whisper',s:'Мультиязычная, средняя точность',m:'1.5 ГБ · 2.1 ГБ ОЗУ',st:'Установлена',act:'Выбрать'},
+      {n:'GigaAM-v3',s:'Лучшая точность для русского. Рекомендуется',m:'980 МБ · 1.4 ГБ ОЗУ',st:'Активна',act:'Активна'},
+      {n:'На сервере',s:'Распознаёт чужая видеокарта. Нужен свой сервер',m:'—',st:'Не установлена',act:'Скачать'}]}]},
+  {id:'sens',t:'Чувствительность',cards:[
+    {t:'Шумоподавление',rows:[
+      G('nr','Шумоподавление','Убирает фоновый шум, почти не тратит ресурсы. Рекомендуется.',['Выкл','Лёгкое','Сильное'],'Лёгкое'),
+      G('vad','Чувствительность микрофона','Ниже строгость определения речи (VAD) — микрофон реагирует на более тихую/дальнюю речь, но чаще ловит шум. Применяется при следующем запуске прослушивания.',['Низкая','Средняя','Высокая','Максимум'],'Средняя'),
+      L('gain','Усиление микрофона','Насколько громче делать сигнал микрофона. Помогает, если вас плохо слышно или вы сидите далеко: тихая речь иначе не проходит порог громкости.',0,24,1,6,' дБ')]},
+    {t:'Модели на этом компьютере',kind:'models',items:[
+      {n:'GigaAM-v3',s:'Нельзя удалить активную модель',m:'980 МБ',st:'Активна',act:'Открыть папку'},
+      {n:'Whisper small',s:'Занято на диске 1.5 ГБ',m:'1.5 ГБ',st:'Установлена',act:'Удалить'},
+      {n:'Whisper large-v3',s:'Модель не скачана',m:'2.9 ГБ · 3.4 ГБ ОЗУ',st:'Не установлена',act:'Скачать'}]}]},
+  {id:'listen',t:'Прослушивание',cards:[
+    {t:'Режим прослушивания',rows:[
+      G('act','Режим активации','Push-to-talk требует удержания клавиши',['Непрерывное','Push-to-Talk']),
+      K('Клавиши удержания','Нажмите «Назначить» и зажмите нужное сочетание — до трёх клавиш','Ctrl + Space'),
+      T('autosend','Авто-отправка по паузе','Отправлять текст автоматически после тишины',true),
+      L('pause','Длительность паузы','Через сколько секунд считать фразу завершённой',0.4,3,0.1,1.2,' с',1),
+      T('partial','Показывать частичный текст','Отображать распознанное прямо во время речи',true)]}]}]},
+
+{id:'voice',t:'Голос ассистента',sub:'озвучка, эффекты, клон',d:'M4.5 9.5h3l4-3.5v12l-4-3.5h-3zM15.2 9.2a4 4 0 0 1 0 5.6M18 6.4a8 8 0 0 1 0 11.2',pages:[
+  {id:'tts',t:'Озвучка',cards:[
+    {t:'Голос ответа',rows:[
+      T('speakans','Озвучивать ответы','Проговаривать ответы ассистента голосом',true),
+      T('speakready','Озвучивать готовность','Произносить голосом, когда ассистент готов слушать',true),
+      L('rate','Скорость речи','Темп проговаривания',0.5,2,0.05,1,'×',2,'rate'),
+      L('vol','Громкость','',0,100,1,85,'%',0,'vol')]},
+    {t:'Голос ассистента',kind:'models',items:[
+      {n:'Системный голос',s:'Без скачивания',m:'—',st:'Установлена',act:'Выбрать'},
+      {n:'Clone-Echo v3',s:'Клон вашего голоса',m:'86 МБ',st:'Активна',act:'Прослушать'},
+      {n:'Piper · Ruslan',s:'Мужской, нейтральный',m:'63 МБ',st:'Не установлена',act:'Скачать'}]}]},
+  {id:'engine',t:'Движок синтеза',cards:[
+    {t:'Движок озвучки',rows:[
+      G('ttseng','Движок озвучки','',['Piper','Клон (сервер)'],'Клон (сервер)'),
+      X('cloneaddr','Адрес клон-сервера','','127.0.0.1:8020'),
+      T('clonelocal','Локальный сервер клона','Запускает sidecar/qwen_tts_server.py на этом компьютере. Нужен python с torch и CUDA — обычный интерпретатор не подойдёт.',false),
+      X('pypath','Путь к python (если не нашёлся сам)','','C:\\Python311\\python.exe'),
+      B('Соединение с сервером','Сервер работает · ответ 42 мс','Проверить соединение')]},
+    {t:'Интерпретатор озвучки',rows:[
+      T('interp','Интерпретатор озвучки','Приводит текст к произносимому виду перед синтезом: числа и даты словами, без эмодзи и разметки.',true),
+      G('interpmode','Режим интерпретации','',['Правилами','Через модель']),
+      V('Модель интерпретатора','Модель, приводящая текст к произносимому виду. «По умолчанию» — глобальная модель чата.','llama-3.1-8b')]}]},
+  {id:'clone',t:'Клон голоса',cards:[
+    {t:'Qwen3-TTS — сервер клон-голоса',rows:[
+      B('Клонировать по образцу','Образец не выбран','Выбрать WAV…'),
+      L('clonerate','Скорость','',0.5,1.6,0.05,1,'×',2),
+      G('clonelang','Язык синтеза','На каком языке говорит сервер. Модель знает десять языков и берёт язык отдельным полем: по коротким фразам она угадывает его неверно.',['RU','EN','DE','ZH'],'RU')]}]},
+  {id:'fx',t:'Эффекты',cards:[
+    {t:'Эффект голоса (FX)',rows:[
+      T('fx','Эффект голоса (FX)','Пост-обработка синтеза/клона: расстройка-дубль, металлик, реверб, срез верхов — например «синтетический ИИ» в духе EDI.',false),
+      B('Пресет','Применить готовую настройку (EDI).','EDI'),
+      L('detune','Расстройка (дубль голоса)','Слой чуть расстроенного дубля — «два голоса / синтетический» тембр.',0,100,1,24,'%'),
+      L('metal','Металлик','',0,100,1,18,'%'),
+      L('reverb','Реверб','',0,100,1,12,'%'),
+      L('bright','Яркость (срез верхов)','Ниже — глуше, «из рации»; выше — чище и звонче.',0,100,1,62,'%')]},
+    {t:'Заготовленные фразы',rows:[
+      B('Заготовленные фразы','Частые ответы синтезируются заранее — ассистент отвечает мгновенно','Заготовить заново')]}]}]},
+
+{id:'widget',t:'Виджеты и оверлей',sub:'визуализация и оверлей',d:'M12 3.6 13.9 9l5.4 1.9-5.4 1.9L12 18.2 10.1 12.8 4.7 10.9 10.1 9 12 3.6Z',pages:[
+  {id:'look',t:'Вид',cards:[{t:'Предпросмотр и стиль виджета',kind:'widget'}]},
+  {id:'par',t:'Параметры',cards:[
+    {t:'Параметры',rows:[
+      L('hue','Акцентный цвет','Цвет Siri Orb и Полосок',0,360,1,268,'°'),
+      L('orb','Размер орба','',80,240,4,160,' px'),
+      L('spin','Скорость вращения','Секунд на полный оборот',2,30,1,9,' с'),
+      L('barsn','Количество полосок','',8,64,2,30,''),
+      T('bgviz','Показывать в фоне','Отображать визуализацию на главном экране',true)]},
+    {t:'Плавающий виджет',rows:[
+      T('float','Показывать виджет','Визуализация в маленьком прозрачном окне поверх всех окон. Двойной клик по виджету — вернуться в чат',true),
+      G('floatsz','Размер виджета','Размер плавающего окна с визуализацией',['Маленький','Средний','Большой'],'Средний')]}]}]},
+
+{id:'cmd',t:'Голосовые команды',sub:'управление компьютером',d:'M6 8.5 9.5 12 6 15.5M12.5 15.5H18',pages:[
+  {id:'exec',t:'Выполнение',cards:[
+    {t:'Выполнение команд',rows:[
+      T('cmdon','Разрешить выполнение команд','EVS сможет запускать приложения, открывать сайты и управлять системой',true),
+      T('chat','Чат','Выключите, чтобы работали только команды: нераспознанная фраза не уйдёт в чат, а ответит «Команда не найдена». Текстовый ввод при этом отключается.',true,'chat')]},
+    {t:'Распознавание команд',rows:[
+      G('cmdmode','Режим распознавания','Как EVS понимает, что это команда, а не текст для ввода',['Слово-активатор','Отдельный режим','Сначала команда']),
+      X('wake','Слово-активатор','Скажите «EVS» перед командой, напр. «EVS, открой браузер»','EVS'),
+      X('stopwords','Слова остановки','Через запятую. Прервут озвучку и генерацию (напр. «стоп, хватит, отмена»)','стоп, хватит, отмена')]}]},
+  {id:'cat',t:'Каталог команд',cards:[
+    {t:'Каталог команд',rows:[
+      B('Каталог команд','Фраза → действие в системе. Работают и при выключенном чате.','Открыть каталог',false,'gocmd'),
+      B('Предложить команды','EVS соберёт список по установленным программам','Предложить команды')]}]},
+  {id:'safe',t:'Безопасность',cards:[
+    {t:'Безопасность',rows:[
+      L('match','Порог совпадения фразы','Насколько точно фраза должна совпасть с командой',50,100,1,82,'%'),
+      G('confirm','Подтверждение перед выполнением','',['Всегда','Только опасные','Никогда'],'Только опасные')]}]}]},
+
+{id:'phone',t:'Телефоны',sub:'удалённый ввод с телефона',d:'M8.5 3.5h7A1.5 1.5 0 0 1 17 5v14a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 7 19V5a1.5 1.5 0 0 1 1.5-1.5ZM10.5 17.4h3',pages:[
+  {id:'remote',t:'Телефоны',cards:[
+    {t:'Удалённый ввод',rows:[
+      T('remote','Разрешить удалённый ввод','Телефон в одной сети с компьютером отправляет в EVS голос и текст',false),
+      V('Адрес для подключения','Откройте страницу в браузере телефона','192.168.0.14:8137'),
+      B('Код сопряжения','Действует пять минут','482 190')]}]}]},
+
+{id:'net',t:'Нейросеть',sub:'нейросеть и подключение',d:'M6.5 6.5h11v11h-11zM10 3.5v3M14 3.5v3M10 17.5v3M14 17.5v3M3.5 10h3M3.5 14h3M17.5 10h3M17.5 14h3',pages:[
+  {id:'conn',t:'Подключение',cards:[
+    {t:'Режим подключения',rows:[
+      G('netmode','Режим подключения','',['Локальный сервер','Удалённый сервер']),
+      X('local','Локальный сервер (Ollama / LAN)','','http://127.0.0.1:11434'),
+      X('remote','Удалённый сервер (OpenAI-совместимый)','','https://api.example.com/v1'),
+      X('apikey','API-ключ','','sk-••••••••••••'),
+      B('Соединение','Соединение есть · 14 моделей','Проверить соединение')]},
+    {t:'Веб-поиск',rows:[
+      G('websearch','Искать в интернете','',['Авто','Всегда','Выкл']),
+      G('searcher','Поисковик','',['Tavily','Brave','Google','Яндекс']),
+      X('searchkey','Tavily API-ключ (необязательно)','','')]},
+    {t:'Сервер изображений',rows:[
+      X('imgaddr','Адрес','Куда отправлять запросы на генерацию. Пусто — окно «Картинки» работать не будет.','http://127.0.0.1:7860'),
+      V('Модель','','sdxl-turbo'),
+      T('unload','Выгружать и синтез голоса','Синтез держит около пяти гигабайт видеопамяти, и кадру 1024x1024 их не хватает. Сервер и сам просит его отойти перед генерацией; этот переключатель делает то же самое заранее.',true)]}]},
+  {id:'models',t:'Модели',cards:[
+    {t:'Выбор модели',rows:[
+      V('Для чата','Как выбрана глобально','llama-3.1-8b'),
+      V('Для поиска','Модель по режиму','qwen2.5-7b'),
+      L('ctxsize','Размер контекста','num_ctx — сколько токенов модель держит в контексте',2048,32768,1024,8192,''),
+      L('predict','Лимит ответа','num_predict — максимальная длина ответа в токенах',256,4096,128,1024,''),
+      L('temp','Температура','temperature — 0 предсказуемо, выше — свободнее (0–1.5)',0,1.5,0.05,0.7,'',2),
+      V('Держать модель в памяти','keep_alive — например 30m или -1 (не выгружать)','30m')]}]},
+  {id:'gen',t:'Параметры генерации',cards:[
+    {t:'Параметры генерации',rows:[
+      T('think','Размышление модели','',false),
+      T('squeeze','Сжимать контекст автоматически','Когда разговор подходит к пределу окна, старая его часть заменяется кратким пересказом. Без этого модель просто перестаёт видеть начало — молча, без предупреждения.',true),
+      L('sqthr','Порог сжатия','При каком заполнении окна запускать пересказ. Впритык запускать поздно: сам пересказ тоже занимает место.',50,95,5,75,'%')]}]}]},
+
+{id:'persona',t:'Личность и память',sub:'персонализация ассистента',d:'M12 12.6a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2ZM5 20.2c.9-3.3 3.6-5.1 7-5.1s6.1 1.8 7 5.1',pages:[
+  {id:'style',t:'Стиль общения',cards:[
+    {t:'Стиль ответов',rows:[
+      L('formal','Формальность','Официально ↔ Дружески',0,100,1,45,'%'),
+      L('empathy','Эмпатия','Нейтрально ↔ Высокая',0,100,1,60,'%'),
+      L('verbose','Многословность','Лаконично ↔ Подробно',0,100,1,40,'%'),
+      L('humor','Юмор','Серьёзно ↔ С юмором',0,100,1,30,'%'),
+      L('creative','Креативность','Буквально ↔ Творчески',0,100,1,55,'%')]},
+    {t:'Личность ассистента',rows:[
+      X('aname','Имя ассистента','Как ассистент будет называть себя','EVS'),
+      G('emoji','Политика эмодзи','Как часто использовать эмодзи в ответах',['Никогда','Иногда','Часто']),
+      A('prompt','Системный промпт / личность персонажа','','Ты — EVS, локальный ассистент. Отвечай коротко и по делу, без вводных фраз.')]}]},
+  {id:'mem',t:'Память',cards:[
+    {t:'Память',rows:[
+      T('autofact','Автосохранение фактов','EVS сам запоминает важные детали из разговора',true),
+      T('askmem','Спрашивать перед «Запомнить»','Показывать запрос перед добавлением воспоминания',false),
+      B('Очистить память','Удалить все сохранённые факты','Очистить память',true)]}]}]},
+
+{id:'privacy',t:'Приватность',sub:'данные и доступ',d:'M7 10.5V8a5 5 0 0 1 10 0v2.5M5.5 10.5h13V20h-13z',pages:[
+  {id:'access',t:'Доступ и ограничения',cards:[
+    {t:'Область действия команд',rows:[
+      T('sc1','Файлы и папки','',true),
+      T('sc2','Браузер и сайты','',true),
+      T('sc3','Медиа и звук','',true),
+      T('sc4','Системные настройки','',false),
+      T('sc5','Сетевые запросы','',true),
+      T('sc6','Реестр Windows','',false)]},
+    {t:'Сетевая безопасность',rows:[
+      T('offline','Офлайн-режим','Запретить все сетевые запросы (модель + обновления)',false,'offline'),
+      T('notelem','Запретить телеметрию','Не отправлять анонимную статистику использования',true),
+      T('nonet','Запретить сетевые запросы модели','Только локальный инференс, без API',false),
+      A('blacklist','Чёрный список фраз','Эти фразы никогда не уйдут в модель','пароль, cvv, номер карты')]}]},
+  {id:'data',t:'Данные',cards:[
+    {t:'Данные и конфиденциальность',rows:[
+      B('Очистить историю чатов','Удалить все сеансы и переписки без возможности восстановления','Очистить',true),
+      B('Сбросить память и профиль','Удалить все воспоминания, профиль пользователя и заметку','Сбросить',true),
+      B('Сбросить все настройки','Вернуть EVS к заводским настройкам. Действие необратимо.','Полный сброс',true)]}]}]},
+
+{id:'log',t:'Журнал',sub:'что происходило в приложении',d:'M6.5 4.5h8L18 8v11.5H6.5zM9 11h6M9 14.5h6',pages:[
+  {id:'log',t:'Журнал',cards:[{t:'Журнал',kind:'log'}]}]},
+
+{id:'about',t:'О приложении',sub:'версия и обновления',d:'M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17ZM12 10.8v5.7M12 7.6h.01',pages:[
+  {id:'ver',t:'Версия и обновления',cards:[
+    {t:'О приложении',rows:[
+      V('Версия','','EVS 1.2.0 · сборка 2418'),
+      V('Платформа','','Windows 11 · CUDA 12.4')]},
+    {t:'Обновления',rows:[
+      T('autoupd','Автоматическая проверка','Проверять обновления при запуске',true),
+      B('Проверить сейчас','Обновление скачается в фоне — останется перезапустить','Проверить'),
+      X('updsrv','Сервер обновлений','Свой адрес вместо GitHub — например, 100.79.130.7:8099. Оттуда берутся и обновления программы, и движок распознавания (112 МБ), то есть по локальной сети вместо интернета.','100.79.130.7:8099')]}]},
+  {id:'changes',t:'История изменений',cards:[
+    {t:'Список изменений',rows:[
+      V('1.2.0','Клон голоса Qwen3-TTS, эффекты голоса, журнал с фильтрами','12 августа'),
+      V('1.1.4','GigaAM-v3 по умолчанию, ускорен старт движка','29 июля'),
+      V('1.1.0','Плавающий виджет, семь стилей визуализации','3 июля')]}]}]}
+];
+
+const HEX = {
+  idle:['#5C6478','#7C8399'],
+  listening:['#3B7BE8','#C0568F'],
+  thinking:['#7F5AAC','#3269CE'],
+  speaking:['#1F9E7A','#3C8CA8']
+};
+const rgba = (h,a) => { const n = parseInt(h.slice(1),16); return 'rgba('+(n>>16&255)+','+(n>>8&255)+','+(n&255)+','+a+')'; };
+const DRAWS = ['drawline','drawlineB','drawlineC','drawlineD'];
+const STATES = {
+  idle:['Ожидание','Нажмите на шар или скажите wake-фразу'],
+  listening:['Слушаю…','Слушаю — говорите'],
+  thinking:['Думаю…','Думаю над ответом'],
+  speaking:['Говорю','Отвечаю голосом']
+};
+const pct = v => Math.round(v) + '%';
+
+const BG_VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+const BG_FS = [
+'precision highp float;',
+'uniform vec2 res;uniform float t;uniform vec3 c1;uniform vec3 c2;uniform vec3 c3;',
+'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
+'float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);',
+'return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}',
+'float fbm(vec2 p){float s=0.,a=.5;for(int i=0;i<5;i++){s+=a*n(p);p*=2.03;a*=.5;}return s;}',
+'void main(){',
+' float T=t*1.05;',
+' vec2 uv=gl_FragCoord.xy/res;',
+' vec2 p=vec2(uv.x*res.x/res.y,uv.y);',
+' vec2 sp=p*vec2(.85,1.9);',
+' float f1=fbm(sp+vec2(T*.34,-T*.12));',
+' float f2=fbm(sp*1.3+vec2(4.7,2.1)-vec2(T*.27,T*.09));',
+' vec2 wp=sp+vec2(f1,f2)*2.4;',
+' float v=fbm(wp*.72+vec2(-T*.22,T*.07));',
+' float v2=fbm(wp*1.15+vec2(T*.18,-T*.06));',
+' float lift=.38+.34*fbm(p*1.4+vec2(T*.18,0.));',
+' float mask=smoothstep(lift+.06,lift-.30,uv.y);',
+' float g=fbm(wp*.42+vec2(T*.10,-T*.04)+f1*.4);',
+' float m1=smoothstep(.38,.59,v);',
+' float m2=smoothstep(.46,.67,v2);',
+' float lum=max(max(m1,m2*.85),smoothstep(.34,.02,uv.y)*.62)*mask;',
+' vec3 col=mix(c1,c2,smoothstep(.40,.74,g));',
+' float cy=smoothstep(.50,.66,fbm(wp*1.55+vec2(-T*.17,T*.09)));',
+' col=mix(col,c3,cy*.80);',
+' float rim=m1*(1.-m1)*4.;',
+' col=col*lum*1.05+mix(c2,c3,.5)*rim*mask*.40;',
+' col+=(h(gl_FragCoord.xy)-.5)*.006;',
+' gl_FragColor=vec4(clamp(col,0.,.95),1.);',
+'}'].join('\n');
+
+const rgbOf = str => {
+  const s = String(str).trim();
+  if (s.charAt(0) === '#'){
+    const h = s.slice(1), v = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+    const n = parseInt(v, 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, 1];
+  }
+  const m = s.match(/[\d.]+/g) || [255, 255, 255, 1];
+  return [+m[0] || 0, +m[1] || 0, +m[2] || 0, m[3] === undefined ? 1 : +m[3]];
+};
+
+class Component extends DCLogic {
+  state = {
+    screen: 'onboard', showOnboard: true, theme: 'dark', accent: 'google', anim: 'breathe', glass: 'glass',
+    bgStyle: 'aurora', gridMode: 'push',
+    chatMenu: false, chatTitle: 'Локальная нейроархитектура', chatPinned: true, chatNo: 1,
+    threadMenu: null, activeThread: 1, stash: {},
+    threadList: [
+      {id:1, title:'Локальная нейроархитектура', meta:'только что · 24 реплики', pinned:true, day:'today'},
+      {id:2, title:'Промпты для генерации сцен', meta:'2 часа назад', pinned:false, day:'today'},
+      {id:3, title:'Оптимизация голосовых триггеров', meta:'5 часов назад', pinned:false, day:'today'},
+      {id:4, title:'Сборка XTTS под Windows', meta:'вчера, 21:40', pinned:false, day:'yest'}
+    ],
+    draft: '', typing: false, chatEnabled: true, vstate: 'listening',
+    ctx: 38, lat: 18, tps: 45.8, cpu: 34, vram: 71, gpu: 88, temp: 68, spins: 0,
+    auto: true, cmdTab: 'catalog', setSec: 'app', setPage: {}, cfg: {}, fz: 100, logTag: 'Все', ttsTab: 'system', res: 1024,
+    steps: 28, cfg: 7.5, rate: 1, pitch: 0.95, vol: 85,
+    generating: false, genPct: 0, speaking: false,
+    msgs: [
+      {r:'u',t:'Как поднять локальную модель и связать её с моим Python-контроллером?'},
+      {r:'a',t:'Чтобы развернуть модель локально:',l:['Поднимите llama.cpp или Ollama как backend-сервер.','Сделайте Python-сервис, который проксирует запросы на localhost:11434.','Отдавайте ответ потоком — озвучка начнётся, не дожидаясь конца.']},
+      {r:'u',t:'А озвучку можно на своём голосе?'},
+      {r:'a',t:'Да. Клон голоса живёт в разделе «Голос ассистента»: 30 секунд записи — и XTTS собирает профиль. Дальше он подставляется в любой ответ.'}
+    ],
+    cmds: [
+      {phrase:'Открой браузер',act:'Выполнить shell',target:'chrome.exe',on:true},
+      {phrase:'Включи плейлист для кода',act:'Медиа-триггер',target:'spotify://playlist',on:true},
+      {phrase:'Следующий трек',act:'Медиа-команда',target:'системный микшер',on:false},
+      {phrase:'Сверни всё',act:'Горячая клавиша',target:'Win + D',on:true}
+    ],
+    setToggles: {autostart:true, tray:true, wake:true, offline:false}
+  };
+
+  gridRef = React.createRef();
+
+  glRef = React.createRef();
+
+  initGL(){
+    const cv = this.glRef.current;
+    if (!cv || this.gl || cv.dataset.on) return;
+    const gl = cv.getContext('webgl', {antialias:false, alpha:false, depth:false});
+    if (!gl) return;
+    cv.dataset.on = '1';
+    const mk = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    const pr = gl.createProgram();
+    gl.attachShader(pr, mk(gl.VERTEX_SHADER, BG_VS));
+    gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, BG_FS));
+    gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)){ console.warn(gl.getProgramInfoLog(pr)); return; }
+    gl.useProgram(pr);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(pr, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    this.gl = gl;
+    this.uni = {res:gl.getUniformLocation(pr,'res'), t:gl.getUniformLocation(pr,'t'), c1:gl.getUniformLocation(pr,'c1'), c2:gl.getUniformLocation(pr,'c2'), c3:gl.getUniformLocation(pr,'c3')};
+    this.sizeGL();
+  }
+
+  sizeGL(){
+    const cv = this.glRef.current, gl = this.gl;
+    if (!cv || !gl) return;
+    const r = cv.getBoundingClientRect();
+    cv.width = Math.max(2, Math.round(r.width * .45));
+    cv.height = Math.max(2, Math.round(r.height * .45));
+    gl.viewport(0, 0, cv.width, cv.height);
+  }
+
+  glPal(){
+    const host = this.gridHost;
+    if (!host) return [[.2,.41,.81],[.5,.35,.67],[.74,.31,.36]];
+    const cs = getComputedStyle(host);
+    return ['--a1','--a2','--a3'].map(k => {
+      const c = rgbOf(cs.getPropertyValue(k).trim() || '#7F5AAC');
+      return [c[0]/255, c[1]/255, c[2]/255];
+    });
+  }
+
+  drawGL(dt){
+    const cv = this.glRef.current;
+    if (!cv || !cv.isConnected){ this.gl = null; return; }
+    if (!this.gl){ this.initGL(); return; }
+    if (!this.glW || this.glW !== cv.clientWidth){ this.glW = cv.clientWidth; this.sizeGL(); }
+    if (!this.glTick || this.glTick > 40){ this.glTick = 0; this.pal = this.glPal(); }
+    this.glTick++;
+    this.glT = (this.glT || 0) + (this.state.anim === 'off' ? 0 : dt * 0.001);
+    const gl = this.gl, pal = this.pal;
+    gl.uniform2f(this.uni.res, cv.width, cv.height);
+    gl.uniform1f(this.uni.t, this.glT);
+    gl.uniform3fv(this.uni.c1, pal[0]);
+    gl.uniform3fv(this.uni.c2, pal[1]);
+    gl.uniform3fv(this.uni.c3, pal[2]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  initGrid(){
+    const cv = this.gridRef.current; if (!cv) return;
+    const ctx = cv.getContext('2d');
+    const host = cv.parentNode;
+    this.gridHost = host;
+    let pts = [], W = 0, H = 0, dpr = Math.min(2, window.devicePixelRatio || 1);
+    const SP = 15, R = 132, GR = 190, LV = 12;
+    const mouse = {x: -1e4, y: -1e4, sx: -1e4, sy: -1e4, on: false};
+    let color = 'rgba(255,255,255,.17)';
+    let base = [255,255,255], peak = [155,114,203], baseA = .14, peakA = .9;
+    let rips = [], acc = 0, ex = 0, ey = 0;
+    let bx = [], by = [], br = [];
+    const bn = new Int32Array(LV);
+
+    const readColor = () => {
+      const cs = getComputedStyle(host);
+      color = cs.getPropertyValue('--dot').trim() || color;
+      const d = rgbOf(color);
+      base = [d[0], d[1], d[2]];
+      baseA = Math.max(.05, d[3] * .45);
+      peakA = Math.min(1, d[3] * 2.7);
+      peak = rgbOf(cs.getPropertyValue('--a2').trim() || '#7F5AAC');
+    };
+    const build = () => {
+      const r = cv.getBoundingClientRect();
+      W = r.width; H = r.height;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      pts = [];
+      const cols = Math.ceil(W / SP) + 1, rows = Math.ceil(H / SP) + 1;
+      const offX = (W - (cols - 1) * SP) / 2, offY = (H - (rows - 1) * SP) / 2;
+      for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+        const ox = offX + i * SP, oy = offY + j * SP;
+        pts.push({ox, oy, x: ox, y: oy, vx: 0, vy: 0, lift: 0});
+      }
+      bx = []; by = []; br = [];
+      for (let l = 0; l < LV; l++){ bx.push(new Float32Array(pts.length)); by.push(new Float32Array(pts.length)); br.push(new Float32Array(pts.length)); }
+      readColor();
+      this.sizeGL();
+    };
+
+    const onMove = e => {
+      const r = cv.getBoundingClientRect();
+      mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
+      if (!mouse.on){ mouse.sx = mouse.x; mouse.sy = mouse.y; ex = mouse.x; ey = mouse.y; }
+      mouse.on = true;
+    };
+    const onLeave = () => { mouse.on = false; mouse.x = mouse.y = -1e4; };
+    const onDown = e => {
+      if (this.state.gridMode !== 'glow') return;
+      const r = cv.getBoundingClientRect();
+      rips.push({x: e.clientX - r.left, y: e.clientY - r.top, t: 0, life: 1600, spd: .62, amp: 1});
+      if (rips.length > 16) rips.shift();
+    };
+
+    const pushFrame = () => {
+      ctx.fillStyle = color;
+      for (let k = 0; k < pts.length; k++) {
+        const p = pts[k];
+        const rx = p.ox, ry = p.oy;
+        let near = 0;
+        if (mouse.on) {
+          const dx = p.x - mouse.x, dy = p.y - mouse.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < R * R) {
+            const d = Math.sqrt(d2) || .001;
+            near = 1 - d / R;
+            const push = near * near * 2.6;
+            p.vx += (dx / d) * push;
+            p.vy += (dy / d) * push;
+            p.vx += (-dy / d) * near * .55;
+            p.vy += (dx / d) * near * .55;
+          }
+        }
+        p.vx += (rx - p.x) * .022; p.vy += (ry - p.y) * .022;
+        p.vx *= .9; p.vy *= .9;
+        p.x += p.vx; p.y += p.vy;
+        p.lift += (near - p.lift) * .12;
+        const rad = 1.15 + p.lift * 1.45;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad, 0, 6.2832);
+        ctx.fill();
+      }
+    };
+
+    const glowFrame = (dt, now) => {
+      const k = 1 - Math.pow(0.001, dt / 1000);
+      mouse.sx += (mouse.x - mouse.sx) * k * .55;
+      mouse.sy += (mouse.y - mouse.sy) * k * .55;
+      for (let i = rips.length - 1; i >= 0; i--){ const rp = rips[i]; rp.t += dt; if (rp.t > rp.life) rips.splice(i, 1); }
+      if (mouse.on){
+        acc += Math.hypot(mouse.x - ex, mouse.y - ey); ex = mouse.x; ey = mouse.y;
+        if (acc > 30){
+          acc = 0;
+          rips.push({x: mouse.x, y: mouse.y, t: 0, life: 900, spd: .3, amp: .8});
+          if (rips.length > 16) rips.shift();
+        }
+      }
+      const R2 = GR * GR;
+      bn.fill(0);
+      for (let i = 0; i < pts.length; i++){
+        const x = pts[i].ox, y = pts[i].oy;
+        let b = 0;
+        if (mouse.on){
+          const vx = x - mouse.sx, vy = y - mouse.sy, d2 = vx * vx + vy * vy;
+          if (d2 < R2){ const t = 1 - Math.sqrt(d2) / GR; b = t * t * (3 - 2 * t); }
+        }
+        for (let j = 0; j < rips.length; j++){
+          const rp = rips[j], ring = rp.t * rp.spd;
+          const d = Math.hypot(x - rp.x, y - rp.y) || .0001;
+          const g = Math.exp(-Math.pow(d - ring, 2) / 2600) * (1 - rp.t / rp.life) * rp.amp;
+          if (g > b) b = g;
+        }
+        const iw = .5 + .5 * Math.sin(x * .011 + y * .017 + now * .0007);
+        if (iw * iw * .13 > b) b = iw * iw * .13;
+        const lv = b <= 0 ? 0 : Math.min(LV - 1, 1 + Math.floor(b * (LV - 1)));
+        const q = bn[lv]++;
+        bx[lv][q] = x; by[lv][q] = y; br[lv][q] = 1.05 * (1 + b * 1.9);
+      }
+      for (let lv = 0; lv < LV; lv++){
+        const cnt = bn[lv]; if (!cnt) continue;
+        const t = lv === 0 ? 0 : lv / (LV - 1);
+        const a = baseA + (peakA - baseA) * t;
+        ctx.fillStyle = 'rgba(' + Math.round(base[0] + (peak[0] - base[0]) * t * .85) + ',' +
+          Math.round(base[1] + (peak[1] - base[1]) * t * .85) + ',' +
+          Math.round(base[2] + (peak[2] - base[2]) * t * .85) + ',' + a.toFixed(3) + ')';
+        const xs = bx[lv], ys = by[lv], rs = br[lv];
+        ctx.beginPath();
+        for (let i = 0; i < cnt; i++){ const rr = rs[i]; ctx.moveTo(xs[i] + rr, ys[i]); ctx.arc(xs[i], ys[i], rr, 0, 6.2832); }
+        ctx.fill();
+      }
+    };
+
+    let tick = 0, last = performance.now();
+    const frame = now => {
+      const dt = Math.min(48, now - last); last = now;
+      tick++;
+      if (tick % 45 === 0) readColor();
+      this.drawGL(dt);
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      const mode = this.state.gridMode;
+      if (mode !== 'off' && color !== 'transparent' && color !== ''){
+        if (mode === 'glow') glowFrame(dt, now); else pushFrame();
+      }
+      this.raf = requestAnimationFrame(frame);
+    };
+
+    build();
+    this.gridCleanup = () => {
+      cancelAnimationFrame(this.raf);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseout', onLeave);
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('resize', build);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseout', onLeave);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('resize', build);
+    this.raf = requestAnimationFrame(frame);
+  }
+
+  componentDidMount(){
+    this.initGrid();
+    this.timer = setInterval(() => {
+      if (!this.state.auto) return;
+      const j = (v, d, lo, hi) => Math.min(hi, Math.max(lo, v + (Math.random()*2-1)*d));
+      this.setState(s => ({
+        cpu: j(s.cpu,7,12,92), vram: j(s.vram,3,52,96), gpu: j(s.gpu,6,40,99),
+        temp: j(s.temp,1.5,52,79), tps: j(s.tps,2.5,28,62), lat: Math.round(j(s.lat,2,11,34))
+      }));
+    }, 1700);
+  }
+  componentWillUnmount(){ clearInterval(this.timer); clearInterval(this.genTimer); clearTimeout(this.flashT); if (this.gridCleanup) this.gridCleanup(); }
+
+  go(screen){ return () => this.setState({screen}); }
+  navGo(id){ return () => { clearTimeout(this.flashT); this.setState({screen:id, flash:id}); this.flashT = setTimeout(() => this.setState({flash:null}), 1900); }; }
+  secGo(id){ return () => { clearTimeout(this.flashS); this.setState({setSec:id, flashS:id}); this.flashS = setTimeout(() => this.setState({flashS:null}), 1900); }; }
+  pageGo(sec, id){ return () => this.setState(s => ({setPage: Object.assign({}, s.setPage, {[sec]: id})})); }
+  cfgSet(k, v){ this.setState(s => ({cfg: Object.assign({}, s.cfg, {[k]: v})})); }
+  cfgTog(k, cur){ return () => this.cfgSet(k, !cur); }
+  cfgPick(k, v){ return () => this.cfgSet(k, v); }
+  cfgSld(k, min, max, step, digits){
+    return e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const v = Math.round((min + p * (max - min)) / step) * step;
+      this.cfgSet(k, +v.toFixed(digits || 0));
+    };
+  }
+  cfgTxt(k){ return e => this.cfgSet(k, e.target.value); }
+  setVstate(v){ return () => this.setState({vstate: v}); }
+
+  send = () => {
+    if (!this.state.chatEnabled) return;
+    const t = this.state.draft.trim();
+    if (this.state.typing) { this.setState({typing:false, vstate:'idle'}); return; }
+    if (!t) return;
+    this.setState(s => ({
+      msgs: s.msgs.concat([{r:'u',t}]), draft:'', typing:true, vstate:'thinking',
+      screen: s.screen
+    }));
+    clearTimeout(this.replyT);
+    this.replyT = setTimeout(() => this.setState(s => ({
+      typing:false, vstate:'speaking',
+      msgs: s.msgs.concat([{r:'a',t:'Принято. Локальный стек отвечает: модель держит контекст, распознавание слушает, синтез готов озвучить ответ голосом Clone-Echo v3.'}])
+    })), 1900);
+  };
+  onDraft = e => this.setState({draft: e.target.value});
+  onKey = e => { if (e.key === 'Enter') this.send(); };
+  cycleState = () => {
+    const order = ['idle','listening','thinking','speaking'];
+    this.setState(s => ({vstate: order[(order.indexOf(s.vstate)+1) % order.length]}));
+  };
+  toggleChat = () => this.setState(s => ({chatEnabled: !s.chatEnabled}));
+  toggleChatMenu = () => this.setState(s => ({chatMenu: !s.chatMenu}));
+  threadMenu(id){ return e => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(s => ({threadMenu: s.threadMenu === id ? null : id})); }; }
+  selectThread(id, title){ return () => this.setState(s => id === s.activeThread ? {threadMenu:null} : ({
+    stash: Object.assign({}, s.stash, {[s.activeThread]: s.msgs}),
+    msgs: s.stash[id] || [], activeThread: id, chatTitle: title, threadMenu: null, typing: false,
+    chatPinned: (s.threadList.find(t => t.id === id) || {}).pinned
+  })); }
+  pinThread(id){ return e => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(s => ({
+    threadList: s.threadList.map(t => t.id === id ? Object.assign({}, t, {pinned: !t.pinned}) : t),
+    chatPinned: id === s.activeThread ? !s.chatPinned : s.chatPinned, threadMenu: null
+  })); }; }
+  clearThread(id){ return e => { if (e && e.stopPropagation) e.stopPropagation(); clearTimeout(this.replyT); this.setState(s => ({
+    threadList: s.threadList.map(t => t.id === id ? Object.assign({}, t, {meta:'пустой чат'}) : t),
+    stash: Object.assign({}, s.stash, {[id]: []}),
+    msgs: id === s.activeThread ? [] : s.msgs, typing: false, threadMenu: null
+  })); }; }
+  deleteThread(id){ return e => { if (e && e.stopPropagation) e.stopPropagation(); clearTimeout(this.replyT); this.setState(s => {
+    const rest = s.threadList.filter(t => t.id !== id);
+    const stash = Object.assign({}, s.stash); delete stash[id];
+    if (id !== s.activeThread) return {threadList: rest, stash, threadMenu: null};
+    const nxt = rest[0];
+    const no = s.chatNo + 1;
+    return nxt
+      ? {threadList: rest, stash, threadMenu: null, activeThread: nxt.id, chatTitle: nxt.title, msgs: stash[nxt.id] || [], typing: false, chatPinned: nxt.pinned}
+      : {threadList: [{id: 100 + no, title:'Новый чат', meta:'только что', pinned:false, day:'today'}], stash: {}, threadMenu: null, activeThread: 100 + no, chatTitle:'Новый чат', msgs: [], typing: false, chatNo: no, chatPinned: false};
+  }); }; }
+  togglePin = () => this.setState(s => ({chatPinned: !s.chatPinned, chatMenu: false}));
+  clearChat = () => { clearTimeout(this.replyT); this.setState({msgs: [], typing: false, chatMenu: false, vstate: 'idle'}); };
+  deleteChat = () => { clearTimeout(this.replyT); this.setState(s => ({msgs: [], draft: '', typing: false, chatMenu: false, vstate: 'idle', chatPinned: false, chatNo: s.chatNo + 1, chatTitle: 'Новый чат'})); };
+  toggleTheme = () => this.setState(s => ({theme: s.theme === 'dark' ? 'light' : 'dark', themeSeq: (s.themeSeq || 0) + 1}));
+  toggleAuto = () => this.setState(s => ({auto: !s.auto}));
+  poll = () => this.setState(s => ({spins: s.spins+1, cpu: 20+Math.random()*60, gpu: 45+Math.random()*50}));
+  generate = () => {
+    if (this.state.generating) return;
+    this.setState({generating:true, genPct:0});
+    clearInterval(this.genTimer);
+    this.genTimer = setInterval(() => this.setState(s => {
+      const p = s.genPct + 7;
+      if (p >= 100) { clearInterval(this.genTimer); return {genPct:100, generating:false}; }
+      return {genPct:p};
+    }), 190);
+  };
+  speak = () => {
+    this.setState(s => ({speaking: !s.speaking}));
+    clearTimeout(this.speakT);
+    this.speakT = setTimeout(() => this.setState({speaking:false}), 5200);
+  };
+  slider(key, min, max, step, digits){
+    return e => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const p = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+      const raw = min + p * (max - min);
+      const v = Math.round(raw / step) * step;
+      this.setState({[key]: +v.toFixed(digits || 0)});
+    };
+  }
+  cmdToggle(i){ return () => this.setState(s => ({cmds: s.cmds.map((c,k) => k===i ? Object.assign({}, c, {on:!c.on}) : c)})); }
+  setToggle(k){ return () => this.setState(s => ({setToggles: Object.assign({}, s.setToggles, {[k]: !s.setToggles[k]})})); }
+
+  renderVals(){
+    const s = this.state, S = s.screen, dark = s.theme === 'dark';
+    const plural = (n, one, few, many) => {
+      const m10 = n % 10, m100 = n % 100;
+      if (m10 === 1 && m100 !== 11) return one;
+      if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+      return many;
+    };
+    const on = 'linear-gradient(100deg,var(--accsoft),transparent)';
+    const nav = NAV.map(n => ({
+      label:n.label, k:n.k, d:n.d, go:this.navGo(n.id),
+      icoCol: s.flash===n.id ? 'var(--a1)' : 'currentColor',
+      dash: s.flash===n.id ? '1' : 'none',
+      drawAnm: s.flash===n.id ? 'drawline 1.7s cubic-bezier(.3,.9,.35,1) both' : 'none',
+      glowAnm: s.flash===n.id ? 'neon 1.8s ease-out' : 'none',
+      icoTr: s.flash===n.id ? '.1s' : '1s',
+      bg: S===n.id ? on : 'transparent',
+      col: S===n.id ? 'var(--txt)' : 'var(--sub)',
+      gl: S===n.id ? 'inset 0 0 0 1px var(--stroke)' : 'none'
+    }));
+    const [title, subtitle] = TITLES[S] || TITLES.hub;
+    const [stateLabel, stateHint] = STATES[s.vstate];
+    const [stC1, stC2] = HEX[s.vstate];
+    const stIdle = s.vstate === 'idle';
+    const stateCol = stIdle ? 'var(--sub)' : (dark ? stC1 : stC1);
+    const stSoft = stIdle ? 'var(--chip)' : rgba(stC1, dark ? .16 : .12);
+    const stBd = stIdle ? 'var(--stroke)' : rgba(stC1, .42);
+    const stCardSh = stIdle ? 'var(--sh)' : 'var(--sh),0 0 46px ' + rgba(stC1, dark ? .2 : .14);
+    const orbBg = 'radial-gradient(circle at 34% 30%,' + stC1 + ',' + stC2 + ' 62%,' + rgba(stC2, .82) + ')';
+    const orbSh = '0 0 52px ' + rgba(stC2, stIdle ? .3 : .6);
+    const conic = 'conic-gradient(from 0deg,' + stC1 + ',' + stC2 + ',' + stC1 + ')';
+    const vstOrder = ['idle','listening','thinking','speaking'];
+
+    const msgs = s.msgs.map((m,i) => {
+      const ai = m.r === 'a';
+      return {
+        isAi: ai, t:m.t, align: ai ? 'flex-start' : 'flex-end', dir: ai ? 'row' : 'row-reverse',
+        av: ai ? '✦' : 'Я', avBg: ai ? 'linear-gradient(140deg,var(--a1),var(--a2))' : 'var(--chip)',
+        avCol: ai ? '#fff' : 'var(--sub)',
+        bg: ai ? 'var(--field)' : 'linear-gradient(120deg,var(--a1),var(--a2))',
+        col: ai ? 'var(--body)' : '#fff',
+        bd: ai ? 'var(--stroke)' : 'transparent',
+        radius: ai ? '6px 20px 20px 20px' : '20px 6px 20px 20px',
+        l: (m.l || []).map((t,k) => ({n:'0'+(k+1), t})),
+        acts: ai ? (i === s.msgs.length-1 ? ACT : ACT.slice(0,2)) : []
+      };
+    });
+
+    const hw = [
+      {n:'Процессор · 24 ядра', v:pct(s.cpu), w:pct(s.cpu)},
+      {n:'Видеопамять', v:(s.vram/100*16).toFixed(1)+' / 16 ГБ', w:pct(s.vram)},
+      {n:'Графика', v:pct(s.gpu), w:pct(s.gpu)}
+    ];
+    const quick = [
+      {t:'Создать изображение', s:'студия картинок', go:this.go('img'), d:'M4.5 6.5h15v11h-15zM6 16.2l4-3.9 3 2.9 2.4-1.9 3.1 3.6'},
+      {t:'Озвучить текст', s:'клон Clone-Echo v3', go:this.go('tts'), d:'M8 5.5v13l11-6.5-11-6.5Z'},
+      {t:'Каталог команд', s:'4 активных фразы', go:this.go('cmd'), d:'M6 8.5 9.5 12 6 15.5M12.5 15.5H18'}
+    ];
+    const threads = [];
+    [{l:'Закреплено', f:t => t.pinned}, {l:'Сегодня', f:t => !t.pinned && t.day==='today'}, {l:'Вчера', f:t => !t.pinned && t.day==='yest'}]
+      .forEach(g => {
+        const items = s.threadList.filter(g.f);
+        if (!items.length) return;
+        threads.push({isGroup:true, group:g.l});
+        items.forEach(t => threads.push({
+          isItem:true, id:t.id, title:t.title, meta:t.meta,
+          bg: t.id===s.activeThread ? 'linear-gradient(100deg,var(--accsoft),transparent)' : 'transparent',
+          bd: t.id===s.activeThread ? 'var(--stroke)' : 'transparent',
+          col: t.id===s.activeThread ? 'var(--txt)' : 'var(--body)',
+          go: this.selectThread(t.id, t.title),
+          menu: this.threadMenu(t.id), isOpen: s.threadMenu===t.id,
+          dotCol: s.threadMenu===t.id ? 'var(--txt)' : 'var(--faint)',
+          menuBg: s.threadMenu===t.id ? 'var(--accsoft)' : 'transparent',
+          pinLabel: t.pinned ? 'Снять закрепление' : 'Закрепить',
+          pin: this.pinThread(t.id), clear: this.clearThread(t.id), del: this.deleteThread(t.id)
+        }));
+      });
+    const cmdTabs = [
+      {id:'exec', t:'Выполнение'}, {id:'catalog', t:'Каталог команд'}, {id:'safe', t:'Безопасность'}
+    ].map(c => ({t:c.t, go:() => this.setState({cmdTab:c.id}), bg: s.cmdTab===c.id ? on : 'transparent', col: s.cmdTab===c.id ? 'var(--txt)' : 'var(--sub)'}));
+    const cmds = s.cmds.map((c,i) => ({
+      phrase:c.phrase, act:c.act, target:c.target, toggle:this.cmdToggle(i),
+      rowBg: c.on ? 'linear-gradient(100deg,var(--accstrong),transparent 88%)' : 'var(--field)',
+      rowBd: c.on ? 'var(--accline)' : 'var(--stroke)',
+      rowGl: c.on ? 'inset 3px 0 0 var(--a2)' : 'none',
+      trackBg: c.on ? 'linear-gradient(90deg,var(--a1),var(--a2))' : 'var(--chip)',
+      knob: c.on ? '20px' : '0px'
+    }));
+    const shortcuts = [{k:'⌘←',t:'Предыдущий трек'},{k:'⌘␣',t:'Плей / пауза'},{k:'⌘→',t:'Следующий трек'},{k:'⌘⇧M',t:'Выключить микрофон'}];
+
+    const mods = [
+      {n:'Нейросеть', st:'подключена', stCol:'var(--ok)', rows:[
+        {n:'Видеопамять', v:(s.vram/100*16).toFixed(1)+' ГБ', hasBar:true, w:pct(s.vram), col:'var(--txt)'},
+        {n:'Температура ядра', v:Math.round(s.temp)+'°C', hasBar:true, w:pct((s.temp-40)/50*100), col:'var(--txt)'},
+        {n:'Скорость генерации', v:s.tps.toFixed(1)+' ток/с', hasBar:false, w:'0%', col:'var(--a2)'}
+      ]},
+      {n:'Синтез речи', st:'активен', stCol:'var(--ok)', rows:[
+        {n:'Задержка', v:s.lat+' мс', hasBar:true, w:pct(s.lat/40*100), col:'var(--txt)'},
+        {n:'Аудиокэш', v:'1.2 МБ', hasBar:true, w:'26%', col:'var(--txt)'},
+        {n:'Голос', v:'Clone-Echo v3', hasBar:false, w:'0%', col:'var(--a2)'}
+      ]},
+      {n:'Распознавание', st:'прогрев', stCol:'var(--warn)', rows:[
+        {n:'Точность', v:'98.4%', hasBar:true, w:'98%', col:'var(--txt)'},
+        {n:'Буфер', v:'84 МБ', hasBar:true, w:'44%', col:'var(--txt)'},
+        {n:'Модель', v:'whisper-large-v3', hasBar:false, w:'0%', col:'var(--a2)'}
+      ]}
+    ];
+    const pts = [];
+    for (let i = 0; i < 40; i++){
+      const v = 50 + Math.sin(i/2.4)*22 + Math.sin(i/1.1)*10 + (i === 39 ? (s.cpu-50)*0.5 : 0);
+      pts.push([i/39*600, 110 - Math.max(6, Math.min(104, v))]);
+    }
+    const sparkLine = pts.map(p => p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+    const logs = [
+      {t:'Модель llama-3.1-8b загружена в память', time:'только что', col:'var(--ok)'},
+      {t:'Команда «Открой браузер» выполнена', time:'3 мин назад', col:'var(--a1)'},
+      {t:'Достигнут тепловой предел на нейропроцессоре', time:'18 мин назад', col:'var(--warn)'},
+      {t:'Клон голоса Clone-Echo v3 обновлён', time:'1 ч назад', col:'var(--a2)'}
+    ];
+
+    const imgSliders = [
+      {n:'Шаги сэмплирования', v:s.steps, w:pct((s.steps-10)/50*100), set:this.slider('steps',10,60,1)},
+      {n:'Сила подсказки (CFG)', v:s.cfg.toFixed(1), w:pct((s.cfg-1)/13*100), set:this.slider('cfg',1,14,0.5,1)}
+    ];
+    const resList = [512,768,1024].map(r => ({
+      t:r+'×'+r, go:() => this.setState({res:r}),
+      bg: s.res===r ? 'linear-gradient(100deg,var(--a1),var(--a2))' : 'var(--field)',
+      col: s.res===r ? '#fff' : 'var(--sub)',
+      bd: s.res===r ? 'transparent' : 'var(--stroke)'
+    }));
+    const history = [{t:'1024²'},{t:'1024²'},{t:'768²'},{t:'512²'}];
+
+    const ttsSliders = [
+      {n:'Скорость речи', v:s.rate.toFixed(2)+'×', w:pct((s.rate-0.5)/1.5*100), set:this.slider('rate',0.5,2,0.05,2)},
+      {n:'Тон голоса', v:s.pitch.toFixed(2), w:pct((s.pitch-0.5)/1*100), set:this.slider('pitch',0.5,1.5,0.05,2)},
+      {n:'Громкость', v:s.vol+'%', w:pct(s.vol), set:this.slider('vol',0,100,1)}
+    ];
+    const bars = [];
+    for (let i = 0; i < 30; i++) bars.push({h: Math.round(24 + Math.abs(Math.sin(i/2.2))*70)+'%', d: (i*0.055).toFixed(2)+'s'});
+    const ttsHistory = [
+      {n:'Clone-Echo v3', t:'Нейроконфигурация загружена…', time:'1 м'},
+      {n:'Системный голос', t:'Тепловой предел на нейропроцессоре', time:'30 м'},
+      {n:'Clone-Echo v3', t:'Отчёт по телеметрии за сутки', time:'2 ч'}
+    ];
+
+    const sec = SET.find(x => x.id === s.setSec) || SET[0];
+    const page = sec.pages.find(p => p.id === (s.setPage[sec.id] || sec.pages[0].id)) || sec.pages[0];
+    const setTabs = SET.map((x,i) => ({
+      t:x.t, d:x.d, no:(i < 9 ? '0' : '') + (i+1), go:this.secGo(x.id),
+      bg: sec.id===x.id ? on : 'transparent', col: sec.id===x.id ? 'var(--txt)' : 'var(--sub)',
+      gl: sec.id===x.id ? 'inset 0 0 0 1px var(--stroke)' : 'none',
+      icoCol: s.flashS===x.id ? 'var(--a1)' : 'currentColor',
+      dash: s.flashS===x.id ? '1' : 'none',
+      drawAnm: s.flashS===x.id ? 'drawline 1.7s cubic-bezier(.3,.9,.35,1) both' : 'none',
+      glowAnm: s.flashS===x.id ? 'neon 1.8s ease-out' : 'none'
+    }));
+    const setPages = sec.pages.map(p => ({
+      t:p.t, go:this.pageGo(sec.id, p.id),
+      bg: p.id===page.id ? 'var(--accsoft)' : 'transparent',
+      col: p.id===page.id ? 'var(--txt)' : 'var(--sub)',
+      gl: p.id===page.id ? '0 0 0 1px var(--a2)' : 'none'
+    }));
+    const fmt = (v,d) => d ? (+v).toFixed(d) : Math.round(v);
+    const rowVM = r => {
+      let cur = (r.k !== undefined && s.cfg[r.k] !== undefined) ? s.cfg[r.k] : r.v;
+      let toggle = r.k ? this.cfgTog(r.k, cur) : null;
+      let pick = o => (r.k ? this.cfgPick(r.k, o) : null);
+      let set = r.k ? this.cfgSld(r.k, r.min, r.max, r.st, r.d) : null;
+      let click = () => {};
+      const rl = r.real;
+      if (rl === 'chat'){ cur = s.chatEnabled; toggle = this.toggleChat; }
+      else if (rl === 'welcome'){ cur = s.showOnboard; toggle = () => this.setState(st => ({showOnboard: !st.showOnboard})); }
+      else if (rl === 'offline' || rl === 'autostart' || rl === 'tray'){ cur = s.setToggles[rl]; toggle = this.setToggle(rl); }
+      else if (rl === 'rate'){ cur = s.rate; set = this.slider('rate',0.5,2,0.05,2); }
+      else if (rl === 'vol'){ cur = s.vol; set = this.slider('vol',0,100,1); }
+      else if (rl === 'fz'){ cur = s.fz; set = this.slider('fz',85,125,5); }
+      else if (rl === 'uianim'){
+        cur = s.anim === 'off' ? 'Экономия' : (s.cfg.uianim || 'Всегда');
+        pick = o => () => { this.cfgSet('uianim', o); this.setState(st => ({anim: o === 'Экономия' ? 'off' : (st.anim === 'off' ? 'breathe' : st.anim)})); };
+      }
+      else if (rl === 'gocmd'){ click = this.go('cmd'); }
+      const isSld = r.kind === 'sld';
+      return {
+        n:r.n, s:r.s || '', hasSub: !!r.s,
+        isTog: r.kind==='tog', isSeg: r.kind==='seg', isSld, isTxt: r.kind==='txt',
+        isVal: r.kind==='val', isBtn: r.kind==='btn', isKey: r.kind==='key', isArea: r.kind==='area',
+        toggle,
+        bd: (r.kind==='tog' && cur) ? 'var(--accline)' : 'var(--stroke)',
+        bg: (r.kind==='tog' && cur) ? 'linear-gradient(100deg,var(--accstrong),transparent 88%)' : 'var(--field)',
+        gl: (r.kind==='tog' && cur) ? 'inset 3px 0 0 var(--a2)' : 'none',
+        trackBg: cur ? 'linear-gradient(90deg,var(--a1),var(--a2))' : 'var(--chip)',
+        knob: cur ? '20px' : '0px',
+        opts: (r.o || []).map(o => ({
+          t:o, go:pick(o),
+          bg: o===cur ? 'var(--accsoft)' : 'transparent',
+          col: o===cur ? 'var(--txt)' : 'var(--sub)',
+          sh: o===cur ? '0 0 0 1px var(--a2)' : 'none'
+        })),
+        v: isSld ? fmt(cur, r.d) + r.unit : r.v,
+        w: isSld ? pct((cur - r.min) / (r.max - r.min) * 100) : '0%',
+        set, txt: cur, onTxt: r.k ? this.cfgTxt(r.k) : null,
+        btn: r.b, click,
+        btnCol: r.dg ? 'var(--dgr)' : 'var(--txt)',
+        btnBd: r.dg ? 'rgba(255,122,122,.4)' : 'var(--stroke2)',
+        btnBg: r.dg ? 'rgba(255,122,122,.1)' : 'var(--chip)'
+      };
+    };
+    const mStCol = st => st==='Активна' ? 'var(--ok)' : st==='Установлена' ? 'var(--a2)' : 'var(--faint)';
+    const setCards = page.cards.map(c => ({
+      t:c.t, rows:(c.rows || []).map(rowVM),
+      isAppearance: c.kind==='appearance', isModels: c.kind==='models',
+      isWidget: c.kind==='widget', isLog: c.kind==='log',
+      items:(c.items || []).map(m => Object.assign({}, m, {
+        stCol: mStCol(m.st),
+        bd: m.st==='Активна' ? 'var(--accline)' : 'var(--stroke)',
+        bg: m.st==='Активна' ? 'linear-gradient(100deg,var(--accsoft),transparent 88%)' : 'var(--field)'
+      }))
+    }));
+    const vizStates = [['Ожидание','idle'],['Слушает','listening'],['Думает','thinking'],['Говорит','speaking']].map(v => ({
+      t:v[0], go:this.setVstate(v[1]),
+      bd: s.vstate===v[1] ? rgba(HEX[v[1]][0], .5) : 'var(--stroke)',
+      bg: s.vstate===v[1] ? rgba(HEX[v[1]][0], dark ? .18 : .12) : 'transparent',
+      col: s.vstate===v[1] ? HEX[v[1]][0] : 'var(--sub)'
+    }));
+    const wstyle = s.cfg.wstyle || 'Сфера';
+    const vizStyles = [
+      ['Сфера','radial-gradient(circle at 42% 36%,var(--a1),var(--a2) 60%,var(--a3))'],
+      ['Волны','radial-gradient(120% 90% at 50% 130%,var(--a1),transparent 68%)'],
+      ['Бары','repeating-linear-gradient(90deg,var(--a2) 0 4px,transparent 4px 10px)'],
+      ['Siri Orb','conic-gradient(from 0deg,var(--a1),var(--a2),var(--a3),var(--a1))'],
+      ['Полоски','repeating-linear-gradient(90deg,var(--a1) 0 2px,transparent 2px 7px)'],
+      ['Волны 3D','repeating-linear-gradient(118deg,var(--a2) 0 3px,transparent 3px 12px)'],
+      ['Поле частиц','radial-gradient(circle,var(--a2) 1.2px,transparent 1.2px) 0 0/9px 9px'],
+      ['Нет','var(--chip)']
+    ].map(v => ({
+      t:v[0], prev:v[1], go:this.cfgPick('wstyle', v[0]),
+      bd: wstyle===v[0] ? 'var(--a2)' : 'var(--stroke)',
+      bg: wstyle===v[0] ? 'var(--accsoft)' : 'var(--field)',
+      col: wstyle===v[0] ? 'var(--txt)' : 'var(--sub)'
+    }));
+    const LOGLINES = [
+      {time:'12:04:31', tag:'модель', t:'llama-3.1-8b загружена в память · 5.4 ГБ', col:'var(--ok)'},
+      {time:'12:04:29', tag:'голос', t:'whisper-large-v3 · движок распознавания готов', col:'var(--a1)'},
+      {time:'12:03:58', tag:'команды', t:'«Открой браузер» → chrome.exe выполнено', col:'var(--a2)'},
+      {time:'12:01:12', tag:'обновления', t:'Проверка обновлений: установлена последняя версия', col:'var(--sub)'},
+      {time:'11:58:40', tag:'ошибки', t:'Сервер распознавания не отвечает, распознаю локально', col:'var(--warn)'},
+      {time:'11:57:03', tag:'телефон', t:'Устройство 192.168.0.31 отключилось', col:'var(--sub)'},
+      {time:'11:56:22', tag:'голос', t:'Клон Clone-Echo v3 обновлён · 86 МБ', col:'var(--a1)'},
+      {time:'11:50:07', tag:'модель', t:'Тепловой предел нейропроцессора · 79 °C', col:'var(--warn)'}
+    ];
+    const logFilters = ['Все','Голос','Модель','Команды','Телефон','Обновления','Ошибки'].map(t => ({
+      t, go:() => this.setState({logTag:t}),
+      bd: s.logTag===t ? 'var(--accline)' : 'var(--stroke)',
+      bg: s.logTag===t ? 'var(--accsoft)' : 'var(--field)',
+      col: s.logTag===t ? 'var(--txt)' : 'var(--sub)'
+    }));
+    const logLines = LOGLINES.filter(l => s.logTag === 'Все' || l.tag === s.logTag.toLowerCase());
+    const animCards = [
+      {id:'breathe', t:'Дыхание', an:'breathe 6s ease-in-out infinite', sz:'100% 100%'},
+      {id:'flow', t:'Перелив', an:'flowpos 3.4s linear infinite', sz:'220% 100%'},
+      {id:'pulse', t:'Пульс', an:'pulsebr 2.4s ease-in-out infinite', sz:'100% 100%'},
+      {id:'off', t:'Без анимации', an:'none', sz:'100% 100%'}
+    ].map(n => ({
+      t:n.t, an:n.an, sz:n.sz, go:() => this.setState({anim:n.id}),
+      bd: s.anim===n.id ? 'var(--a2)' : 'var(--stroke)',
+      bg: s.anim===n.id ? 'var(--accsoft)' : 'var(--field)',
+      gl: s.anim===n.id ? '0 0 0 1px var(--a2)' : 'none'
+    }));
+    const glassCards = [
+      {id:'glass', t:'Стекло'}, {id:'frost', t:'Матовое'}, {id:'solid', t:'Плотное'}
+    ].map(g => ({
+      t:g.t, go:() => this.setState({glass:g.id}),
+      bd: s.glass===g.id ? 'var(--a2)' : 'var(--stroke)',
+      bg: s.glass===g.id ? 'var(--accsoft)' : 'var(--field)',
+      gl: s.glass===g.id ? '0 0 0 1px var(--a2)' : 'none'
+    }));
+    const glassHint = {
+      glass:'Панели почти прозрачные, аврора просвечивает сквозь них.',
+      frost:'Матовое стекло: фон приглушён, размытие слабее.',
+      solid:'Плотные панели без размытия — быстрее на слабых видеокартах.'
+    }[s.glass];
+    const animHint = {
+      breathe:'Оттенок и насыщенность медленно плывут — фон будто дышит.',
+      flow:'Градиент переливается: цвета непрерывно перетекают друг в друга.',
+      pulse:'Яркость мягко пульсирует в такт ответам ассистента.',
+      off:'Статичные градиенты — минимум движения на экране.'
+    }[s.anim];
+    const themeCards = [
+      {id:'dark', t:'Тёмная', preview:'#0B0D13', bar1:'rgba(255,255,255,.5)', bar2:'rgba(255,255,255,.2)', blob:'#7C6CF0'},
+      {id:'light', t:'Светлая', preview:'#EFF3F9', bar1:'rgba(20,30,50,.45)', bar2:'rgba(20,30,50,.18)', blob:'#9B72CB'}
+    ].map(t => ({
+      t:t.t, preview:t.preview, bar1:t.bar1, bar2:t.bar2, blob:t.blob,
+      go:() => this.setState({theme:t.id}),
+      bd: s.theme===t.id ? 'var(--a2)' : 'var(--stroke)',
+      bg: s.theme===t.id ? 'var(--accsoft)' : 'var(--field)',
+      gl: s.theme===t.id ? '0 0 0 1px var(--a2)' : 'none',
+      mark: s.theme===t.id ? '✓' : '', tick:'var(--a2)'
+    }));
+    const accCards = [
+      {id:'google', t:'Google', grad:'linear-gradient(135deg,#3269CE,#7F5AAC,#BC505C)'},
+      {id:'aurora', t:'Аврора', grad:'linear-gradient(135deg,#1CACC2,#3F63D1,#8A6FD4)'},
+      {id:'sunset', t:'Закат', grad:'linear-gradient(135deg,#D18A19,#CD5374,#7F5AAC)'},
+      {id:'mint', t:'Мята', grad:'linear-gradient(135deg,#1F9E7A,#3C8CA8,#6D7CC0)'}
+    ].map(a => ({
+      t:a.t, grad:a.grad, go:() => this.setState({accent:a.id}),
+      bd: s.accent===a.id ? 'var(--stroke2)' : 'var(--stroke)',
+      bg: s.accent===a.id ? 'var(--chip)' : 'transparent',
+      gl: s.accent===a.id ? '0 0 14px rgba(155,114,203,.6)' : 'none'
+    }));
+    const bgCards = [
+      {id:'aurora', t:'Аврора', prevBg:'#0B0D13', prevFx:'radial-gradient(circle at 22% 120%,var(--a1),transparent 62%),radial-gradient(circle at 78% 130%,var(--a2),transparent 60%)', prevOp:.9, prevDots:.22},
+      {id:'shader', t:'Шейдер', prevBg:'#06070B', prevFx:'linear-gradient(18deg,var(--a1) 4%,var(--a2) 34%,var(--a3) 58%,transparent 78%)', prevOp:.95, prevDots:.3},
+      {id:'off', t:'Без фона', prevBg:'var(--chip)', prevFx:'none', prevOp:0, prevDots:.18}
+    ].map(b => ({
+      t:b.t, prevBg:b.prevBg, prevFx:b.prevFx, prevOp:b.prevOp, prevDots:b.prevDots,
+      go:() => this.setState({bgStyle:b.id}),
+      mark: s.bgStyle===b.id ? '✓' : '',
+      bd: s.bgStyle===b.id ? 'var(--a2)' : 'var(--stroke)',
+      bg: s.bgStyle===b.id ? 'var(--accsoft)' : 'var(--field)',
+      gl: s.bgStyle===b.id ? '0 0 0 1px var(--a2)' : 'none'
+    }));
+    const bgHint = {
+      aurora:'Мягкие световые пятна на дне экрана — самый спокойный вариант.',
+      shader:'Живая аврора на видеокарте: полосы света текут и меняют оттенок.',
+      off:'Чистый фон без свечения — минимум нагрузки и отвлечения.'
+    }[s.bgStyle];
+    const dotCards = [
+      {id:'push', t:'Отталкивание'}, {id:'glow', t:'Свечение'}, {id:'off', t:'Выключена'}
+    ].map(d => ({
+      t:d.t, go:() => this.setState({gridMode:d.id}),
+      bd: s.gridMode===d.id ? 'var(--a2)' : 'var(--stroke)',
+      bg: s.gridMode===d.id ? 'var(--accsoft)' : 'var(--field)',
+      gl: s.gridMode===d.id ? '0 0 0 1px var(--a2)' : 'none'
+    }));
+    const dotHint = {
+      push:'Точки разбегаются от курсора и пружиной возвращаются на место.',
+      glow:'Точки стоят на местах и разгораются волной вслед за курсором. Клик пускает круг.',
+      off:'Сетка скрыта.'
+    }[s.gridMode];
+    return {
+      theme: s.theme, accentAttr: s.accent,
+      glassAttr: this.props.glass === false ? 'solid' : s.glass, glassCards, glassHint,
+      bgCards, bgHint, dotCards, dotHint, glRef: this.glRef,
+      auroraBg: s.bgStyle === 'aurora', shaderBg: s.bgStyle === 'shader',
+      gridAttr: (this.props.grid === false || s.gridMode === 'off') ? 'off' : 'on',
+      auroraAttr: this.props.aurora || 'bright',
+      isApp: S !== 'onboard', isOnboard: S === 'onboard',
+      isHub: S==='hub', isChat: S==='chat', isCmd: S==='cmd', isMon: S==='mon', isImg: S==='img', isTts: S==='tts', isSet: S==='set',
+      title, subtitle, nav, go: {settings:this.go('set'), log:this.go('mon'), onboard:this.go('onboard')},
+      gridRef: this.gridRef, showBack: S !== 'hub' && S !== 'onboard', goHub: this.go('hub'),
+      themeIcon: dark ? 'M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z' : 'M12 4.5v-2M12 21.5v-2M4.5 12h-2M21.5 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4M16.2 12a4.2 4.2 0 1 1-8.4 0 4.2 4.2 0 0 1 8.4 0Z',
+      toggleTheme: this.toggleTheme, newChat: () => this.setState({screen:'chat'}),
+      stateLabel, stateHint, stateCol, wake:'Привет, EVS',
+      stC1, stC2, stSoft, stBd, stCardSh, orbBg, orbSh, conic,
+      stateTxt: stIdle ? 'var(--txt)' : stC1,
+      micDraw: DRAWS[vstOrder.indexOf(s.vstate)] + ' .9s cubic-bezier(.3,.9,.35,1) both',
+      themeDraw: DRAWS[(s.themeSeq || 0) % 4] + ' .8s cubic-bezier(.3,.9,.35,1) both',
+      themeGlow: 'none',
+      zoom: s.fz / 100, appH: (10000 / s.fz).toFixed(2) + 'vh',
+      playState: s.vstate==='idle' ? 'paused' : 'running',
+      lat: s.lat, tps: s.tps.toFixed(1), ctxPct: pct(s.ctx), ctxNum: Math.round(s.ctx),
+      ctxDash: (88 - 88*s.ctx/100).toFixed(1),
+      ctxTitle: 'Окно контекста заполнено на ' + Math.round(s.ctx) + '%',
+      ctxCol: s.ctx > 85 ? 'var(--dgr)' : s.ctx > 65 ? 'var(--warn)' : 'var(--a2)',
+      msgs, typing: s.typing, hw, quick, threads, chips: [
+        {t:'Свести отчёт по телеметрии', go:this.go('mon')},
+        {t:'Нарисовать сцену для обоев', go:this.go('img')},
+        {t:'Озвучить последний ответ', go:this.go('tts')}
+      ],
+      draft: s.draft, onDraft: this.onDraft, onKey: this.onKey, send: this.send,
+      sendLabel: s.typing ? 'Остановить' : 'Отправить',
+      sendIcon: s.typing ? 'M7 7h10v10H7z' : 'M12 20V5M5.6 11.4 12 5l6.4 6.4',
+      cycleState: this.cycleState, toggleChat: this.toggleChat,
+      chatOn: s.chatEnabled, chatOff: !s.chatEnabled,
+      chatToggleLabel: s.chatEnabled ? 'Выключить чат (только команды)' : 'Включить чат',
+      chatTogIcon: s.chatEnabled ? 'M20.5 12a8.5 8.5 0 0 1-12.3 7.6L4 21l1.4-4.2A8.5 8.5 0 1 1 20.5 12Z' : 'M7 10.5V8a5 5 0 0 1 10 0v2.5M5.5 10.5h13V20h-13z',
+      chatTogCol: s.chatEnabled ? 'var(--sub)' : 'var(--warn)',
+      chatTogBg: s.chatEnabled ? 'transparent' : 'var(--chip)',
+      chatTitle: s.chatTitle, chatMenu: s.chatMenu, chatEmpty: s.msgs.length === 0,
+      chatMeta: 'llama-3.1-8b · ' + (s.msgs.length ? s.msgs.length + ' ' + plural(s.msgs.length, 'реплика', 'реплики', 'реплик') + ' · только что' : 'пустой чат'),
+      toggleChatMenu: this.toggleChatMenu, togglePin: this.togglePin, clearChat: this.clearChat, deleteChat: this.deleteChat,
+      pinLabel: s.chatPinned ? 'Снять закрепление' : 'Закрепить чат',
+      menuBd: s.chatMenu ? 'var(--accline)' : 'var(--stroke)',
+      menuBg: s.chatMenu ? 'var(--accsoft)' : 'var(--field)',
+      menuCol: s.chatMenu ? 'var(--txt)' : 'var(--sub)',
+      composerBd: s.chatEnabled ? 'var(--stroke)' : 'rgba(245,185,68,.34)',
+      composerBg: s.chatEnabled ? 'var(--field)' : 'transparent',
+      composerHint: s.chatEnabled ? 'Спросите что угодно' : 'Чат отключён — доступны только голосовые команды',
+      inputOp: s.chatEnabled ? 1 : .38,
+      inputCur: s.chatEnabled ? 'pointer' : 'not-allowed',
+      sendPE: s.chatEnabled ? 'auto' : 'none',
+      micCol: s.vstate==='idle' ? 'var(--sub)' : '#fff',
+      micBg: s.vstate==='idle' ? 'transparent' : 'linear-gradient(140deg,var(--a1),var(--a2))',
+      cmdTabs, cmds, shortcuts,
+      mods, sparkLine, sparkArea: '0,110 ' + sparkLine + ' 600,110', logs,
+      auto: s.auto, toggleAuto: this.toggleAuto, poll: this.poll,
+      autoTrack: s.auto ? 'linear-gradient(90deg,var(--a1),var(--a2))' : 'var(--chip)',
+      autoKnob: s.auto ? '19px' : '0px', spinCount: s.spins + 1,
+      imgSliders, resList, history, generate: this.generate,
+      genLabel: s.generating ? 'Генерирую…' : 'Сгенерировать',
+      genState: s.generating ? 'генерация · шаг ' + Math.round(s.genPct/100*s.steps) + ' из ' + s.steps : s.genPct >= 100 ? 'готово · ' + s.res + '×' + s.res : 'ожидание задачи',
+      genPct: pct(s.genPct),
+      ttsTabs: [{id:'system',t:'Системные голоса'},{id:'clone',t:'Клон голоса'}].map(t => ({
+        t:t.t, go:() => this.setState({ttsTab:t.id}),
+        bg: s.ttsTab===t.id ? 'linear-gradient(100deg,var(--a1),var(--a2))' : 'transparent',
+        col: s.ttsTab===t.id ? '#fff' : 'var(--sub)'
+      })),
+      voiceName: s.ttsTab==='clone' ? 'Мой голос (клон)' : 'Clone-Echo v3',
+      ttsSliders, bars, ttsHistory, speak: this.speak,
+      speakLabel: s.speaking ? 'Остановить' : 'Произнести',
+      speakLabelShort: s.speaking ? 'говорит' : 'пауза',
+      speakState: s.speaking ? 'running' : 'paused',
+      setTabs, setPages, setMulti: sec.pages.length > 1, setTitle: sec.t, setSub: sec.sub, setCards,
+      vizStates, vizStyles, logFilters, logLines,
+      themeCards, accCards, animCards, animHint, animAttr: s.anim,
+      onbChips: [
+        {t:'Что ты умеешь?'}, {t:'Настрой микрофон'}, {t:'Нарисуй обои для рабочего стола'}, {t:'Заведи команду «Сверни всё»'}
+      ],
+      dontShow: () => this.setState(st => ({showOnboard: !st.showOnboard})),
+      dontMark: s.showOnboard ? '' : '✓',
+      dontBd: s.showOnboard ? 'var(--stroke2)' : 'var(--a2)',
+      dontBg: s.showOnboard ? 'transparent' : 'var(--a2)',
+      finish: () => this.setState({screen:'hub'})
+    };
+  }
+}
+
+</script>
+</body>
+</html>

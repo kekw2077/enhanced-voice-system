@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Image Details - Ethereal AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-highest": "#e0e3e5",
+                      "surface-container-high": "#e6e8ea",
+                      "on-secondary": "#ffffff",
+                      "on-tertiary-container": "#f9fdff",
+                      "primary-fixed-dim": "#c0c1ff",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary-container": "#600037",
+                      "tertiary-container": "#008096",
+                      "on-primary": "#ffffff",
+                      "on-surface": "#191c1e",
+                      "surface": "#f7f9fb",
+                      "on-primary-container": "#fffbff",
+                      "on-secondary-fixed": "#3e0022",
+                      "primary-fixed": "#e1e0ff",
+                      "on-error-container": "#93000a",
+                      "surface-container": "#eceef0",
+                      "tertiary": "#006577",
+                      "secondary-fixed": "#ffd9e4",
+                      "secondary": "#b4136d",
+                      "surface-dim": "#d8dadc",
+                      "on-tertiary-fixed": "#001f26",
+                      "inverse-surface": "#2d3133",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-fixed": "#acedff",
+                      "outline": "#767586",
+                      "primary-container": "#6063ee",
+                      "on-background": "#191c1e",
+                      "on-primary-fixed-variant": "#2f2ebe",
+                      "inverse-primary": "#c0c1ff",
+                      "surface-container-low": "#f2f4f6",
+                      "on-surface-variant": "#464554",
+                      "tertiary-fixed-dim": "#4cd7f6",
+                      "surface-tint": "#494bd6",
+                      "outline-variant": "#c7c4d7",
+                      "error": "#ba1a1a",
+                      "inverse-on-surface": "#eff1f3",
+                      "primary": "#4648d4",
+                      "on-primary-fixed": "#07006c",
+                      "on-error": "#ffffff",
+                      "surface-bright": "#f7f9fb",
+                      "secondary-fixed-dim": "#ffb0cd",
+                      "error-container": "#ffdad6",
+                      "on-secondary-fixed-variant": "#8c0053",
+                      "background": "#f7f9fb",
+                      "surface-container-lowest": "#ffffff",
+                      "secondary-container": "#fd56a7",
+                      "on-tertiary-fixed-variant": "#004e5c"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "gutter": "24px",
+                      "sm": "12px",
+                      "container-max": "1440px",
+                      "base": "8px",
+                      "xs": "4px",
+                      "xl": "64px",
+                      "lg": "40px",
+                      "md": "24px"
+              },
+              "fontFamily": {
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "title-md": [
+                              "Inter"
+                      ],
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "headline-lg-mobile": [
+                              "Inter"
+                      ],
+                      "display-lg": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.08em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "title-md": [
+                              "20px",
+                              {
+                                      "lineHeight": "28px",
+                                      "letterSpacing": "0em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "0em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "letterSpacing": "0em",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "display-lg": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+      </script>
+<style>
+        body {
+            background-color: #0b0f14;
+        }
+      </style>
+</head>
+<body class="text-on-surface antialiased min-h-screen flex flex-col relative overflow-hidden">
+<!-- TopNavBar -->
+<nav class="w-full sticky top-0 z-50 bg-surface/80 dark:bg-surface-dim/80 backdrop-blur-3xl border-b border-white/40 dark:border-outline-variant/20 shadow-[0px_10px_40px_rgba(0,0,0,0.04)]">
+<div class="flex justify-between items-center px-lg py-sm max-w-container-max mx-auto">
+<div class="flex items-center gap-md">
+<button class="flex items-center gap-base text-on-surface-variant hover:text-primary transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-[20px] group-hover:-translate-x-1 transition-transform">arrow_back</span>
+<span class="font-body-sm text-body-sm">Back to Gallery</span>
+</button>
+</div>
+<div class="font-display-lg text-display-lg bg-clip-text text-transparent bg-gradient-to-r from-primary to-tertiary hidden md:block">
+                Ethereal AI
+            </div>
+<div class="flex items-center gap-md">
+<button class="font-label-caps text-label-caps text-on-surface-variant hover:text-primary transition-colors border border-outline-variant/50 rounded-full px-4 py-2 hover:bg-surface-container-high/20 backdrop-blur-md">
+                    Share
+                </button>
+<button class="font-label-caps text-label-caps bg-gradient-to-r from-primary to-tertiary text-on-primary rounded-full px-6 py-2 shadow-[0px_10px_40px_rgba(0,0,0,0.04)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
+                    Save Image
+                </button>
+<button class="h-10 w-10 rounded-full bg-surface-container overflow-hidden border border-white/20">
+<img class="w-full h-full object-cover" data-alt="A small circular profile picture of an AI user avatar, featuring a glowing blue geometric face against a dark space background. The style is futuristic and ethereal, matching a modern light-mode interface." src="https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg"/>
+</button>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col md:flex-row relative z-10 p-md md:p-lg gap-lg max-w-[1920px] mx-auto w-full h-[calc(100vh-80px)]">
+<!-- Left Sidebar: Metadata -->
+<aside class="w-full md:w-[320px] shrink-0 bg-surface/5 dark:bg-surface-dim/10 backdrop-blur-2xl border border-white/10 dark:border-outline-variant/10 rounded-xl p-md flex flex-col gap-lg shadow-[0px_10px_40px_rgba(0,0,0,0.04)] overflow-y-auto">
+<div>
+<h3 class="font-title-md text-title-md text-primary-fixed-dim mb-4">Metadata</h3>
+<div class="space-y-4">
+<div class="flex flex-col gap-xs">
+<span class="font-label-caps text-label-caps text-outline">Prompt</span>
+<p class="font-body-sm text-body-sm text-surface-bright">A striking digital installation art piece featuring glowing, generative geometric shapes suspended in a vast, minimalist gallery space. The room is illuminated by high-key, soft white lighting that creates a bright, modern light-mode aesthetic.</p>
+</div>
+<div class="flex flex-col gap-xs pt-4 border-t border-white/10">
+<span class="font-label-caps text-label-caps text-outline">Negative Prompt</span>
+<p class="font-body-sm text-body-sm text-surface-bright/70">blurry, distorted, low quality, noisy</p>
+</div>
+<div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/10">
+<div class="flex flex-col gap-xs">
+<span class="font-label-caps text-label-caps text-outline">Dimensions</span>
+<span class="font-body-md text-body-md text-surface-bright">1024 x 1024</span>
+</div>
+<div class="flex flex-col gap-xs">
+<span class="font-label-caps text-label-caps text-outline">Seed</span>
+<span class="font-body-md text-body-md text-surface-bright font-mono">84729103</span>
+</div>
+<div class="flex flex-col gap-xs">
+<span class="font-label-caps text-label-caps text-outline">Model</span>
+<span class="font-body-md text-body-md text-surface-bright">Ethereal V2</span>
+</div>
+<div class="flex flex-col gap-xs">
+<span class="font-label-caps text-label-caps text-outline">Steps</span>
+<span class="font-body-md text-body-md text-surface-bright">40</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Center: Image Preview -->
+<section class="flex-1 relative flex items-center justify-center min-h-[400px] bg-black/20 rounded-xl overflow-hidden border border-white/5 backdrop-blur-sm group">
+<div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-50"></div>
+<img class="max-w-full max-h-full object-contain drop-shadow-[0px_20px_60px_rgba(0,0,0,0.5)] z-10 transition-transform duration-700 ease-out group-hover:scale-[1.01]" data-alt="A striking digital installation art piece featuring glowing, generative geometric shapes suspended in a vast, minimalist gallery space. The room is illuminated by high-key, soft white lighting that creates a bright, modern light-mode aesthetic. The artwork relies on a sophisticated palette of deep blacks and pristine whites, punctuated by intense accents of vibrant red. The mood is serene yet technologically advanced." src="https://www.gstatic.com/labs-code/stitch/stitch-placeholder-300x300.svg"/>
+<div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+<button class="bg-surface/20 backdrop-blur-xl border border-white/20 text-white rounded-full p-2 hover:bg-surface/40 transition-colors">
+<span class="material-symbols-outlined">zoom_in</span>
+</button>
+<button class="bg-surface/20 backdrop-blur-xl border border-white/20 text-white rounded-full p-2 hover:bg-surface/40 transition-colors">
+<span class="material-symbols-outlined">fullscreen</span>
+</button>
+</div>
+</section>
+<!-- Right Sidebar: Refine Actions -->
+</main></body></html>
