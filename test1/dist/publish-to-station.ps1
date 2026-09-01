@@ -14,7 +14,8 @@ param(
   [string]$Host_ = "npc",                       # имя из ~/.ssh/config
   [string]$BaseUrl = "http://100.79.130.7:8099",# что писать В ФАЙЛАХ
   [string]$Remote = "/home/art/evs-updates/files",
-  [switch]$WithSidecar
+  [switch]$WithSidecar,
+  [int]$Keep = 2                                # сколько установщиков хранить
 )
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -76,5 +77,31 @@ $feed = (Invoke-WebRequest "$BaseUrl/appcast.xml" -TimeoutSec 20).Content
 if ($feed -match 'github\.com[^"]*EVS-Setup') { "  [x] в appcast остались ссылки на GitHub"; $ok = $false }
 else { "  [v] ссылки в appcast ведут на станцию" }
 
-if ($ok) { Say "готово. В EVS: «О приложении» → «Сервер обновлений» -> $BaseUrl" }
-else { Die "выложено не полностью" }
+if (-not $ok) { Die "выложено не полностью" }
+
+# --- чистка ------------------------------------------------------------------
+# Каталог растёт на установщик за релиз и за полгода набирает под гигабайт.
+# Хранить нужно ровно столько, сколько требуется откату: текущую версию и ту,
+# на которую он уводит. Ниже двух опускаться нельзя — откатываться станет не на
+# что, ни кнопкой в настройках, ни через rollback.ps1.
+#
+# Чистка идёт ПОСЛЕ проверки: пока не подтвердилось, что новое действительно
+# отдаётся, старое трогать нельзя. Удаляются только файлы строгого вида
+# EVS-Setup-<версия>.exe — appcast.xml, components.json и движок под шаблон не
+# попадают ни при каких условиях.
+if ($Keep -lt 2) { $Keep = 2 }
+$files = @(ssh $Host_ "ls -1 $Remote | grep -E '^EVS-Setup-[0-9.]+[.]exe$'") |
+  Where-Object { $_ }
+if ($files.Count -gt $Keep) {
+  $sorted = $files | Sort-Object {
+    [version](($_ -replace '^EVS-Setup-', '') -replace '[.]exe$', '')
+  } -Descending
+  $doomed = @($sorted | Select-Object -Skip $Keep)
+  Say "чищу станцию: оставляю $Keep, удаляю $($doomed.Count)"
+  foreach ($f in $doomed) { Write-Host "    $f" -ForegroundColor DarkGray }
+  $list = ($doomed | ForEach-Object { "'$Remote/$_'" }) -join ' '
+  ssh $Host_ "rm -f $list"
+  Say "оставлены: $(($sorted | Select-Object -First $Keep) -join ', ')"
+}
+
+Say "готово. В EVS: «О приложении» → «Сервер обновлений» -> $BaseUrl"
