@@ -5338,6 +5338,31 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     ];
   }
 
+  // Asked before doing, because it reinstalls the program underneath the
+  // user and restarts it — recoverable, but not something to trigger with one
+  // stray click on a settings page.
+  Future<void> _confirmRollback(AppState app, String prev) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AppDialog(
+        backgroundColor: _card(context),
+        title:
+            Text(app.t('updRollback'), style: TextStyle(color: _txt(context))),
+        content: Text(app.t('updRollbackConfirm').replaceAll('{v}', prev),
+            style: TextStyle(color: _sub(context))),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(app.t('cancel'))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(app.t('updRollback'))),
+        ],
+      ),
+    );
+    if (ok == true) await AppUpdater.instance.rollbackToPrevious();
+  }
+
   List<_CardSpec> _aboutUpdateCards(AppState app) {
     return [
       _CardSpec(evsCard(context,
@@ -5350,6 +5375,23 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             label: app.t('checkNow'),
             desc: app.t('updFlowDesc'),
             control: _updateControl(app)),
+        // The way back. Hidden until the feed actually offers an older
+        // release, so a fresh install does not show a button that cannot do
+        // anything — and shown even when there is no update to install, since
+        // that is exactly the situation where it is needed.
+        ValueListenableBuilder<String>(
+          valueListenable: AppUpdater.instance.rollbackVersion,
+          builder: (_, prev, __) => prev.isEmpty
+              ? const SizedBox.shrink()
+              : evsRow(context,
+                  label: app.t('updRollback'),
+                  desc: app.t('updRollbackDesc').replaceAll('{v}', prev),
+                  control: evsGhostButton(
+                      context,
+                      '${app.t('updRollback')} · $prev',
+                      Icons.settings_backup_restore,
+                      onTap: () => _confirmRollback(app, prev))),
+        ),
         evsRow(context,
             stacked: true,
             label: app.t('updServer'),

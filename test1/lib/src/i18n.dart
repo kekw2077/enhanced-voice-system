@@ -773,6 +773,12 @@ const Map<String, Map<String, String>> _i18n = {
     'updFailedManual': 'Автообновление до {v} не установилось. Скачайте установщик вручную.',
     'updDownloadManual': 'Скачать',
     'updSplashKicker': 'УСТАНОВКА ОБНОВЛЕНИЯ',
+    'updRollback': 'Вернуться назад',
+    'updRollbackDesc':
+        'Поставить предыдущую версию {v}, если в текущей что-то сломалось',
+    'updRollbackConfirm':
+        'EVS вернётся на версию {v} и перезапустится. Настройки, диалоги и '
+        'скачанные модели останутся на месте — установщик их не трогает.',
     'bootPhaseStart': 'ЗАПУСК EVS',
     'bootPhaseSettings': 'ЗАГРУЗКА НАСТРОЕК',
     'bootPhaseTray': 'ТРЕЙ И ГОРЯЧИЕ КЛАВИШИ',
@@ -2812,6 +2818,12 @@ const Map<String, Map<String, String>> _i18n = {
     'updFailedManual': 'Auto-update to {v} did not install. Download the installer manually.',
     'updDownloadManual': 'Download',
     'updSplashKicker': 'INSTALLING UPDATE',
+    'updRollback': 'Go back',
+    'updRollbackDesc':
+        'Install the previous version {v}, if something broke in this one',
+    'updRollbackConfirm':
+        'EVS will return to version {v} and restart. Settings, chats and '
+        'downloaded models stay where they are — the installer leaves them.',
     'bootPhaseStart': 'STARTING EVS',
     'bootPhaseSettings': 'LOADING SETTINGS',
     'bootPhaseTray': 'TRAY AND HOTKEYS',

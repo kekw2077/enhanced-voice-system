@@ -330,6 +330,10 @@ class AppUpdater {
   final ValueNotifier<UpdateStatus> status = ValueNotifier(UpdateStatus.idle);
   final ValueNotifier<double> progress = ValueNotifier(0);
   String availableVersion = '';
+  /// Newest release strictly older than the one running — the way back when
+  /// the latest turns out to be the problem. Empty when there is none.
+  final ValueNotifier<String> rollbackVersion = ValueNotifier('');
+  _FeedItem? _rollbackItem;
   List<String> releaseNotes = const [];
   String? lastError;
   String? _installerPath;
@@ -424,8 +428,12 @@ class AppUpdater {
       } catch (_) {}
       if (expected.isEmpty) return;
       final info = await PackageInfo.fromPlatform();
-      if (_isNewer(expected, info.version)) {
-        // FAILED: the running files never advanced to the new version.
+      // Compared by identity, not by direction. A rollback asks the version
+      // to go DOWN, so "did not advance" would score a failed rollback as a
+      // success. What both directions share is landing on the version asked
+      // for.
+      if (expected != info.version) {
+        // FAILED: the running files are not the ones we asked for.
         unawaited(appendLog('errors',
             'update did not apply: still ${info.version}, expected $expected'));
         // Attach the tail of both the updater-runner and the installer's own
@@ -490,7 +498,14 @@ class AppUpdater {
           .get(Uri.parse(DesktopIntegration.effectiveFeedUrl))
           .timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw Exception('feed HTTP ${res.statusCode}');
-      final item = _newestItem(utf8.decode(res.bodyBytes));
+      final feed = utf8.decode(res.bodyBytes);
+      // The way back is learned on the same fetch as the way forward, and
+      // before the up-to-date return below. That ordering matters: when the
+      // CURRENT version is the problem there is no update to offer, and this
+      // is precisely the moment the answer has to already be there.
+      _rollbackItem = _previousItem(feed, info.version);
+      rollbackVersion.value = _rollbackItem?.version ?? '';
+      final item = _newestItem(feed);
       if (item == null || !_isNewer(item.version, info.version)) {
         status.value = UpdateStatus.upToDate;
         debugPrint('EVS_UPDATER up-to-date (current ${info.version})');
@@ -844,12 +859,62 @@ class AppUpdater {
   Future<void> applyAndRestart() async {
     final path = _installerPath;
     if (path == null || status.value != UpdateStatus.ready) return;
-    // Marker read by _checkPreviousUpdateOutcome on the next launch: if the
-    // version didn't advance, the silent install failed and we say so instead
-    // of looping invisibly.
+    await _runInstaller(path, availableVersion);
+  }
+
+  /// Reinstall the newest release older than the one running.
+  ///
+  /// A download rather than a kept copy, and deliberately. Installers here are
+  /// one-shot — `_cleanupOldInstallers` drops them on the next launch — so the
+  /// copy that produced the running version is usually already gone. The
+  /// station, meanwhile, keeps every release it was ever handed. Downloading
+  /// also means the way back exists on a machine that has only ever updated
+  /// once, which a kept copy could not offer.
+  Future<void> rollbackToPrevious() async {
+    if (defaultTargetPlatform != TargetPlatform.windows) return;
+    final item = _rollbackItem;
+    if (item == null || _busy) return;
+    _busy = true;
+    try {
+      final dest = await updateDownloadPath('EVS-Setup-${item.version}.exe');
+      if (!await _validFile(dest, item)) {
+        status.value = UpdateStatus.downloading;
+        progress.value = 0;
+        await downloadFileWithProgress(
+            item.url, dest, (r, t) => progress.value = t > 0 ? r / t : 0,
+            () => false);
+        // Same verification as an update. Going backwards is not a reason to
+        // trust a file less.
+        if (!await _validFile(dest, item)) {
+          try {
+            await io.File(dest).delete();
+          } catch (_) {}
+          throw Exception('rollback failed verification');
+        }
+      }
+      await _runInstaller(dest, item.version);
+    } catch (e) {
+      lastError = e.toString();
+      status.value = UpdateStatus.error;
+      unawaited(
+          appendLog('errors', 'rollback to ${item.version} failed: $e'));
+    } finally {
+      _busy = false;
+    }
+  }
+
+  /// Install [path] over the running copy and come back on [targetVersion].
+  ///
+  /// Rollback and update are one operation pointed in opposite directions —
+  /// same installer, same silent script, same relaunch — so they share this
+  /// body instead of growing a second copy of it that drifts.
+  Future<void> _runInstaller(String path, String targetVersion) async {
+    // Marker read by _checkPreviousUpdateOutcome on the next launch: if we did
+    // not land on this version, the silent install failed and we say so
+    // instead of looping invisibly.
     try {
       await io.File(await updateDownloadPath('pending_update.txt'))
-          .writeAsString(availableVersion);
+          .writeAsString(targetVersion);
     } catch (_) {}
     // Install OVER the currently-running copy, wherever it lives (portable
     // F:\EVS, a manually-placed folder, or the default %LocalAppData%\Programs\
@@ -1056,8 +1121,8 @@ del "%~f0" >nul 2>&1
   static List<String> appcastNotes(String xml) =>
       _newestItem(xml)?.notes ?? const [];
 
-  static _FeedItem? _newestItem(String rawXml) {
-    _FeedItem? best;
+  static List<_FeedItem> _feedItems(String rawXml) {
+    final out = <_FeedItem>[];
     // Comments go first, and not for tidiness. The feed's header comment
     // explains the format and spells the item tag out in prose; the regex
     // below cannot tell that from a real one, so the first "item" it found
@@ -1096,7 +1161,30 @@ del "%~f0" >nul 2>&1
           if (t.isNotEmpty) notes.add(t);
         }
       }
-      final item = _FeedItem(v, url, len, sha, notes);
+      out.add(_FeedItem(v, url, len, sha, notes));
+    }
+    return out;
+  }
+
+  static _FeedItem? _newestItem(String rawXml) {
+    _FeedItem? best;
+    for (final item in _feedItems(rawXml)) {
+      if (best == null || _isNewer(item.version, best.version)) best = item;
+    }
+    return best;
+  }
+
+  /// Версия, на которую уводит откат. Открыто ради теста: выбор молчалив —
+  /// ошибка здесь даёт не отказ, а установка не той версии.
+  @visibleForTesting
+  static String? previousVersionFor(String xml, String current) =>
+      _previousItem(xml, current)?.version;
+
+  /// Newest release strictly older than [version].
+  static _FeedItem? _previousItem(String rawXml, String version) {
+    _FeedItem? best;
+    for (final item in _feedItems(rawXml)) {
+      if (!_isNewer(version, item.version)) continue; // not older than us
       if (best == null || _isNewer(item.version, best.version)) best = item;
     }
     return best;
