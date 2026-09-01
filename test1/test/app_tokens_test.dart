@@ -4,6 +4,7 @@
 // анализатор промолчит, а интерфейс сломается тихо. copyWith, возвращающий сам
 // объект, компилируется без единого замечания — и тема просто перестаёт
 // меняться. Ровно эта ошибка лежит в шаблоне из «anima project».
+import 'package:flutter/material.dart';
 import 'package:evs/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,6 +60,22 @@ void main() {
         }
       }
       expect(seen.length, greaterThan(1));
+    });
+
+    test('ThemeData.copyWith сохраняет расширение', () {
+      // На этом держится «Призма»: у неё из сборщика темы свой выход через
+      // copyWith (текст с ореолом). Если бы copyWith терял extensions, ровно
+      // один стиль из четырёх остался бы без токенов и молча ушёл бы на
+      // запасной путь через AppState — то есть перестал бы перерисовываться.
+      final base = ThemeData(extensions: <ThemeExtension<dynamic>>[dark]);
+      final derived = base.copyWith(textTheme: const TextTheme());
+      expect(derived.extension<AppTokens>(), isNotNull);
+      expect(identical(derived.extension<AppTokens>()!.skin, dark.skin), isTrue);
+    });
+
+    test('расширение достаётся из темы по типу', () {
+      final t = ThemeData(extensions: <ThemeExtension<dynamic>>[light]);
+      expect(t.extension<AppTokens>()!.accent, PrismAccent.aurora);
     });
   });
 }
