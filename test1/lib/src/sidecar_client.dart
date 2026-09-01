@@ -7,6 +7,13 @@ enum SidecarStatus { stopped, starting, connected }
 // chosen port from stdout, connects over a localhost WebSocket and exposes
 // STT/VAD/TTS/intent. Everything is best-effort: if Python or the sidecar is
 // missing, status stays `stopped` and the app keeps working with system STT.
+/// Version of the sidecar message contract this build speaks; the sidecar
+/// announces its own in the "ready" handshake (PROTOCOL_VERSION in
+/// sidecar/main.py). They are released separately — the sidecar is a
+/// downloaded component — so the two numbers can legitimately differ on a
+/// machine, and the point of comparing them is to be able to say so.
+const int kSidecarProtocol = 1;
+
 class SidecarClient {
   SidecarClient._();
   static final SidecarClient instance = SidecarClient._();
@@ -15,6 +22,9 @@ class SidecarClient {
       ValueNotifier(SidecarStatus.stopped);
   bool sttAvailable = false;
   bool ttsAvailable = false;
+  /// What the connected sidecar reported. 0 means a build from before the
+  /// field existed — not an error, just unknown.
+  int sidecarProtocol = 0;
   // TTS engine/voice (TZ2 block 5): '' voice = system pyttsx3; else a Piper
   // voice synthesized in-sidecar. Applied at spawn (CLI) and hot-swapped live.
   String _ttsEngine = 'pyttsx3';
@@ -261,6 +271,17 @@ class SidecarClient {
         final m = jsonDecode(data as String) as Map<String, dynamic>;
         switch (m['type']) {
           case 'ready':
+            // Nothing is refused on a mismatch: everything both sides already
+            // understand keeps working, and refusing would strand a user whose
+            // component download is merely behind. It goes to the log instead,
+            // so a puzzling report has a first line to check.
+            sidecarProtocol = (m['protocol'] as num?)?.toInt() ?? 0;
+            if (sidecarProtocol != kSidecarProtocol) {
+              unawaited(appendLog(
+                  'sidecar',
+                  'протокол движка $sidecarProtocol, приложение ждёт '
+                  '$kSidecarProtocol — компонент стоит обновить'));
+            }
             final c = m['capabilities'] as Map?;
             sttAvailable = c?['stt'] == true;
             ttsAvailable = c?['tts'] == true;

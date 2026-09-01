@@ -23,6 +23,7 @@ Protocol (JSON text frames)
     {"type": "tts.preview", "voice": "...", "voice_dir": "...", "text": "..."}
     {"type": "tts.render", "id": str, "text": "...", "path": "...",
                           "voice"?: "...", "voice_dir"?: "..."}  # синтез в файл
+    {"type": "tts.prerender", "phrases": ["...", "..."]}  # прогрев кэша озвучки
     {"type": "intent.parse", "text": "...", "commands": [{"phrase": "..."}], "threshold": 0.5}
     {"type": "audio.sessions"}                       # list active per-app audio sessions
     {"type": "app.volume", "process": "Yandex Music.exe",
@@ -32,16 +33,24 @@ Protocol (JSON text frames)
                                "format": "wav"|"pcm16"}  # one-shot network voice cmd
     {"type": "ping"}
   server -> client:
-    {"type": "ready", "capabilities": {"stt": bool, "tts": bool,
-                                       "engines": {"whisper": bool, "gigaam": bool}}}
+    {"type": "ready", "protocol": int,
+                      "capabilities": {"stt": bool, "tts": bool,
+                                       "engines": {"whisper": bool, "gigaam": bool},
+                                       "tts_engines": {...}, "gpu": {...}}}
     {"type": "vad", "speaking": bool}
     {"type": "stt.partial", "text": "..."}
-    {"type": "stt.final", "text": "...", "latency_ms": int}
+    {"type": "stt.final", "text": "...", "latency_ms": int, "device"?: str}
     {"type": "stt.state", "state": "starting"|"loading_models"|"ready"|"error", "message"?: str}
-    {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error", "message"?: str}
+    {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error",
+                                  "message"?: str,
+                                  "probe"?: bool, "models"?: [str]}  # probe = ответ кнопки «Проверить»
     {"type": "stt.device", "engine": str, "requested": "cpu"|"cuda", "active": "cpu"|"cuda", "fell_back": bool}
     {"type": "stt.denoise_status", "mode": str, "state": "ready"|"error", "message"?: str}
     {"type": "tts.done"}
+    {"type": "tts.level", "level": float}             # 0..1, ведёт визуализацию
+    {"type": "tts.prerender", "state"?: "skip"|"start"|"done"|"error",
+                              "done": int, "total": int, "message"?: str}
+    {"type": "tts.render.result", "id": str, "ok": bool, "path": str}
     {"type": "tts.status", "engine": str, "voice": str, "state": "loading"|"ready"|"error", "message"?: str}
     {"type": "intent.result", "match": {...}|null}
     {"type": "audio.sessions.result",
@@ -69,6 +78,17 @@ import gpu
 from intent import match
 from stt_engine import SAMPLE_RATE, SttEngine, log_stage
 from tts_engine import TtsEngine
+
+# Version of the contract in the docstring above, announced in the "ready"
+# handshake. Bump it whenever a message changes shape in a way an older peer
+# cannot read.
+#
+# It exists because the sidecar ships as a DOWNLOADED component on its own
+# release cadence (dist/components.json), so the app and the sidecar really do
+# drift apart on a machine. Until now the app had no way to notice: a field the
+# other side never sent simply read as absent, and the trouble surfaced later,
+# somewhere unrelated. The number does not fix a mismatch — it makes it sayable.
+PROTOCOL_VERSION = 1
 
 
 def _decode_to_pcm16k_mono(np, raw: bytes, fmt: str = "wav") -> bytes:
@@ -128,6 +148,7 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
     log_stage("flutter connected")
     await ws.send(json.dumps({
         "type": "ready",
+        "protocol": PROTOCOL_VERSION,
         "capabilities": {
             "stt": stt.available,
             "tts": tts.available,
