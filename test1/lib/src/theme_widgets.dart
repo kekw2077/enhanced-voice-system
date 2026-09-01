@@ -15,7 +15,7 @@ class MiraiApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: rootNavKey,
-      title: 'EVS',
+      title: 'Nexus Anima',
       theme: _buildTheme(app.appStyle, app.themeMode, app.prismAccent),
       darkTheme: _buildTheme(app.appStyle, app.themeMode, app.prismAccent),
       themeMode: skinFor(app.appStyle, app.themeMode, accent: app.prismAccent)

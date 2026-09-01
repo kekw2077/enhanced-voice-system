@@ -1531,7 +1531,7 @@ class _PrismRail extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'EVS',
+                          'Anima',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,

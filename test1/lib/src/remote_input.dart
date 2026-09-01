@@ -45,7 +45,7 @@ class RemoteDevice {
 // issued during pairing; a short-lived one-time code gates pairing itself.
 //
 // Endpoints:
-//   GET  /               -> {ok:true, name:"EVS"}                (discovery)
+//   GET  /               -> {ok:true, name:"Nexus Anima"}        (discovery)
 //   POST /pair    {code, name?}                 -> {device_id, token}
 //   POST /command/text  (Bearer) {text}         -> {reply}
 //   POST /command/voice (Bearer) audio/* body   -> {text, reply}
@@ -144,7 +144,7 @@ class RemoteInputServer {
     try {
       final path = req.uri.path;
       if (req.method == 'GET' && path == '/') {
-        _send(req, {'ok': true, 'name': 'EVS'});
+        _send(req, {'ok': true, 'name': 'Nexus Anima'});
         return;
       }
       if (req.method == 'POST' && path == '/pair') {

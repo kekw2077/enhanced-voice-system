@@ -185,7 +185,7 @@ void main(List<String> args) async {
       size: Size(1280, 720),
       minimumSize: Size(900, 600),
       center: true,
-      title: 'EVS',
+      title: 'Nexus Anima',
       titleBarStyle: TitleBarStyle.hidden,
     );
     // Скрыть на старте нужно не только по настройке: пока висит карточка

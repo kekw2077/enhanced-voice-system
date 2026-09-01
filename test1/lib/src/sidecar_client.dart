@@ -1017,7 +1017,7 @@ class VoiceAssistant {
     });
   }
 
-  // Command-capture window after a bare wake word ("EVS" with nothing after
+  // Command-capture window after a bare wake word ("Anima" with nothing after
   // it): the next final utterance is the command. Auto-expires back to
   // listening if the user stays silent.
   Timer? _armTimer;
@@ -1145,7 +1145,7 @@ class VoiceAssistant {
     if (ctx != null) showAppSnackBar(ctx, msg);
   }
 
-  // Cyrillic → Latin so a Latin wake word ("EVS") still matches when Whisper
+  // Cyrillic → Latin so a Latin wake word ("Anima") still matches when Whisper
   // transcribes Russian speech in Cyrillic ("евс", "ивэс", …).
   static const Map<String, String> _translitMap = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',

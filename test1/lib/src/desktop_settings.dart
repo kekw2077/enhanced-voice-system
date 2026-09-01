@@ -2291,7 +2291,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'shutdown /s',
   ];
   final TextEditingController _activatorCtrl =
-      TextEditingController(text: 'EVS');
+      TextEditingController(text: 'Anima');
   final TextEditingController _stopWordsCtrl = TextEditingController();
 
   late final TextEditingController _nameCtrl;
@@ -2887,7 +2887,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   const SizedBox(width: 9),
                   const _EvsLogoMark(size: 28),
                   const SizedBox(width: 9),
-                  Text('EVS',
+                  Text('Nexus Anima',
                       style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
@@ -5285,7 +5285,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 // и не ждёт активности ассистента.
                 const _EvsLogoMark(size: 96, gate: MotionGate.foreground),
                 const SizedBox(height: 12),
-                Text('EVS',
+                Text('Nexus Anima',
                     style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,

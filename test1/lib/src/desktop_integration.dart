@@ -1175,7 +1175,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       await applyAutostart(app.autostart);
 
       await trayManager.setIcon('assets/icon/app_icon.ico');
-      await trayManager.setToolTip('EVS');
+      await trayManager.setToolTip('Nexus Anima');
       await _rebuildTrayMenu();
       trayManager.addListener(this);
 

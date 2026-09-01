@@ -623,7 +623,7 @@ Future<void> _updateSplashMain(List<String> args) async {
   const opts = WindowOptions(
     size: Size(_kUpdateSplashWin, _kUpdateSplashWin * 0.97),
     center: true,
-    title: 'EVS',
+    title: 'Nexus Anima',
     titleBarStyle: TitleBarStyle.hidden,
     alwaysOnTop: true,
     skipTaskbar: false,
@@ -1004,7 +1004,7 @@ Future<void> _bootSplashMain(List<String> args) async {
   const opts = WindowOptions(
     size: Size(_kUpdateSplashWin, _kUpdateSplashWin * 0.97),
     center: true,
-    title: 'EVS',
+    title: 'Nexus Anima',
     titleBarStyle: TitleBarStyle.hidden,
     alwaysOnTop: true,
     skipTaskbar: false,

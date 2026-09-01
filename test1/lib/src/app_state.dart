@@ -370,7 +370,7 @@ class AppState extends ChangeNotifier {
   // Game mode (TZ2 block 7): auto-offload GPU engines to CPU under load.
   // Voice assistant / command recognition.
   String cmdMode = 'wakeword'; // 'wakeword' | 'separate' | 'first'
-  String wakeWord = 'EVS';
+  String wakeWord = 'Anima';
   // Voice "stop" vocabulary (interrupts speech + generation). User-editable;
   // seeded with sensible defaults. Matched fuzzily on the first 1-2 tokens
   // after an optional wake word (see VoiceAssistant._isStopPhrase).
@@ -816,7 +816,7 @@ class AppState extends ChangeNotifier {
     ttsFxLowpass = prefs.getInt('ttsFxLowpass') ?? 2200;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
-    wakeWord = prefs.getString('wakeWord') ?? 'EVS';
+    wakeWord = prefs.getString('wakeWord') ?? 'Anima';
     final sw = prefs.getStringList('stopWords');
     stopWords = (sw == null || sw.isEmpty)
         ? List<String>.from(kDefaultStopWords)
@@ -1401,7 +1401,7 @@ class AppState extends ChangeNotifier {
     ttsFxLowpass = prefs.getInt('ttsFxLowpass') ?? 2200;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
-    wakeWord = prefs.getString('wakeWord') ?? 'EVS';
+    wakeWord = prefs.getString('wakeWord') ?? 'Anima';
     final sw = prefs.getStringList('stopWords');
     stopWords = (sw == null || sw.isEmpty)
         ? List<String>.from(kDefaultStopWords)
@@ -2767,7 +2767,7 @@ class AppState extends ChangeNotifier {
 
   void setWakeWord(String v) {
     final t = v.trim();
-    wakeWord = t.isEmpty ? 'EVS' : t;
+    wakeWord = t.isEmpty ? 'Anima' : t;
     _save();
     notifyListeners();
   }

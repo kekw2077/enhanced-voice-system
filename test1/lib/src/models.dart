@@ -220,8 +220,8 @@ class Personalization {
   String tone = 'tone_neutral';
   String customPrompt = '';
   // Name the assistant refers to itself by (used at the top of the system
-  // prompt). Editable in the desktop Personality settings; defaults to EVS.
-  String assistantName = 'EVS';
+  // prompt). Editable in the desktop Personality settings; defaults to Anima.
+  String assistantName = 'Anima';
   // Effective context window (in tokens) handed to local on-device models.
   // fllama internally hardcodes n_parallel=4 and splits the requested
   // contextSize across 4 slots, so callers must request 4x this value to
@@ -442,7 +442,7 @@ class Personalization {
 
   String buildSystemPrompt() {
     final b = StringBuffer();
-    final who = assistantName.trim().isEmpty ? 'EVS' : assistantName.trim();
+    final who = assistantName.trim().isEmpty ? 'Anima' : assistantName.trim();
     b.writeln('You are $who, a helpful AI assistant.');
 
     _writeStyleFacts(b);
@@ -526,7 +526,7 @@ class Personalization {
   String buildLocalSystemPrompt() {
     final b = StringBuffer();
     b.writeln(
-      'You are EVS, a helpful assistant. Answer naturally and directly.',
+      'You are Anima, a helpful assistant. Answer naturally and directly.',
     );
     if (defaultLength == 'len_short') {
       b.writeln('Keep answers short.');

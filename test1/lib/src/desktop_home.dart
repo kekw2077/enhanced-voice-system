@@ -141,7 +141,7 @@ class _DesktopSidebar extends StatelessWidget {
                         const SizedBox(width: 9),
                         Expanded(
                           child: Text(
-                            'EVS',
+                            'Anima',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

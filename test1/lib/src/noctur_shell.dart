@@ -217,7 +217,7 @@ class NocturTopBar extends StatelessWidget {
                     child: _EvsLogoMark(size: 22),
                   ),
                   Text(
-                    'EVS',
+                    'Anima',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
