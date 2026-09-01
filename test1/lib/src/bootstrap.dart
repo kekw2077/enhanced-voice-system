@@ -145,9 +145,12 @@ Future<void> _installPortablePrefs() async {
     // default shared_preferences_windows store already reads the right file
     // (shared_preferences.json) — installing ours (prefs.json) there would hide
     // the user's existing settings/chats.
+    // Compared against the real support directory, not legacyDataRoot():
+    // since the rename, that one may answer with the PRE-rename location, and
+    // this check is asking a different question — whether we are running
+    // portable at all.
     final root = await appDataRoot();
-    final legacy = await legacyDataRoot();
-    if (root == legacy) return;
+    if (root == await supportDataRoot()) return;
     SharedPreferencesStorePlatform.instance =
         await _PortablePrefsStore.create();
   } catch (_) {}

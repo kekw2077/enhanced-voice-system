@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 Future<String> appDataRoot() async => '';
 Future<String> legacyDataRoot() async => '';
+Future<String> supportDataRoot() async => '';
 Future<void> migrateHeavyDataIfPortable() async {}
 Future<Map<String, String>> buildProgramIcons(List<String> sources) async => {};
 

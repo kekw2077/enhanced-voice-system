@@ -102,13 +102,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "EVS" "\0"
+            VALUE "CompanyName", "Nexus Anima" "\0"
+            VALUE "FileDescription", "Nexus Anima" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "EVS" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "evs.exe" "\0"
-            VALUE "ProductName", "EVS" "\0"
+            VALUE "InternalName", "Nexus Anima" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Nexus Anima. All rights reserved." "\0"
+            VALUE "OriginalFilename", "anima.exe" "\0"
+            VALUE "ProductName", "Nexus Anima" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

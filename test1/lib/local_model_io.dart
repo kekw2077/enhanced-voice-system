@@ -45,10 +45,43 @@ Future<String> appDataRoot() async {
   return root;
 }
 
-// The legacy (pre-portable) data location — always the roaming AppData support
-// dir. Used only to migrate existing data into the portable root once.
-Future<String> legacyDataRoot() async =>
+// Where Windows would put this build's data: %APPDATA%/<CompanyName>/
+// <ProductName>, both read from the exe's version info.
+Future<String> supportDataRoot() async =>
     (await getApplicationSupportDirectory()).path;
+
+// Where data lived before the rename. Assembled from the OLD CompanyName and
+// ProductName by hand, because getApplicationSupportDirectory now answers with
+// the new pair — the old directory becomes unreachable through it at exactly
+// the moment it needs to be found.
+Future<String?> _preRenameDataRoot() async {
+  if (!Platform.isWindows) return null;
+  final appData = Platform.environment['APPDATA'];
+  if (appData == null || appData.isEmpty) return null;
+  final sep = Platform.pathSeparator;
+  final dir = Directory('$appData${sep}com.example${sep}EVS');
+  return await dir.exists() ? dir.path : null;
+}
+
+// The legacy (pre-portable) data location, and the ONLY source every migration
+// below reads from — which is why the rename is handled here rather than at
+// each of them.
+//
+// Renaming the app moved this directory: %APPDATA%/<Company>/<Product> is
+// built from the exe's version info, and both halves changed. So the answer is
+// the pre-rename directory while that is still the one holding data, and the
+// current one once it does.
+Future<String> legacyDataRoot() async {
+  final current = await supportDataRoot();
+  try {
+    final marker = File('$current${Platform.pathSeparator}'
+        'shared_preferences.json');
+    if (await marker.exists()) return current;
+    final old = await _preRenameDataRoot();
+    if (old != null) return old;
+  } catch (_) {}
+  return current;
+}
 
 Future<String> localModelsDirPath() async {
   final root = await appDataRoot();
