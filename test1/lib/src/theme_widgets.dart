@@ -54,7 +54,8 @@ class MiraiApp extends StatelessWidget {
   String? _appFontFamily(AppStyle style) => evsFontFamily(style);
 
   ThemeData _buildTheme(AppStyle style, AppThemeMode mode, PrismAccent accent) {
-    final p = skinFor(style, mode, accent: accent).pal;
+    final skin = skinFor(style, mode, accent: accent);
+    final p = skin.pal;
     final scheme = ColorScheme.fromSeed(
       seedColor: p.accent,
       brightness: p.brightness,
@@ -73,6 +74,10 @@ class MiraiApp extends StatelessWidget {
         : const Color(0xFFB8C2D2);
     final base = ThemeData(
       useMaterial3: true,
+      // Both return paths below carry this: copyWith preserves extensions.
+      extensions: <ThemeExtension<dynamic>>[
+        AppTokens(skin: skin, style: style, accent: accent),
+      ],
       colorScheme: scheme,
       scaffoldBackgroundColor: p.bg,
       dividerColor: p.stroke,
@@ -441,6 +446,44 @@ class EvsSkin {
   });
 }
 
+/// The active skin, carried down the tree through [ThemeData.extensions].
+///
+/// The colours are untouched — this is the very [EvsSkin] `skinFor` has always
+/// produced. What changes is how it arrives. `_pal(c)` used to reach for
+/// `c.read<AppState>()`, and `read` does not subscribe: a theme change
+/// repainted nothing by itself, so every screen had to remember a
+/// `context.select` at its top to force the rebuild. Reading through
+/// `Theme.of` makes that dependency real and those reminders redundant.
+///
+/// [lerp] snaps instead of interpolating. ThemeExtension does offer a free
+/// cross-fade between themes, but taking it here would change how switching
+/// LOOKS on top of changing how it propagates, and only one of those two is a
+/// defect. Fading the palette is a later step, on its own.
+@immutable
+class AppTokens extends ThemeExtension<AppTokens> {
+  const AppTokens({
+    required this.skin,
+    required this.style,
+    required this.accent,
+  });
+
+  final EvsSkin skin;
+  final AppStyle style;
+  final PrismAccent accent;
+
+  @override
+  AppTokens copyWith({EvsSkin? skin, AppStyle? style, PrismAccent? accent}) =>
+      AppTokens(
+        skin: skin ?? this.skin,
+        style: style ?? this.style,
+        accent: accent ?? this.accent,
+      );
+
+  @override
+  AppTokens lerp(ThemeExtension<AppTokens>? other, double t) =>
+      (other is AppTokens && t >= 0.5) ? other : this;
+}
+
 // Nexus palettes (TZ §4–5). Referenced ONLY from `skinFor(nexus, …)`; the
 // classic palettes above are never modified, so classic stays untouched.
 const _Palette _kNexusDark = _Palette(
@@ -658,11 +701,10 @@ const Map<PrismAccent, PrismRamp> _kPrismAuroraPal = {
 PrismRamp _prismAuroraPal(PrismAccent a) =>
     _kPrismAuroraPal[a] ?? _kPrismAuroraPal.values.first;
 
-PrismRamp _auroraPal(BuildContext c) =>
-    _prismAuroraPal(c.read<AppState>().prismAccent);
+PrismRamp _auroraPal(BuildContext c) => _prismAuroraPal(_tokens(c).accent);
 
 // Активная тройка по контексту — для градиентов оболочки «Призмы».
-PrismRamp _ramp(BuildContext c) => _prismRamp(c.read<AppState>().prismAccent);
+PrismRamp _ramp(BuildContext c) => _prismRamp(_tokens(c).accent);
 
 // Поверхности «Призмы». ВАЖНО: `card` здесь непрозрачный (`--solid` макета), а
 // не полупрозрачное стекло `--card`. Слот `card` уходит в общие диалоги, меню,
@@ -822,26 +864,39 @@ EvsSkin skinFor(
   );
 }
 
-EvsSkin _skin(BuildContext c) {
+// The active tokens: from the theme where the widget sits under the app's own
+// MaterialApp, from AppState otherwise. That fallback is not decoration — the
+// floating widget, the tray menu and the update splash are separate windows
+// built on their own bare ThemeData, and under them this stays exactly the
+// path the code took before.
+AppTokens _tokens(BuildContext c) {
+  final t = Theme.of(c).extension<AppTokens>();
+  if (t != null) return t;
   final app = c.read<AppState>();
-  return skinFor(app.appStyle, app.themeMode, accent: app.prismAccent);
+  return AppTokens(
+    skin: skinFor(app.appStyle, app.themeMode, accent: app.prismAccent),
+    style: app.appStyle,
+    accent: app.prismAccent,
+  );
 }
+
+EvsSkin _skin(BuildContext c) => _tokens(c).skin;
 
 // True when the Nexus interface style is active — lets the shared evs* control
 // helpers apply Nexus geometry (surface-lift segments, accent→accent2 toggles,
 // info-tinted actives) while the classic style stays byte-for-byte the same.
-bool _isNexus(BuildContext c) => c.read<AppState>().appStyle == AppStyle.nexus;
+bool _isNexus(BuildContext c) => _tokens(c).style == AppStyle.nexus;
 
 // True in «Ноктюрн». Deliberately NOT folded into `_isNexus`: Nexus paints card
 // headers / actives in the info (cyan) accent, while Noctur keeps everything on
 // the single accent (TZ §5.3 — colour marks the state, nothing else), so the
 // shared evs* helpers must be able to tell the two apart.
-bool _isNoctur(BuildContext c) => c.read<AppState>().appStyle == AppStyle.noctur;
+bool _isNoctur(BuildContext c) => _tokens(c).style == AppStyle.noctur;
 
 // True в «Призме». Отдельно от двух выше по той же причине: у неё своя
 // геометрия (карточка 20, контрол 13) и свой источник акцента — тройка a1/a2/a3
 // вместо одного цвета темы.
-bool _isPrism(BuildContext c) => c.read<AppState>().appStyle == AppStyle.prism;
+bool _isPrism(BuildContext c) => _tokens(c).style == AppStyle.prism;
 
 _Palette _pal(BuildContext c) => _skin(c).pal;
 
