@@ -5,7 +5,7 @@
 // переделывалось: недописанное слово скачет между строками, а с ним дёргается
 // весь абзац. Пропадёт прозрачность — вернутся рывки кусками. Ни того, ни
 // другого не видно иначе как глазами на живой генерации, а тест ловит сразу.
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

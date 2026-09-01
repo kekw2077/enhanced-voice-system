@@ -5,7 +5,7 @@
 // в форме этого файла превращается не в ошибку, а в ноль на видном месте.
 // Одна такая уже случилась: процентиль пустого ряда — это NaN, у которого нет
 // записи в JSON, и весь файл состояния из-за него не писался вовсе.
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 

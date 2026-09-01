@@ -5,7 +5,7 @@
 // объект, компилируется без единого замечания — и тема просто перестаёт
 // меняться. Ровно эта ошибка лежит в шаблоне из «anima project».
 import 'package:flutter/material.dart';
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

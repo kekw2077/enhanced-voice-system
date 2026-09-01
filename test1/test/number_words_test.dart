@@ -5,7 +5,7 @@
 // продолжает опознаваться и выполняться — просто ставит не тот уровень или
 // падает на значение по умолчанию, а человек слышит «готово» и думает, что
 // сработало.
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

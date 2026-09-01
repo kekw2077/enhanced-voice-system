@@ -9,7 +9,7 @@
 // Здесь проверяется обе половины починки: что часы попадают в подсказку и что
 // вопрос о них больше не уходит в поиск — но только тот, на который часы
 // компьютера действительно отвечают.
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

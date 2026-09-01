@@ -1,5 +1,5 @@
-name: evs
-description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
+name: anima
+description: "Nexus Anima — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
 version: 2.27.0+107
 

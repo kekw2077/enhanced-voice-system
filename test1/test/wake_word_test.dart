@@ -4,7 +4,7 @@
 // ассистент вслух отвечал «команда не найдена» на реплики, к нему не
 // обращённые. Причина была в одном условии — начало слова-активатора
 // принималось за само слово, и «ай» становилось «Айрис».
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

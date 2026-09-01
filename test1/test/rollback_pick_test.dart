@@ -9,7 +9,7 @@
 // и 2.9.3, и 2.27.0, и лексикографически второе меньше первого.
 import 'dart:io';
 
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 String item(String v) => '''

@@ -8,7 +8,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 
 void main() {
   testWidgets('render app icon master', (tester) async {

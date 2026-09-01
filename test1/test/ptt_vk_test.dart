@@ -3,7 +3,7 @@
 // заголовком WinUser.h.
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:evs/main.dart';
+import 'package:anima/main.dart';
 
 void main() {
   test('модификаторы сводятся к общему коду, левый и правый одинаково', () {
