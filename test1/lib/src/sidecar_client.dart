@@ -217,10 +217,15 @@ class SidecarClient {
   // / dev source. Async because the components dir lookup is async.
   Future<(String, List<String>)?> _resolveLaunchAsync() async {
     try {
-      final comp =
-          await ComponentManager.instance.installedPath('sidecar',
-              fileName: 'evs_sidecar.exe');
-      if (comp != null) return (comp, ['--port', '0']);
+      // Both names, new one first. The engine is a downloaded component with
+      // its own release cadence: everyone who already has it has it under the
+      // old name, and refusing to see that would cost them a 112 MB download
+      // to get back a voice they already had.
+      for (final name in const ['anima_sidecar.exe', 'evs_sidecar.exe']) {
+        final comp = await ComponentManager.instance
+            .installedPath('sidecar', fileName: name);
+        if (comp != null) return (comp, ['--port', '0']);
+      }
     } catch (_) {}
     return _resolveLaunch();
   }
@@ -230,8 +235,10 @@ class SidecarClient {
       final sep = io.Platform.pathSeparator;
       final exeDir = io.File(io.Platform.resolvedExecutable).parent.path;
       // Release: frozen sidecar bundled next to the app exe.
-      final bundled = io.File('$exeDir${sep}evs_sidecar.exe');
-      if (bundled.existsSync()) return (bundled.path, ['--port', '0']);
+      for (final name in const ['anima_sidecar.exe', 'evs_sidecar.exe']) {
+        final bundled = io.File('$exeDir$sep$name');
+        if (bundled.existsSync()) return (bundled.path, ['--port', '0']);
+      }
       // Dev: run from source. Search the working dir and a few parents of the
       // exe (build\windows\x64\runner\Debug -> ... -> test1) for sidecar\main.py,
       // preferring the project venv interpreter over system python.

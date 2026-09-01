@@ -1,5 +1,6 @@
-﻿; Inno Setup script for EVS (Windows desktop).
-; Packages the Flutter release build into a single EVS-Setup-X.Y.Z.exe that
+﻿; Inno Setup script for Nexus Anima (Windows desktop).
+; Packages the Flutter release build into a single NexusAnima-Setup-X.Y.Z.exe
+; that
 ; WinSparkle (auto_updater) can download and run silently to update the app.
 ;
 ; Build prerequisites:
@@ -8,15 +9,15 @@
 ;   3. iscc dist\installer.iss /DAppVersion=1.0.0
 ;      (or set MyAppVersion below and just run `iscc dist\installer.iss`)
 ;
-; Output: dist\out\EVS-Setup-<version>.exe
+; Output: dist\out\NexusAnima-Setup-<version>.exe
 
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
 
-#define MyAppName "EVS"
-#define MyAppExeName "evs.exe"
-#define MyAppPublisher "EVS"
+#define MyAppName "Nexus Anima"
+#define MyAppExeName "anima.exe"
+#define MyAppPublisher "Nexus Anima"
 ; Stable upgrade GUID — keep constant across versions so installs upgrade
 ; in place instead of stacking side by side. It has to survive the rename too:
 ; this GUID is what ties a Nexus Anima install to the EVS one it replaces.
@@ -39,7 +40,7 @@ UsePreviousAppDir=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=out
-OutputBaseFilename=EVS-Setup-{#AppVersion}
+OutputBaseFilename=NexusAnima-Setup-{#AppVersion}
 SetupIconFile=..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
@@ -220,6 +221,20 @@ Name: "denoise"; Description: "Шумоподавление DeepFilterNet, ~9 М
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[InstallDelete]
+; Оставшееся от прежнего имени. Inno удаляет только то, что перечислено, а эти
+; файлы прошлый установщик считал своими: главный exe под старым именем и полные
+; копии рядом, которые приложение делало ради читаемых имён в диспетчере задач.
+; Без уборки в каталоге остаются лишние копии по 15 МБ и — важнее — старый
+; evs.exe, который легко запустить с прежнего ярлыка по привычке.
+;
+; Откату это не мешает: прежний установщик такого раздела не знает и просто
+; кладёт evs.exe обратно.
+Type: files; Name: "{app}\evs.exe"
+Type: files; Name: "{app}\evs_widget.exe"
+Type: files; Name: "{app}\evs_menu.exe"
+Type: files; Name: "{app}\evs_updating.exe"
+
 [Files]
 ; The Flutter release output (evs.exe + flutter DLLs + data\ + plugin DLLs).
 ; The Python sidecar (evs_sidecar.exe, ~95 MB) is NOT bundled — it's downloaded
@@ -230,7 +245,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; своими настройками, логами, чатами и скачанными компонентами. Без этого
 ; исключения всё это уезжает в установщик — однажды дало 1 ГБ вместо 17 МБ, а
 ; вместе с prefs.json уехали бы ключи API и токены привязанных телефонов.
-Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Excludes: "evs_sidecar.exe,userdata,userdata\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Excludes: "anima_sidecar.exe,evs_sidecar.exe,userdata,userdata\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

@@ -544,7 +544,9 @@ class SuggestionEngine {
       caseSensitive: false);
   static bool isJunk(ProgramEntry p) {
     final n = p.name.toLowerCase();
-    if (n == 'evs' || p.value.toLowerCase().contains('evs.exe')) return true;
+    final low = p.value.toLowerCase();
+    if (n == 'anima' || n == 'nexus anima' || n == 'evs') return true;
+    if (low.contains('anima.exe') || low.contains('evs.exe')) return true;
     return _junk.hasMatch(n);
   }
 

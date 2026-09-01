@@ -42,6 +42,12 @@ void _claimAppMutex() {
     // Must stay in step with AppMutex in dist/installer.iss: Setup detects a
     // live instance by this exact name, and a name that drifts from it means
     // silent updates stop noticing the app they are replacing.
+    // Kept as-is through the rename, on purpose, and against the checklist's
+    // advice. The point of this lock is that two copies of the assistant never
+    // run at once; an old build and a renamed one are still two copies, and
+    // giving them separate names would let both start, with two sidecars
+    // fighting over the microphone. The installer keys on this exact string
+    // too (AppMutex in dist/installer.iss).
     final name = 'EVS-SingleInstance-Mutex'.toNativeUtf16();
     createMutex(nullptr, 0, name);
     malloc.free(name); // the kernel copies the name
@@ -63,9 +69,11 @@ typedef _CreateMutexDart = int Function(Pointer<Void>, int, Pointer<Utf16>);
 Future<void> _sweepOrphanBackends() async {
   if (defaultTargetPlatform != TargetPlatform.windows) return;
   try {
-    await io.Process.run(
-        'taskkill', ['/F', '/IM', 'evs_sidecar.exe'],
-        runInShell: false);
+    // Both names: after an update or a rollback the stray left behind can
+    // belong to either side of the rename.
+    for (final name in const ['anima_sidecar.exe', 'evs_sidecar.exe']) {
+      await io.Process.run('taskkill', ['/F', '/IM', name], runInShell: false);
+    }
   } catch (_) {}
 }
 
@@ -704,7 +712,8 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
         try {
           final r = await io.Process.run(
               'tasklist', ['/FI', 'IMAGENAME eq evs.exe', '/NH']);
-          if ((r.stdout as String).toLowerCase().contains('evs.exe')) io.exit(0);
+          final out = (r.stdout as String).toLowerCase();
+          if (out.contains('anima.exe') || out.contains('evs.exe')) io.exit(0);
         } catch (_) {}
       });
     }

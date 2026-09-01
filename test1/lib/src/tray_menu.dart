@@ -182,12 +182,14 @@ class TrayMenuServer {
   }
 
   /// Запускается из копии с говорящим именем — в диспетчере задач видно, что
-  /// это меню трея, а не третий безымянный evs.exe.
+  /// это меню трея, а не третий безымянный anima.exe.
   Future<String> _menuExe() async {
     final main = io.Platform.resolvedExecutable;
     try {
       final sep = io.Platform.pathSeparator;
-      final copy = io.File('${io.File(main).parent.path}${sep}evs_menu.exe');
+      final dir = io.File(main).parent.path;
+      unawaited(_dropStaleCopy('$dir${sep}evs_menu.exe'));
+      final copy = io.File('$dir${sep}anima_menu.exe');
       final src = io.File(main);
       if (!await copy.exists() || await copy.length() != await src.length()) {
         await src.copy(copy.path);

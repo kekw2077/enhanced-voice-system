@@ -378,7 +378,7 @@ class AppUpdater {
       await for (final f in dir.list()) {
         final name = f.uri.pathSegments.last;
         if (f is io.File &&
-            name.startsWith('EVS-Setup-') &&
+            _kSetupPrefixes.any(name.startsWith) &&
             name.endsWith('.exe')) {
           try {
             await f.delete();
@@ -513,7 +513,7 @@ class AppUpdater {
       }
       availableVersion = item.version;
       releaseNotes = item.notes;
-      final dest = await updateDownloadPath('EVS-Setup-${item.version}.exe');
+      final dest = await updateDownloadPath('$_kSetupPrefix${item.version}.exe');
       if (!await _validFile(dest, item)) {
         status.value = UpdateStatus.downloading;
         progress.value = 0;
@@ -761,27 +761,36 @@ class AppUpdater {
   // root (portable: <exeDir>\userdata) — a folder the installer never touches,
   // unlike everything in the program directory. See _updateSplashMain.
   static const String _kUpdateSplashDir = 'update-splash';
-  static const String _kUpdateSplashExe = 'evs_updating.exe';
+  static const String _kUpdateSplashExe = 'anima_updating.exe';
+  // Installer filenames, current first. Both are recognised because the station
+  // serves a mixture during the rename: releases published before it keep the
+  // old name, and one of those is what a rollback reaches for.
+  static const String _kSetupPrefix = 'NexusAnima-Setup-';
+  static const List<String> _kSetupPrefixes = <String>[
+    _kSetupPrefix, 'EVS-Setup-',
+  ];
 
-  // Process names the update script has to account for. It carries BOTH the
-  // current names and the ones the rename introduces, because the script is
-  // written by the OLD build and installs the NEW one: a build that knew only
-  // its own names would leave the incoming version's processes holding the
-  // files open, then relaunch an exe that is no longer there. Extra names cost
-  // nothing at runtime — tasklist and taskkill simply do not find them.
+  // Process names the update script has to account for. It carries the current
+  // names AND the ones from before the rename, because the script is written by
+  // ONE build and installs another: a build knowing only its own names would
+  // leave the other version's processes holding the files open. Which side is
+  // "old" depends on whether this is an update or a rollback, so both are
+  // always listed. Extra names cost nothing — tasklist and taskkill simply do
+  // not find them.
   static const List<String> _kWaitExeNames = <String>[
-    'evs.exe', 'evs_widget.exe', 'evs_menu.exe',
     'anima.exe', 'anima_widget.exe', 'anima_menu.exe',
+    'evs.exe', 'evs_widget.exe', 'evs_menu.exe',
   ];
   // The sidecar is killed but never waited for: it dies with its parent's Job
   // Object anyway, and waiting on it could hold the loop forever.
   static const List<String> _kKillExeNames = <String>[
-    ..._kWaitExeNames, 'evs_sidecar.exe', 'anima_sidecar.exe',
+    ..._kWaitExeNames, 'anima_sidecar.exe', 'evs_sidecar.exe',
   ];
-  // Relaunch target after a rename install, checked BEFORE the running path:
-  // Inno leaves the old exe sitting in the folder, so resolvedExecutable would
-  // still find it and start the version we just replaced.
-  static const String _kSuccessorExe = 'anima.exe';
+  // Relaunch candidates, decided by timestamp rather than by name. Inno removes
+  // only files it was told about, so after a rename install BOTH exes sit in
+  // the folder — and after a rollback the one matching our own name is the
+  // version just replaced. Whichever the installer wrote last is the right one.
+  static const List<String> _kMainExeNames = <String>['anima.exe', 'evs.exe'];
 
   // Single source of truth for "where is the update right now", shared between
   // the three parties that each only know their own piece: this app while it
@@ -819,6 +828,9 @@ class AppUpdater {
         // userdata is our own data root (and holds this very copy); the widget
         // and sidecar exes aren't needed to draw a logo; unins* belongs to Setup.
         if (low == 'userdata' ||
+            low == 'anima_widget.exe' ||
+            low == 'anima_menu.exe' ||
+            low == 'anima_sidecar.exe' ||
             low == 'evs_widget.exe' ||
             low == 'evs_menu.exe' ||
             low == 'evs_sidecar.exe' ||
@@ -830,7 +842,8 @@ class AppUpdater {
         } else if (e is io.File) {
           // The runner finds its data\ folder next to the exe whatever the exe
           // is called, so renaming the copy is safe.
-          final target = low == 'evs.exe' ? _kUpdateSplashExe : name;
+          final target =
+              _kMainExeNames.contains(low) ? _kUpdateSplashExe : name;
           await e.copy('$dstPath$sep$target');
         }
       }
@@ -876,7 +889,7 @@ class AppUpdater {
     if (item == null || _busy) return;
     _busy = true;
     try {
-      final dest = await updateDownloadPath('EVS-Setup-${item.version}.exe');
+      final dest = await updateDownloadPath('$_kSetupPrefix${item.version}.exe');
       if (!await _validFile(dest, item)) {
         status.value = UpdateStatus.downloading;
         progress.value = 0;
@@ -923,12 +936,12 @@ class AppUpdater {
     // advances, and the update re-offers on every launch — the reported loop.
     final exePath = io.Platform.resolvedExecutable;
     final runDir = io.File(exePath).parent.path;
-    final scriptPath = await updateDownloadPath('evs_update.cmd');
+    final scriptPath = await updateDownloadPath('anima_update.cmd');
     // The .cmd does the work, but a scheduled task running `cmd /c` pops a
     // console window in the user's session — visible for the whole update.
     // wscript has no window of its own and Run(..., 0, False) starts the batch
     // hidden, so the update happens silently. The .cmd deletes both files.
-    final vbsPath = await updateDownloadPath('evs_update.vbs');
+    final vbsPath = await updateDownloadPath('anima_update.vbs');
     final installLog = await updateDownloadPath('update-install.log');
     final runnerLog = await updateDownloadPath('update-runner.log');
     // A SELF-CONTAINED updater that runs entirely OUTSIDE this process. The old
@@ -970,6 +983,12 @@ class AppUpdater {
             '&& set "RUNNING=1"')
         .join('\n');
     final killList = _kKillExeNames.map((n) => '/IM $n').join(' ');
+    // dir /o-d lists newest first, so the first of our names to turn up is the
+    // one the installer has just written, whichever direction it went.
+    final pickRelaunch = _kMainExeNames
+        .map((n) =>
+            '  if /i "%%F"=="$n" if not defined RELAUNCH set "RELAUNCH=%%F"')
+        .join('\n');
     final script = '''@echo off
 setlocal enableextensions
 set "RLOG=$runnerLog"
@@ -991,15 +1010,19 @@ echo install> "%USTAT%"
 "$path" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="$runDir" /LOG="$installLog"
 echo [%date% %time%] installer exit %errorlevel%, relaunching >> "%RLOG%"
 echo relaunch> "%USTAT%"
-if exist "$runDir\\$_kSuccessorExe" (
-  start "" "$runDir\\$_kSuccessorExe"
+set "RELAUNCH="
+for /f "delims=" %%F in ('dir /b /a-d /o-d "$runDir\\*.exe" 2^>nul') do (
+$pickRelaunch
+)
+if defined RELAUNCH (
+  start "" "$runDir\\%RELAUNCH%"
 ) else (
   start "" "$exePath"
 )
 timeout /t 2 /nobreak >nul
 echo done> "%USTAT%"
 ${splashKill}echo [%date% %time%] done >> "%RLOG%"
-schtasks /Delete /TN "EVSSelfUpdate" /F >nul 2>&1
+schtasks /Delete /TN "AnimaSelfUpdate" /F >nul 2>&1
 del "$vbsPath" >nul 2>&1
 del "%~f0" >nul 2>&1
 ''';
@@ -1015,12 +1038,13 @@ del "%~f0" >nul 2>&1
     // entirely (not a child, not in our session/job) so it survives our exit.
     try {
       await io.Process.run('schtasks', [
-        '/Create', '/TN', 'EVSSelfUpdate',
+        '/Create', '/TN', 'AnimaSelfUpdate',
         // wscript keeps the whole update invisible (see vbsPath above).
         '/TR', 'wscript.exe //B //nologo "$vbsPath"',
         '/SC', 'ONCE', '/ST', '23:59', '/F',
       ]);
-      final r = await io.Process.run('schtasks', ['/Run', '/TN', 'EVSSelfUpdate']);
+      final r =
+          await io.Process.run('schtasks', ['/Run', '/TN', 'AnimaSelfUpdate']);
       launched = r.exitCode == 0;
     } catch (_) {}
     // Fallback: launch the script through the shell (`start`) so it is reparented

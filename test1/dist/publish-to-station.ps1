@@ -24,8 +24,13 @@ $root = Split-Path -Parent $here
 function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Die($m) { Write-Host " [x] $m" -ForegroundColor Red; exit 1 }
 
-$setup = Join-Path $here "out\EVS-Setup-$Version.exe"
-if (-not (Test-Path $setup)) { Die "Нет установщика: $setup" }
+# Имя установщика сменилось вместе с именем программы; старое остаётся
+# рабочим, потому что на станции лежат релизы обоих поколений.
+$setup = @("NexusAnima-Setup-$Version.exe", "EVS-Setup-$Version.exe") |
+  ForEach-Object { Join-Path $here "out\$_" } |
+  Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $setup) { Die "Нет установщика для $Version в $here\out" }
+$setupName = Split-Path $setup -Leaf
 $appcast = Join-Path $here "appcast.xml"
 $components = Join-Path $here "components.json"
 
@@ -34,7 +39,7 @@ Say "готовлю appcast"
 $xml = Get-Content $appcast -Raw
 $xml = [regex]::Replace(
   $xml,
-  'https://github\.com/[^"]*?/releases/download/[^"/]+/(EVS-Setup-[^"]+\.exe)',
+  'https://github[.]com/[^"]*?/releases/download/[^"/]+/((?:NexusAnima|EVS)-Setup-[^"]+[.]exe)',
   { param($m) "$BaseUrl/$($m.Groups[1].Value)" })
 $tmpAppcast = Join-Path $env:TEMP "appcast-station.xml"
 Set-Content $tmpAppcast $xml -Encoding UTF8 -NoNewline
@@ -65,7 +70,7 @@ if ($WithSidecar) {
 # --- проверка, что выложенное действительно отдаётся -------------------------
 Say "проверяю"
 $ok = $true
-foreach ($n in @("appcast.xml", "components.json", "EVS-Setup-$Version.exe")) {
+foreach ($n in @("appcast.xml", "components.json", $setupName)) {
   try {
     $r = Invoke-WebRequest "$BaseUrl/$n" -Method Head -TimeoutSec 20
     "  {0,-28} HTTP {1}  {2} байт" -f $n, $r.StatusCode, (@($r.Headers.'Content-Length')[0])
@@ -74,7 +79,7 @@ foreach ($n in @("appcast.xml", "components.json", "EVS-Setup-$Version.exe")) {
 # Ссылки внутри файлов важнее самих файлов: если тут остался github.com, значит
 # перезапись не сработала и станция раздаёт указатели в интернет.
 $feed = (Invoke-WebRequest "$BaseUrl/appcast.xml" -TimeoutSec 20).Content
-if ($feed -match 'github\.com[^"]*EVS-Setup') { "  [x] в appcast остались ссылки на GitHub"; $ok = $false }
+if ($feed -match 'github[.]com[^"]*-Setup-') { "  [x] в appcast остались ссылки на GitHub"; $ok = $false }
 else { "  [v] ссылки в appcast ведут на станцию" }
 
 if (-not $ok) { Die "выложено не полностью" }
@@ -87,14 +92,14 @@ if (-not $ok) { Die "выложено не полностью" }
 #
 # Чистка идёт ПОСЛЕ проверки: пока не подтвердилось, что новое действительно
 # отдаётся, старое трогать нельзя. Удаляются только файлы строгого вида
-# EVS-Setup-<версия>.exe — appcast.xml, components.json и движок под шаблон не
+# <имя>-Setup-<версия>.exe — appcast.xml, components.json и движок под шаблон не
 # попадают ни при каких условиях.
 if ($Keep -lt 2) { $Keep = 2 }
-$files = @(ssh $Host_ "ls -1 $Remote | grep -E '^EVS-Setup-[0-9.]+[.]exe$'") |
+$files = @(ssh $Host_ "ls -1 $Remote | grep -E '^(NexusAnima|EVS)-Setup-[0-9.]+[.]exe$'") |
   Where-Object { $_ }
 if ($files.Count -gt $Keep) {
   $sorted = $files | Sort-Object {
-    [version](($_ -replace '^EVS-Setup-', '') -replace '[.]exe$', '')
+    [version](($_ -replace '^(NexusAnima|EVS)-Setup-', '') -replace '[.]exe$', '')
   } -Descending
   $doomed = @($sorted | Select-Object -Skip $Keep)
   Say "чищу станцию: оставляю $Keep, удаляю $($doomed.Count)"

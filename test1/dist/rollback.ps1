@@ -56,7 +56,7 @@ $versions = [regex]::Matches($xml, 'sparkle:version="([^"]+)"') |
 $onStation = @()
 try {
   $index = (Invoke-WebRequest "$BaseUrl/" -UseBasicParsing -TimeoutSec 20).Content
-  $onStation = [regex]::Matches($index, "EVS-Setup-([0-9.]+)[.]exe") |
+  $onStation = [regex]::Matches($index, "-Setup-([0-9.]+)[.]exe") |
     ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
 } catch {
   Say "индекс станции не читается — проверю наличие файла при скачивании"
@@ -88,21 +88,29 @@ if ($onStation.Count -gt 0 -and $onStation -notcontains $Version) {
 }
 
 # --- забрать и проверить ----------------------------------------------------
-$setup = Join-Path $env:TEMP "EVS-Setup-$Version.exe"
-Say "качаю установщик $Version"
-try {
-  Invoke-WebRequest "$BaseUrl/EVS-Setup-$Version.exe" -OutFile $setup -UseBasicParsing -TimeoutSec 900
-} catch {
-  Die "Не скачался EVS-Setup-$Version.exe: $($_.Exception.Message)"
-}
-
-# Хеш берётся из той же записи канала. Идти назад — не повод доверять файлу
-# меньше, чем при обновлении.
+# Ссылка берётся из самой записи канала, а не собирается из имени: имя
+# установщика сменилось вместе с именем программы, и на станции лежат релизы
+# обоих поколений.
 $block = ($xml -split "<item>") |
   Where-Object { $_ -match ("sparkle:version=" + [char]34 + [regex]::Escape($Version) + [char]34) } |
   Select-Object -First 1
+if (-not $block) { Die "В канале нет записи для $Version" }
+if ($block -notmatch 'url="([^"]+)"') { Die "В записи $Version нет ссылки" }
+$url = $Matches[1]
+$name = Split-Path $url -Leaf
+$setup = Join-Path $env:TEMP $name
+
+Say "качаю $name"
+try {
+  Invoke-WebRequest $url -OutFile $setup -UseBasicParsing -TimeoutSec 900
+} catch {
+  Die "Не скачался ${name}: $($_.Exception.Message)"
+}
+
+# Хеш — из той же записи. Идти назад не повод доверять файлу меньше, чем при
+# обновлении.
 $sha = ""
-if ($block -and $block -match 'evs:sha256="([0-9a-fA-F]{64})"') { $sha = $Matches[1] }
+if ($block -match 'evs:sha256="([0-9a-fA-F]{64})"') { $sha = $Matches[1] }
 if ($sha) {
   $got = (Get-FileHash $setup -Algorithm SHA256).Hash
   if ($got -ne $sha.ToUpper()) { Die "Хеш не совпал: канал $($sha.ToUpper()), файл $got" }

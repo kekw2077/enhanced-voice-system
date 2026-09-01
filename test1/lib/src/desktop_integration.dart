@@ -440,6 +440,34 @@ typedef _CloseHandleDart = int Function(int);
 // the assistant speech level (lvl), assistant state (va) and transient
 // notices (note). The widget sends back `open` (double-click → show the
 // chat), `moved` (persist position) and `hidden` (its × button).
+// Leftovers from before the rename. Both are best-effort and deliberately
+// silent: a file still locked by a process that has not exited yet is not a
+// problem worth reporting, and the next launch will get it.
+
+/// Delete a spare copy of the exe left under its old name.
+Future<void> _dropStaleCopy(String path) async {
+  try {
+    final f = io.File(path);
+    if (await f.exists()) await f.delete();
+  } catch (_) {}
+}
+
+/// Remove a startup entry left under the old application name.
+///
+/// launch_at_startup keys the registry value by appName and only knows the
+/// name it was given, so after a rename the old value survives — pointing at
+/// an executable that is gone, failing quietly at every boot.
+Future<void> _dropStaleAutostart(String oldName) async {
+  if (defaultTargetPlatform != TargetPlatform.windows) return;
+  try {
+    await io.Process.run('reg', [
+      'delete',
+      r'HKCU\Software\Microsoft\Windows\CurrentVersion\Run',
+      '/v', oldName, '/f',
+    ], runInShell: false);
+  } catch (_) {}
+}
+
 class VizOverlayServer {
   VizOverlayServer._();
   static final VizOverlayServer instance = VizOverlayServer._();
@@ -495,17 +523,21 @@ class VizOverlayServer {
   }
 
   // The widget runs the SAME binary with --viz-overlay; launch it from a
-  // distinctly-named copy so it shows as "evs_widget.exe" in Task Manager's
-  // Details tab instead of a second anonymous "evs.exe" (you can tell the
+  // distinctly-named copy so it shows as "anima_widget.exe" in Task Manager's
+  // Details tab instead of a second anonymous "anima.exe" (you can tell the
   // visualization widget apart from the main app and the voice sidecar).
   // Refreshed whenever the main exe changes (after an update); falls back to the
   // main exe if the directory isn't writable. NB: the updater's kill-list
-  // (applyAndRestart) must include evs_widget.exe so updates can replace files.
+  // (_kKillExeNames) must include anima_widget.exe so updates can replace files.
   Future<String> _widgetExe() async {
     final main = io.Platform.resolvedExecutable;
     try {
       final sep = io.Platform.pathSeparator;
-      final copy = io.File('${io.File(main).parent.path}${sep}evs_widget.exe');
+      final dir = io.File(main).parent.path;
+      // The copy under the old name is dead weight after the rename — it is a
+      // whole spare copy of the exe, and nothing will ever launch it again.
+      unawaited(_dropStaleCopy('$dir${sep}evs_widget.exe'));
+      final copy = io.File('$dir${sep}anima_widget.exe');
       final src = io.File(main);
       if (!await copy.exists() || await copy.length() != await src.length()) {
         await src.copy(copy.path);
@@ -1132,9 +1164,14 @@ class DesktopIntegration with WindowListener, TrayListener {
     MotionPolicy.bindSignals();
     try {
       launchAtStartup.setup(
-        appName: 'EVS',
+        appName: 'Nexus Anima',
         appPath: io.Platform.resolvedExecutable,
       );
+      // The registry value is keyed by appName, so the rename leaves the old
+      // one behind pointing at an exe that no longer exists — a startup entry
+      // that silently fails every boot. The plugin only knows its own name, so
+      // the old one is removed here.
+      unawaited(_dropStaleAutostart('EVS'));
       await applyAutostart(app.autostart);
 
       await trayManager.setIcon('assets/icon/app_icon.ico');
