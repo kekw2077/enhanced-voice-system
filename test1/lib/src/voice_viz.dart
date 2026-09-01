@@ -595,7 +595,11 @@ class _OverlayWidgetViewState extends State<OverlayWidgetView> {
                           ]),
                         ),
                       ),
-                      if (viz == 'bars')
+                      // Шар «Призмы» — тот же, что в «Центре». Отдельным
+                      // стилем, а не подменой сферы: выбирают его вручную.
+                      if (viz == 'prismorb')
+                        PrismOrb(size: content * 0.94, showMic: false)
+                      else if (viz == 'bars')
                         EvsBarsViz(
                             width: content * 0.86,
                             height: content * 0.46,

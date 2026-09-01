@@ -401,7 +401,13 @@ class RemoteSttEngine(BaseSttEngine):
     needs_warmup = False
 
     def __init__(self, base_url: str = "", model: str = "",
-                 api_key: str = "", timeout: float = 30.0) -> None:
+                 api_key: str = "", timeout: float = 8.0) -> None:
+        # Восемь секунд, а не тридцать. Станция распознаёт фразу за
+        # десятые доли секунды (замер: 2,5 с звука за 0,09 с), остальное
+        # — дорога. Если за восемь секунд ответа нет, сервер недоступен,
+        # и ждать дальше значит терять команды: при таймауте в тридцать
+        # три сорвавшихся запроса занимали почти минуту, и всё это время
+        # ассистент молчал.
         super().__init__()
         self._base = (base_url or "").rstrip("/")
         self._model = model or "whisper-1"
@@ -745,7 +751,6 @@ class SttEngine:
         # Compute device (TZ2 block 6/7): the user's desired device vs a
         # temporary game-mode CPU force. Effective = cpu if forced else desired.
         self._desired_device = "cuda" if device == "cuda" else "cpu"
-        self._forced_cpu = False
 
         # Cold-start readiness state machine (TZ3.4). `_warmed` guards the greedy
         # load + warmup so it runs once per PROCESS, not once per reconnect —
@@ -1056,9 +1061,9 @@ class SttEngine:
         """Распознать сегмент активным движком. Звать под `_recog_lock`.
 
         Отдельный метод ради одной вещи: если сервер не ответил, фраза не
-        должна пропасть — её дораспознаёт локальный Whisper. Три сорвавшихся
-        запроса подряд переводят на локальный совсем, иначе каждая следующая
-        фраза платила бы сетевым таймаутом за уже мёртвый сервер."""
+        должна пропасть — её дораспознаёт локальный движок. На локальный
+        переходим сразу при явном отказе сети и со второй попытки при таймауте,
+        иначе каждая следующая фраза платила бы ожиданием за мёртвый сервер."""
         engine = self._active
         try:
             text = engine.transcribe(np, audio_bytes, final)
@@ -1071,7 +1076,15 @@ class SttEngine:
             self._remote_fails += 1
             log_stage(f"remote STT failed ({self._remote_fails}): {e}")
             self._emit_status("remote", "error", str(e))
-            if self._remote_fails >= 3:
+            # Отказ отказу рознь. «Сеть недоступна» или «в соединении отказано»
+            # — это точный ответ, что сервера нет: ждать второго такого же
+            # незачем, переключаемся сразу. А таймаут может оказаться разовой
+            # заминкой, поэтому ему даём второй шанс. Прежние три попытки при
+            # тридцатисекундном ожидании складывались в минуту молчания.
+            hard = any(w in str(e).lower() for w in (
+                "unreachable", "refused", "10065", "10061", "no route",
+                "недоступ", "отказано"))
+            if hard or self._remote_fails >= 2:
                 self._fallback_to_local(str(e))
             name, local = self._local_target()
             if not local.available:
@@ -1170,20 +1183,11 @@ class SttEngine:
     # ---- compute device (cpu | cuda) — TZ2 block 6/7 -------------------
 
     def effective_device(self) -> str:
-        return "cpu" if self._forced_cpu else self._desired_device
+        return self._desired_device
 
     def set_device(self, device: str) -> None:
-        """The user's desired STT device. Applied immediately unless game mode
-        is currently forcing CPU (then it's remembered for when it lifts)."""
+        """Устройство распознавания, выбранное человеком."""
         self._desired_device = "cuda" if device == "cuda" else "cpu"
-        self._apply_device()
-
-    def force_cpu(self, on: bool) -> None:
-        """Game mode parks GPU engines on the CPU without touching the user's
-        saved device (TZ2 block 7)."""
-        if on == self._forced_cpu:
-            return
-        self._forced_cpu = on
         self._apply_device()
 
     def _apply_device(self) -> None:

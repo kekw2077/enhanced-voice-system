@@ -12,6 +12,21 @@ class AppState extends ChangeNotifier {
   AppThemeMode themeMode = AppThemeMode.dark;
   AppStyle appStyle = AppStyle.standard;
 
+  // Оформление «Призмы». Действует только при appStyle == prism; три другие
+  // оболочки эти поля не читают, поэтому их значения на них не влияют. Как и
+  // appStyle, применяются сразу и мимо черновика настроек (см. setPrism*).
+  PrismAccent prismAccent = PrismAccent.google;
+  PrismGlass prismGlass = PrismGlass.glass;
+  PrismBackground prismBackground = PrismBackground.spots;
+  PrismDots prismDots = PrismDots.push;
+  PrismAnim prismAnim = PrismAnim.breathe;
+  PrismAnimSpeed prismAnimSpeed = PrismAnimSpeed.normal;
+
+  /// Показывать экран приветствия «Призмы» при запуске. В макете это отдельная
+  /// первая страница с галочкой «больше не показывать»; галочка живёт здесь.
+  /// Действует только в «Призме»: у трёх других оболочек такого экрана нет.
+  bool prismWelcome = true;
+
   // TZ2.2 settings draft: while the settings screen is open, _save() is deferred
   // and applied only on Save; Cancel re-reads the fields from prefs (which still
   // hold the last-saved values, since persistence was deferred). Backend
@@ -187,6 +202,14 @@ class AppState extends ChangeNotifier {
   // not send this field" so the model's own default applies — leaving a box
   // blank must not silently impose a value.
   int? llmNumCtx;
+
+  /// Сжимать разговор самому, когда контекст подходит к пределу. Иначе
+  /// Ollama отрежет начало молча — и ассистент просто начнёт забывать.
+  bool ctxAutoCompress = true;
+
+  /// Доля заполнения, при которой пора сжимать. Не единица: пересказ сам
+  /// занимает место, и запускать его впритык поздно.
+  double ctxCompressAt = 0.8;
   int? llmNumPredict;
   double? llmTemperature;
   // Остальная выборка Ollama. Та же семантика null: не задано — не отправляем,
@@ -209,12 +232,59 @@ class AppState extends ChangeNotifier {
   String updateServerUrl = '';
   // Генерация картинок на станции. Схема та же, что у распознавания на сервере:
   // пустой адрес означает «функции нет», а не «взять откуда-нибудь ещё».
-  // `imageFreeVoiceToo` — выгружать ли ради картинок ещё и синтез голоса: с
-  // нынешним чекпоинтом (SDXL, ~7 ГБ) он и так помещается рядом, но с моделью
-  // потяжелее выбора не будет.
+  // `imageFreeVoiceToo` — выгружать ли ради картинок ещё и синтез голоса.
+  // По умолчанию да, и вот арифметика: языковая модель 8 ГБ, синтез 4,4,
+  // картинки 7 — на карте в 16 ГБ втроём они не помещаются никак. Пока
+  // голосом была CosyVoice на три гигабайта, а контекст языковой модели
+  // был вдвое меньше, всё сходилось — отсюда прежнее «нет». Теперь
+  // невыгруженный голос означает отказ генерации с нехваткой памяти.
   String imageServerUrl = '';
+
+  // --- Сеть: агент канала на станции ---------------------------------------
+  // Адрес агента nexus-relay и его токен. Агент меряет канал до арендованного
+  // VPS и переключает маршрут игрового трафика. Пустой адрес — экран «Сеть»
+  // покажет, как его настроить, и не будет никого опрашивать.
+  String relayUrl = '';
+  String relayToken = '';
+
+  // --- Переводчик игры -------------------------------------------------------
+  // Путь к CznTranslator.exe и надо ли поднимать его самому, увидев игру.
+  // Пустой путь — расширение поищет exe рядом с EVS и скажет, если не нашло.
+  String cznExePath = '';
+  bool cznAutoStart = false;
+
+  /// Покрытие перевода по дням: `ГГГГ-ММ-ДД|переведено|всего`.
+  ///
+  /// Считается по РАЗНЫМ текстам, а не по записям базы: одна и та же фраза
+  /// лежит там под каждым ключом, под которым её несёт игра, а поиск идёт по
+  /// самому тексту — значит один перевод отвечает за все её повторы.
+  ///
+  /// Историю не хранит никто другой: переводчик знает состояние базы сейчас,
+  /// но не помнит вчерашнего, а в самой базе такой таблицы нет. Точка в день —
+  /// это про рост перевода, а не про минуты; за день побеждает последнее
+  /// измерение, поэтому дозаливка сразу видна на графике.
+  ///
+  /// Здесь же лежит и последнее известное состояние: экран показывает числа,
+  /// когда переводчик не запущен, и отдельного хранилища для того же самого
+  /// заводить незачем — последняя точка и есть «сейчас».
+  List<String> cznCoverage = [];
+
   String imageModel = '';
-  bool imageFreeVoiceToo = false;
+  // Включённые довески LoRA — тем же JSON, что уходит на сервер. Хранится
+  // строкой, потому что shared_preferences не знает списков объектов, а
+  // второго представления заводить незачем: разбор и сборка живут рядом с
+  // отправкой (decodeLoraPicks/encodeLoraPicks).
+  String imageLoras = '';
+  // Сила второго прохода по лицу: 0 — не делать. Лицо на общем плане
+  // занимает считанные клетки латента, и подробностям там взяться неоткуда;
+  // проход считает его отдельным кадром. Выше 0,6 модель начинает рисовать
+  // ДРУГОЕ лицо вместо того, чтобы дорисовать это.
+  double imageFacePass = 0.4;
+  // Во сколько раз увеличить готовый кадр с дорисовкой. 0 — не увеличивать.
+  // Растяжение добавляет пикселей, но не подробностей; дорисовка вписывает
+  // в новые пиксели то, чего в маленьком кадре не помещалось.
+  double imageHires = 0;
+  bool imageFreeVoiceToo = true;
   // Optional per-mode model overrides. Empty means "use whatever is selected
   // globally", which keeps the existing single-model behaviour intact — the
   // point is to let a RAG-tuned model answer search turns without changing what
@@ -298,12 +368,6 @@ class AppState extends ChangeNotifier {
   // CUDA path here; the selector is hidden entirely when no GPU is detected.
   String sttDevice = 'cpu'; // 'cpu' | 'cuda'
   // Game mode (TZ2 block 7): auto-offload GPU engines to CPU under load.
-  bool gameModeFullscreen = true; // trigger A: fullscreen foreground
-  bool gameModeVram = true; // trigger B: VRAM saturation (needs NVML)
-  double gameModeVramEnter = 85; // % to engage the VRAM trigger
-  double gameModeVramExit = 65; // % to disengage (must be < enter)
-  bool gameModeNotify = true; // speak on enter/exit; badge stays regardless
-  List<String> gameModeExclusions = []; // exe names that don't count as games
   // Voice assistant / command recognition.
   String cmdMode = 'wakeword'; // 'wakeword' | 'separate' | 'first'
   String wakeWord = 'EVS';
@@ -408,6 +472,11 @@ class AppState extends ChangeNotifier {
   String cloneServerPython = '';
   // Transient (not persisted): null = unknown, true/false = last check result.
   bool? cosyvoiceOnline;
+
+  /// Как сервер клон-голоса называет свою модель. Берётся из его же ответа на
+  /// проверку связи, а не пишется в коде: сервер один, а модель за ним может
+  /// смениться — и подпись «CosyVoice» осталась бы висеть над Qwen3-TTS.
+  String cloneServerModel = '';
   // CosyVoice deep controls (settings TZ §3.2). UI + persisted state only for
   // now — synthesis routing to the server is wired once it's deployed and its
   // API confirmed (the app currently synthesizes only through Piper/pyttsx3).
@@ -421,6 +490,11 @@ class AppState extends ChangeNotifier {
   String cosyvoiceClonePath = '';
   String cosyvoiceClonePromptText = '';
   double cosyvoiceSpeed = 1.0;
+
+  /// Язык, на котором сервер клон-голоса должен говорить. Qwen3-TTS обучена
+  /// десяти языкам и берёт его отдельным полем запроса; без него модель
+  /// угадывает по тексту и на коротких фразах ошибается.
+  String cloneLanguage = 'Russian';
   String cosyvoiceEmotion = 'neutral';
   String cosyvoiceInstruct = '';
   String cosyvoiceDevice = 'cuda'; // 'cpu' | 'cuda'
@@ -430,19 +504,6 @@ class AppState extends ChangeNotifier {
   // four real levers pushed to the server (POST <endpoint>/config): a hard VRAM
   // ceiling, idle unloading (frees VRAM entirely between phrases), a duty-cycle
   // throttle, and a pause flag driven by EVS's own game mode.
-  // `cloneGpuProfile` is a preset over the three numeric knobs; editing any of
-  // them individually switches it to 'custom'.
-  String cloneGpuProfile = 'balanced'; // 'max' | 'balanced' | 'quiet' | 'custom'
-  // What happens to the cloned voice while a game is running:
-  //   'cache'  — pre-rendered phrases still play from disk (zero GPU), anything
-  //              new falls back to Piper (default)
-  //   'off'    — clone fully disabled, Piper only
-  //   'normal' — keep synthesizing on the GPU (may cost FPS)
-  String cloneGpuInGame = 'cache';
-  double cloneGpuVramLimitGb = 5; // 0 = uncapped
-  int cloneGpuIdleUnloadSec = 120; // 0 = never unload
-  double cloneGpuThrottle = 0.25; // 0..1 share of synth time spent idling
-  String cloneGpuPrecision = 'auto'; // 'auto' | 'bf16' | 'fp16'
 
   // Piper voices the user imported themselves (see importCustomVoice).
   List<CustomVoice> customVoices = [];
@@ -458,6 +519,100 @@ class AppState extends ChangeNotifier {
   String cloneSamplePath = '';
   // User-editable extra phrases to pre-render (on top of the built-ins).
   List<String> clonePhraseLib = [];
+
+  // Сочинённые моделью варианты СИСТЕМНЫХ ответов: ключ перевода -> фразы.
+  // Хранится строкой JSON, потому что shared_preferences не знает вложенных
+  // списков; разобранный вид кэшируется рядом.
+  // Ширина колонки диалога в стиле «Nexus». Раньше была прибита к 360:
+  // на широком экране переписка жалась в полосу, на узком — отбирала
+  // место у главного экрана.
+  double nexusChatWidth = 360;
+  String speakVariants = '';
+  Map<String, List<String>>? _speakVarsCache;
+  // Что прозвучало в прошлый раз в каждом «гнезде» — чтобы не повторяться
+  // подряд. Живёт только в памяти: между запусками повтор не слышен.
+  final Map<String, String> _lastSpoken = {};
+  final math.Random _speakRnd = math.Random();
+
+  Map<String, List<String>> get speakVarsMap {
+    final c = _speakVarsCache;
+    if (c != null) return c;
+    final out = <String, List<String>>{};
+    try {
+      final j = jsonDecode(speakVariants.isEmpty ? '{}' : speakVariants);
+      if (j is Map) {
+        j.forEach((k, v) {
+          if (v is List) {
+            final list = v
+                .map((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .toList();
+            if (list.isNotEmpty) out[k.toString()] = list;
+          }
+        });
+      }
+    } catch (_) {
+      // Испорченная запись — считаем, что вариантов нет.
+    }
+    return _speakVarsCache = out;
+  }
+
+  void setNexusChatWidth(double v) {
+    // Границы не декоративные: уже 280 не помещается пузырь с текстом, а
+    // шире 640 главный экран перестаёт читаться.
+    final w = v.clamp(280.0, 640.0);
+    if ((w - nexusChatWidth).abs() < 0.5) return;
+    nexusChatWidth = w;
+    _save();
+    notifyListeners();
+  }
+
+  void setSpeakVariants(String v) {
+    speakVariants = v;
+    _speakVarsCache = null;
+    _save();
+    notifyListeners();
+  }
+
+  /// Ключи системных ответов, для которых имеет смысл сочинять варианты.
+  static const List<String> kSpeakVariantKeys = [
+    'vaDone', 'vaFailed', 'chatTurnedOn', 'chatTurnedOff', 'readyGreeting',
+  ];
+
+  /// Что сказать в ответ на команду.
+  ///
+  /// Берётся фраза самой команды и сочинённые к ней варианты, выбирается один —
+  /// но не тот, что звучал в прошлый раз: повтор подряд слышен сильнее, чем
+  /// бедность набора вообще.
+  String speakFor(VoiceCommand cmd, {String fallbackKey = 'vaDone'}) {
+    final pool = <String>{
+      if (cmd.speakPhrase.trim().isNotEmpty) cmd.speakPhrase.trim(),
+      for (final v in cmd.speakVariants)
+        if (v.trim().isNotEmpty) v.trim(),
+    }.toList();
+    if (pool.isEmpty) return speakGeneric(fallbackKey);
+    return _pickSpeak('cmd:\${cmd.phrase}', pool);
+  }
+
+  /// То же для системного ответа без команды.
+  String speakGeneric(String key) {
+    final pool = <String>{
+      if (t(key).trim().isNotEmpty) t(key).trim(),
+      for (final v in (speakVarsMap[key] ?? const <String>[]))
+        if (v.trim().isNotEmpty) v.trim(),
+    }.toList();
+    return pool.isEmpty ? t(key) : _pickSpeak('sys:\$key', pool);
+  }
+
+  String _pickSpeak(String slot, List<String> pool) {
+    if (pool.length == 1) return pool.first;
+    final last = _lastSpoken[slot];
+    final fresh = pool.where((s) => s != last).toList();
+    final take = fresh.isEmpty ? pool : fresh;
+    final s = take[_speakRnd.nextInt(take.length)];
+    _lastSpoken[slot] = s;
+    return s;
+  }
 
   // Built-in acknowledgement phrases pre-rendered for a cloned voice so short
   // interjections are instant. Fixed system phrases + command speak-phrases are
@@ -527,6 +682,7 @@ class AppState extends ChangeNotifier {
       (e) => e.name == as,
       orElse: () => AppStyle.standard,
     );
+    _loadPrismLook();
     haptics = prefs.getBool('haptics') ?? true;
     showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
     showPromptChips = prefs.getBool('showPromptChips') ?? true;
@@ -541,6 +697,8 @@ class AppState extends ChangeNotifier {
     savedServers = prefs.getStringList('savedServers') ?? [];
     // Absent key -> null -> parameter is not sent at all (see llmOptions).
     llmNumCtx = prefs.getInt('llmNumCtx');
+    ctxAutoCompress = prefs.getBool('ctxAutoCompress') ?? true;
+    ctxCompressAt = prefs.getDouble('ctxCompressAt') ?? 0.8;
     llmNumPredict = prefs.getInt('llmNumPredict');
     llmTemperature = prefs.getDouble('llmTemperature');
     llmTopP = prefs.getDouble('llmTopP');
@@ -551,8 +709,16 @@ class AppState extends ChangeNotifier {
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     imageServerUrl = prefs.getString('imageServerUrl') ?? '';
+    relayUrl = prefs.getString('relayUrl') ?? '';
+    relayToken = prefs.getString('relayToken') ?? '';
+    cznExePath = prefs.getString('cznExePath') ?? '';
+    cznAutoStart = prefs.getBool('cznAutoStart') ?? false;
+    cznCoverage = prefs.getStringList('cznCoverage') ?? [];
     imageModel = prefs.getString('imageModel') ?? '';
-    imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? false;
+    imageLoras = prefs.getString('imageLoras') ?? '';
+    imageFacePass = prefs.getDouble('imageFacePass') ?? 0.4;
+    imageHires = prefs.getDouble('imageHires') ?? 0;
+    imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? true;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     // Migrate away placeholder values that earlier versions persisted as if
@@ -649,12 +815,6 @@ class AppState extends ChangeNotifier {
     ttsFxReverb = prefs.getDouble('ttsFxReverb') ?? 0.15;
     ttsFxLowpass = prefs.getInt('ttsFxLowpass') ?? 2200;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
-    gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
-    gameModeVram = prefs.getBool('gameModeVram') ?? true;
-    gameModeVramEnter = prefs.getDouble('gameModeVramEnter') ?? 85;
-    gameModeVramExit = prefs.getDouble('gameModeVramExit') ?? 65;
-    gameModeNotify = prefs.getBool('gameModeNotify') ?? true;
-    gameModeExclusions = prefs.getStringList('gameModeExclusions') ?? <String>[];
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -702,15 +862,10 @@ class AppState extends ChangeNotifier {
     cosyvoiceClonePromptText =
         prefs.getString('cosyvoiceClonePromptText') ?? '';
     cosyvoiceSpeed = prefs.getDouble('cosyvoiceSpeed') ?? 1.0;
+    cloneLanguage = prefs.getString('cloneLanguage') ?? 'Russian';
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
-    cloneGpuProfile = prefs.getString('cloneGpuProfile') ?? 'balanced';
-    cloneGpuInGame = prefs.getString('cloneGpuInGame') ?? 'cache';
-    cloneGpuVramLimitGb = prefs.getDouble('cloneGpuVramLimitGb') ?? 5;
-    cloneGpuIdleUnloadSec = prefs.getInt('cloneGpuIdleUnloadSec') ?? 120;
-    cloneGpuThrottle = prefs.getDouble('cloneGpuThrottle') ?? 0.25;
-    cloneGpuPrecision = prefs.getString('cloneGpuPrecision') ?? 'auto';
     final cvRaw = prefs.getString('customVoices');
     if (cvRaw != null) {
       try {
@@ -729,6 +884,9 @@ class AppState extends ChangeNotifier {
     cloneEnabled = false;
     cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
+    speakVariants = prefs.getString('speakVariants') ?? '';
+    nexusChatWidth = prefs.getDouble('nexusChatWidth') ?? 360;
+    _speakVarsCache = null;
     activeVoicePreset = prefs.getString('activeVoicePreset') ?? '';
     try {
       final vp = prefs.getString('voicePresets');
@@ -805,21 +963,25 @@ class AppState extends ChangeNotifier {
   // (conversations, model lists, paired devices) that can change outside the
   // settings screen and shouldn't count as an unsaved edit.
   String _settingsSnapshot() => <Object?>[
-        lang, themeMode.name, appStyle.name, haptics, showKeyboardOnLaunch,
+        lang, themeMode.name, appStyle.name,
+        prismAccent.name, prismGlass.name, prismBackground.name, prismDots.name,
+        prismAnim.name, prismAnimSpeed.name,
+        prismWelcome,
+        haptics, showKeyboardOnLaunch,
         showPromptChips, fontSize, micAutoSend, micPauseSeconds, serverUrl,
-        savedServers.join(','), llmNumCtx, llmNumPredict, llmTemperature,
+        savedServers.join(','), llmNumCtx, ctxAutoCompress, ctxCompressAt,
+        llmNumPredict, llmTemperature,
         llmTopP, llmTopK, llmRepeatPenalty, llmMinP,
         llmKeepAlive, llmThinking, updateServerUrl,
-        imageServerUrl, imageModel, imageFreeVoiceToo,
+        imageServerUrl, imageModel, imageLoras, imageFacePass, imageHires,
+        imageFreeVoiceToo,
         searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
         sttLanguage, whisperModel, sttEngine,
         sttSidecarEngine, sttRemoteUrl, sttRemoteModel, sttRemoteKey,
         sttLocalEngine,
-        denoiseMode, sttDevice, gameModeFullscreen, gameModeVram,
-        gameModeVramEnter, gameModeVramExit, gameModeNotify,
-        gameModeExclusions.join(','), cmdMode, wakeWord, stopWords.join(','),
+        denoiseMode, sttDevice, cmdMode, wakeWord, stopWords.join(','),
         cmdThreshold, cmdConfirm, cmdEnabled, chatEnabled, vizType, showVizBg,
         showPartial, overlayMode, startupShowWindow, overlaySize, vizAccent,
         orbSize, orbSpeed,
@@ -829,16 +991,16 @@ class AppState extends ChangeNotifier {
         ttsInterpEnabled, ttsInterpMode, ttsInterpModel, ttsEngineChoice,
         cosyvoiceEndpoint, cosyvoiceVoice, cosyvoiceClonePath,
         cloneServerPython,
-        cosyvoiceClonePromptText, cosyvoiceSpeed, cosyvoiceEmotion,
+        cosyvoiceClonePromptText, cosyvoiceSpeed, cloneLanguage,
+        cosyvoiceEmotion,
         cosyvoiceInstruct, cosyvoiceDevice,
-        cloneGpuProfile, cloneGpuInGame, cloneGpuVramLimitGb,
-        cloneGpuIdleUnloadSec, cloneGpuThrottle, cloneGpuPrecision,
         // Every field _restoreSettingsFields() re-reads MUST appear here: a
         // field that restores but isn't snapshotted never flags the draft
         // dirty, so its edits silently revert when the screen closes (that was
         // the "FX sliders don't save" bug — and the clone toggle too).
         motionMode, micVadAggr, micGain,
         ttsFxEnabled, ttsFxDetune, ttsFxMetallic, ttsFxReverb, ttsFxLowpass,
+        nexusChatWidth,
         cloneEnabled, cloneSamplePath, clonePhraseLib.join(','),
         activeVoicePreset, jsonEncode(voicePresets),
         jsonEncode(voiceCommands.map((c) => c.toJson()).toList()),
@@ -857,6 +1019,13 @@ class AppState extends ChangeNotifier {
     await prefs.setString('lang', lang);
     await prefs.setString('themeMode', themeMode.name);
     await prefs.setString('appStyle', appStyle.name);
+    await prefs.setString('prismAccent', prismAccent.name);
+    await prefs.setString('prismGlass', prismGlass.name);
+    await prefs.setString('prismBackground', prismBackground.name);
+    await prefs.setString('prismDots', prismDots.name);
+    await prefs.setString('prismAnim', prismAnim.name);
+    await prefs.setString('prismAnimSpeed', prismAnimSpeed.name);
+    await prefs.setBool('prismWelcome', prismWelcome);
     await prefs.setBool('haptics', haptics);
     await prefs.setBool('showKeyboardOnLaunch', showKeyboardOnLaunch);
     await prefs.setBool('showPromptChips', showPromptChips);
@@ -868,6 +1037,8 @@ class AppState extends ChangeNotifier {
     await prefs.setStringList('savedServers', savedServers);
     // Remove rather than write a sentinel: "unset" has to survive a restart,
     // otherwise a cleared field would come back as a real value.
+    await prefs.setBool('ctxAutoCompress', ctxAutoCompress);
+    await prefs.setDouble('ctxCompressAt', ctxCompressAt);
     if (llmNumCtx == null) {
       await prefs.remove('llmNumCtx');
     } else {
@@ -902,7 +1073,15 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('llmThinking', llmThinking);
     await prefs.setString('updateServerUrl', updateServerUrl);
     await prefs.setString('imageServerUrl', imageServerUrl);
+    await prefs.setString('relayUrl', relayUrl);
+    await prefs.setString('relayToken', relayToken);
+    await prefs.setString('cznExePath', cznExePath);
+    await prefs.setBool('cznAutoStart', cznAutoStart);
+    await prefs.setStringList('cznCoverage', cznCoverage);
     await prefs.setString('imageModel', imageModel);
+    await prefs.setString('imageLoras', imageLoras);
+    await prefs.setDouble('imageFacePass', imageFacePass);
+    await prefs.setDouble('imageHires', imageHires);
     await prefs.setBool('imageFreeVoiceToo', imageFreeVoiceToo);
     await prefs.setString('searchModel', searchModel);
     await prefs.setString('chatModel', chatModel);
@@ -943,12 +1122,6 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble('ttsFxReverb', ttsFxReverb);
     await prefs.setInt('ttsFxLowpass', ttsFxLowpass);
     await prefs.setString('sttDevice', sttDevice);
-    await prefs.setBool('gameModeFullscreen', gameModeFullscreen);
-    await prefs.setBool('gameModeVram', gameModeVram);
-    await prefs.setDouble('gameModeVramEnter', gameModeVramEnter);
-    await prefs.setDouble('gameModeVramExit', gameModeVramExit);
-    await prefs.setBool('gameModeNotify', gameModeNotify);
-    await prefs.setStringList('gameModeExclusions', gameModeExclusions);
     await prefs.setString('cmdMode', cmdMode);
     await prefs.setString('wakeWord', wakeWord);
     await prefs.setStringList('stopWords', stopWords);
@@ -990,20 +1163,17 @@ class AppState extends ChangeNotifier {
     await prefs.setString('cosyvoiceClonePath', cosyvoiceClonePath);
     await prefs.setString('cosyvoiceClonePromptText', cosyvoiceClonePromptText);
     await prefs.setDouble('cosyvoiceSpeed', cosyvoiceSpeed);
+    await prefs.setString('cloneLanguage', cloneLanguage);
     await prefs.setString('cosyvoiceEmotion', cosyvoiceEmotion);
     await prefs.setString('cosyvoiceInstruct', cosyvoiceInstruct);
     await prefs.setString('cosyvoiceDevice', cosyvoiceDevice);
-    await prefs.setString('cloneGpuProfile', cloneGpuProfile);
-    await prefs.setString('cloneGpuInGame', cloneGpuInGame);
-    await prefs.setDouble('cloneGpuVramLimitGb', cloneGpuVramLimitGb);
-    await prefs.setInt('cloneGpuIdleUnloadSec', cloneGpuIdleUnloadSec);
-    await prefs.setDouble('cloneGpuThrottle', cloneGpuThrottle);
-    await prefs.setString('cloneGpuPrecision', cloneGpuPrecision);
     await prefs.setString('customVoices',
         jsonEncode(customVoices.map((e) => e.toJson()).toList()));
     await prefs.setBool('cloneEnabled', cloneEnabled);
     await prefs.setString('cloneSamplePath', cloneSamplePath);
     await prefs.setStringList('clonePhraseLib', clonePhraseLib);
+    await prefs.setString('speakVariants', speakVariants);
+    await prefs.setDouble('nexusChatWidth', nexusChatWidth);
     await prefs.setString('activeVoicePreset', activeVoicePreset);
     await prefs.setString('voicePresets', jsonEncode(voicePresets));
     await prefs.setString(
@@ -1121,9 +1291,6 @@ class AppState extends ChangeNotifier {
       SidecarClient.instance.setSttDevice(sttDevice);
     } catch (_) {}
     try {
-      applyGameModeConfig();
-    } catch (_) {}
-    try {
       unawaited(MicMeter.instance.start(deviceId: inputDeviceId));
     } catch (_) {}
     try {
@@ -1138,8 +1305,23 @@ class AppState extends ChangeNotifier {
   // untouched.
   void _restoreSettingsFields() {
     lang = prefs.getString('lang') ?? 'ru';
-    themeMode = AppThemeMode.dark;
-    appStyle = AppStyle.standard;
+    // Тема и стиль читаются из prefs, а НЕ сбрасываются в умолчание.
+    // Сброс здесь стоил ровно того, чем выглядел: любой откат черновика —
+    // «Отмена», неудачное сохранение, выход из настроек — перекрашивал окно в
+    // «Классический» и тёмную тему, что бы там ни было выбрано до. Со стороны
+    // это читалось как «переключение стиля работает только на классический».
+    final tm = prefs.getString('themeMode') ?? 'dark';
+    themeMode = AppThemeMode.values.firstWhere(
+      (e) => e.name == tm,
+      orElse: () => AppThemeMode.dark,
+    );
+    final as = prefs.getString('appStyle') ?? 'standard';
+    appStyle = AppStyle.values.firstWhere(
+      (e) => e.name == as,
+      orElse: () => AppStyle.standard,
+    );
+    // Оформление «Призмы» — оттуда же и по той же причине.
+    _loadPrismLook();
     haptics = prefs.getBool('haptics') ?? true;
     showKeyboardOnLaunch = prefs.getBool('showKeyboardOnLaunch') ?? false;
     showPromptChips = prefs.getBool('showPromptChips') ?? true;
@@ -1154,6 +1336,8 @@ class AppState extends ChangeNotifier {
     savedServers = prefs.getStringList('savedServers') ?? [];
     apiKey = prefs.getString('apiKey') ?? '';
     llmNumCtx = prefs.getInt('llmNumCtx');
+    ctxAutoCompress = prefs.getBool('ctxAutoCompress') ?? true;
+    ctxCompressAt = prefs.getDouble('ctxCompressAt') ?? 0.8;
     llmNumPredict = prefs.getInt('llmNumPredict');
     llmTemperature = prefs.getDouble('llmTemperature');
     llmTopP = prefs.getDouble('llmTopP');
@@ -1164,8 +1348,16 @@ class AppState extends ChangeNotifier {
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     imageServerUrl = prefs.getString('imageServerUrl') ?? '';
+    relayUrl = prefs.getString('relayUrl') ?? '';
+    relayToken = prefs.getString('relayToken') ?? '';
+    cznExePath = prefs.getString('cznExePath') ?? '';
+    cznAutoStart = prefs.getBool('cznAutoStart') ?? false;
+    cznCoverage = prefs.getStringList('cznCoverage') ?? [];
     imageModel = prefs.getString('imageModel') ?? '';
-    imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? false;
+    imageLoras = prefs.getString('imageLoras') ?? '';
+    imageFacePass = prefs.getDouble('imageFacePass') ?? 0.4;
+    imageHires = prefs.getDouble('imageHires') ?? 0;
+    imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? true;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
@@ -1208,12 +1400,6 @@ class AppState extends ChangeNotifier {
     ttsFxReverb = prefs.getDouble('ttsFxReverb') ?? 0.15;
     ttsFxLowpass = prefs.getInt('ttsFxLowpass') ?? 2200;
     sttDevice = prefs.getString('sttDevice') ?? 'cpu';
-    gameModeFullscreen = prefs.getBool('gameModeFullscreen') ?? true;
-    gameModeVram = prefs.getBool('gameModeVram') ?? true;
-    gameModeVramEnter = prefs.getDouble('gameModeVramEnter') ?? 85;
-    gameModeVramExit = prefs.getDouble('gameModeVramExit') ?? 65;
-    gameModeNotify = prefs.getBool('gameModeNotify') ?? true;
-    gameModeExclusions = prefs.getStringList('gameModeExclusions') ?? <String>[];
     cmdMode = prefs.getString('cmdMode') ?? 'wakeword';
     wakeWord = prefs.getString('wakeWord') ?? 'EVS';
     final sw = prefs.getStringList('stopWords');
@@ -1261,15 +1447,10 @@ class AppState extends ChangeNotifier {
     cosyvoiceClonePromptText =
         prefs.getString('cosyvoiceClonePromptText') ?? '';
     cosyvoiceSpeed = prefs.getDouble('cosyvoiceSpeed') ?? 1.0;
+    cloneLanguage = prefs.getString('cloneLanguage') ?? 'Russian';
     cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
     cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
     cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
-    cloneGpuProfile = prefs.getString('cloneGpuProfile') ?? 'balanced';
-    cloneGpuInGame = prefs.getString('cloneGpuInGame') ?? 'cache';
-    cloneGpuVramLimitGb = prefs.getDouble('cloneGpuVramLimitGb') ?? 5;
-    cloneGpuIdleUnloadSec = prefs.getInt('cloneGpuIdleUnloadSec') ?? 120;
-    cloneGpuThrottle = prefs.getDouble('cloneGpuThrottle') ?? 0.25;
-    cloneGpuPrecision = prefs.getString('cloneGpuPrecision') ?? 'auto';
     final cvRaw = prefs.getString('customVoices');
     if (cvRaw != null) {
       try {
@@ -1288,6 +1469,9 @@ class AppState extends ChangeNotifier {
     cloneEnabled = false;
     cloneSamplePath = prefs.getString('cloneSamplePath') ?? '';
     clonePhraseLib = prefs.getStringList('clonePhraseLib') ?? [];
+    speakVariants = prefs.getString('speakVariants') ?? '';
+    nexusChatWidth = prefs.getDouble('nexusChatWidth') ?? 360;
+    _speakVarsCache = null;
     activeVoicePreset = prefs.getString('activeVoicePreset') ?? '';
     try {
       final vp = prefs.getString('voicePresets');
@@ -1380,8 +1564,88 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Адрес и токен агента канала. Приводим адрес к тому же виду, что и у
+  /// сервера картинок: человек вписывает «100.79.130.7:8790», а уходить
+  /// запрос должен по «http://100.79.130.7:8790».
+  ///
+  /// Опрос перезапускаем сразу: иначе экран «Сеть» продолжал бы стучаться по
+  /// старому адресу до перезахода, и человек решил бы, что новый не работает.
+  void setRelay({String? url, String? token}) {
+    if (url != null) {
+      var s = url.trim();
+      if (s.isNotEmpty && !s.startsWith('http')) s = 'http://$s';
+      while (s.endsWith('/')) {
+        s = s.substring(0, s.length - 1);
+      }
+      relayUrl = s;
+    }
+    if (token != null) relayToken = token.trim();
+    _save();
+    RelayMonitor.instance.reconfigure(this);
+    notifyListeners();
+  }
+
+  /// Путь к переводчику. Как и «Сеть», пишется сразу: экран расширения живёт
+  /// вне черновика настроек, и отложенное сохранение здесь только путало бы.
+  void setCznExePath(String v) {
+    cznExePath = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setCznAutoStart(bool v) {
+    cznAutoStart = v;
+    _save();
+    notifyListeners();
+  }
+
+  /// Отмечает сегодняшнее покрытие базы. Ничего не делает, если оно не менялось.
+  ///
+  /// Сравнение с последней записью, а не запись каждый раз: экран опрашивает
+  /// состояние раз в три секунды, и без него в списке за час набралось бы
+  /// больше тысячи одинаковых точек — а на графике это была бы всё та же
+  /// прямая. Хранится квартал: дальше график перестаёт читаться, а перевод
+  /// такого возраста уже ничего не говорит о сегодняшнем.
+  void recordCznCoverage(int translated, int total) {
+    if (total <= 0) return;
+
+    final day = DateTime.now().toIso8601String().substring(0, 10);
+    final point = '$day|$translated|$total';
+    if (cznCoverage.isNotEmpty && cznCoverage.last == point) return;
+
+    if (cznCoverage.isNotEmpty && cznCoverage.last.startsWith('$day|')) {
+      cznCoverage[cznCoverage.length - 1] = point;
+    } else {
+      cznCoverage.add(point);
+    }
+
+    if (cznCoverage.length > 90) {
+      cznCoverage = cznCoverage.sublist(cznCoverage.length - 90);
+    }
+    _save();
+    notifyListeners();
+  }
+
   void setImageModel(String v) {
     imageModel = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setImageLoras(String v) {
+    imageLoras = v.trim();
+    _save();
+    notifyListeners();
+  }
+
+  void setImageFacePass(double v) {
+    imageFacePass = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setImageHires(double v) {
+    imageHires = v;
     _save();
     notifyListeners();
   }
@@ -1662,12 +1926,17 @@ class AppState extends ChangeNotifier {
     }
 
     add(t('readyGreeting'));
-    add(t('gmNotifyFullscreen'));
-    add(t('gmNotifyVram'));
-    add(t('gmNotifyExit'));
     add(t('vaDone'));
     for (final c in voiceCommands) {
       add(c.speakPhrase);
+      for (final v in c.speakVariants) {
+        add(v);
+      }
+    }
+    for (final list in speakVarsMap.values) {
+      for (final v in list) {
+        add(v);
+      }
     }
     for (final p in kCloneAckPhrases) {
       add(p);
@@ -1734,6 +2003,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setCloneLanguage(String v) {
+    cloneLanguage = v.trim().isEmpty ? 'Russian' : v.trim();
+    _save();
+    notifyListeners();
+    unawaited(applyCloneServer());
+  }
+
   void setCosyvoiceEmotion(String v) {
     cosyvoiceEmotion = v;
     _save();
@@ -1752,132 +2028,266 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- GPU load control (clone server) ---------------------------------
-
-  // Preset → the three numeric knobs. 'custom' keeps whatever is stored.
-  static const Map<String, (double vramGb, int idleSec, double throttle)>
-      kCloneGpuPresets = {
-    // Uncapped, stays resident for 10 min, never throttled.
-    'max': (0, 600, 0),
-    // Roughly half a 12 GB card, unloads after 2 min, mild duty cycle.
-    'balanced': (5, 120, 0.25),
-    // Small footprint, drops out of VRAM quickly, heavy duty cycle.
-    'quiet': (3, 30, 0.6),
-  };
-
-  void setCloneGpuProfile(String v) {
-    final preset = kCloneGpuPresets[v];
-    cloneGpuProfile = preset == null ? 'custom' : v;
-    if (preset != null) {
-      cloneGpuVramLimitGb = preset.$1;
-      cloneGpuIdleUnloadSec = preset.$2;
-      cloneGpuThrottle = preset.$3;
-    }
+  void setCtxAutoCompress(bool v) {
+    ctxAutoCompress = v;
     _save();
     notifyListeners();
-    unawaited(pushCloneGpuConfig());
   }
 
-  // Any manual tweak means the profile no longer describes the settings.
-  void _markCloneGpuCustom() {
-    cloneGpuProfile = 'custom';
-  }
-
-  void setCloneGpuInGame(String v) {
-    cloneGpuInGame = const {'cache', 'off', 'normal'}.contains(v) ? v : 'cache';
+  void setCtxCompressAt(double v) {
+    ctxCompressAt = v.clamp(0.5, 0.95);
     _save();
     notifyListeners();
-    unawaited(pushCloneGpuConfig());
   }
 
-  void setCloneGpuVramLimitGb(double v) {
-    cloneGpuVramLimitGb = v < 0 ? 0 : v;
-    _markCloneGpuCustom();
-    _save();
-    notifyListeners();
-    unawaited(pushCloneGpuConfig());
+  // --- Архив чатов ---------------------------------------------------------
+  //
+  // Архив — не удаление: разговор уезжает файлом на диск и возвращается оттуда
+  // целиком. Нужен он не ради контекста (у каждого чата тот свой и с соседями
+  // не делится), а ради того, чтобы список не разрастался, а настройки не
+  // таскали за собой десятки старых переписок при каждом сохранении.
+
+  Future<String> archiveDir() async {
+    final root = await appDataRoot();
+    final dir = io.Directory('$root${io.Platform.pathSeparator}archive');
+    if (!await dir.exists()) await dir.create(recursive: true);
+    return dir.path;
   }
 
-  void setCloneGpuIdleUnloadSec(int v) {
-    cloneGpuIdleUnloadSec = v < 0 ? 0 : v;
-    _markCloneGpuCustom();
-    _save();
-    notifyListeners();
-    unawaited(pushCloneGpuConfig());
-  }
+  Future<io.File> _archiveFile(String id) async =>
+      io.File('${await archiveDir()}${io.Platform.pathSeparator}$id.json');
 
-  void setCloneGpuThrottle(double v) {
-    cloneGpuThrottle = v.clamp(0.0, 1.0);
-    _markCloneGpuCustom();
-    _save();
-    notifyListeners();
-    unawaited(pushCloneGpuConfig());
-  }
-
-  void setCloneGpuPrecision(String v) {
-    cloneGpuPrecision =
-        const {'auto', 'bf16', 'fp16'}.contains(v) ? v : 'auto';
-    _save();
-    notifyListeners();
-    unawaited(pushCloneGpuConfig());
-  }
-
-  // Convert the GB ceiling into the fraction-of-card the server expects. Needs
-  // the real card size, which the sidecar reports; with no reading available we
-  // send 0 (uncapped) rather than guessing a wrong fraction.
-  double _cloneGpuVramFraction() {
-    if (cloneGpuVramLimitGb <= 0) return 0;
-    final totalMb = SidecarClient.instance.gpuInfo.value.$3;
-    if (totalMb <= 0) return 0;
-    final frac = (cloneGpuVramLimitGb * 1024) / totalMb;
-    return frac.clamp(0.05, 1.0);
-  }
-
-  // Whether the clone server should currently refuse GPU work: the user asked
-  // for the clone to stand down while a game is running.
-  bool get cloneGpuPausedByGame {
-    if (cloneGpuInGame == 'normal') return false;
-    return SidecarClient.instance.gameModeStatus.value.$1;
-  }
-
-  // Push the GPU-load settings to the clone server. Best-effort: the server is
-  // an optional local process, so failures are silent (the engine already falls
-  // back to Piper when it's unreachable).
-  Future<void> pushCloneGpuConfig() async {
-    final base = cosyvoiceEndpoint.trim();
-    if (base.isEmpty) return;
-    final url = '${base.replaceAll(RegExp(r'/+$'), '')}/config';
+  /// Убрать разговор из списка на диск. Возвращает false, если записать не
+  /// вышло — тогда чат остаётся на месте, а не пропадает бесследно.
+  Future<bool> archiveChat(Conversation c) async {
     try {
-      await http
-          .post(
-            Uri.parse(url),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'language': lang == 'en' ? 'English' : 'Russian',
-              'precision': cloneGpuPrecision,
-              'vram_fraction': _cloneGpuVramFraction(),
-              'idle_unload_sec': cloneGpuIdleUnloadSec,
-              'throttle': cloneGpuThrottle,
-              'paused': cloneGpuPausedByGame,
-            }),
-          )
-          .timeout(const Duration(seconds: 5));
-    } catch (_) {
-      // Server not running / not reachable — nothing to configure.
+      final f = await _archiveFile(c.id);
+      await f.writeAsString(jsonEncode(c.toJson()));
+    } catch (e) {
+      unawaited(appendLog('errors', 'Архивирование не удалось: $e'));
+      return false;
+    }
+    conversations.removeWhere((x) => x.id == c.id);
+    if (current?.id == c.id) {
+      current = conversations.isEmpty ? null : conversations.first;
+    }
+    await _save();
+    notifyListeners();
+    return true;
+  }
+
+  /// Что лежит в архиве: заголовок, когда обновлялся, сколько сообщений.
+  Future<List<(String id, String title, DateTime at, int count)>>
+      listArchived() async {
+    final out = <(String, String, DateTime, int)>[];
+    try {
+      final dir = io.Directory(await archiveDir());
+      await for (final e in dir.list()) {
+        if (e is! io.File || !e.path.endsWith('.json')) continue;
+        try {
+          final j = jsonDecode(await e.readAsString()) as Map<String, dynamic>;
+          out.add((
+            j['id'] as String? ?? '',
+            (j['title'] as String? ?? '').trim(),
+            DateTime.tryParse(j['updatedAt'] as String? ?? '') ?? DateTime.now(),
+            (j['messages'] as List<dynamic>?)?.length ?? 0,
+          ));
+        } catch (_) {
+          // Один битый файл не должен прятать весь архив.
+        }
+      }
+    } catch (e) {
+      unawaited(appendLog('errors', 'Чтение архива не удалось: $e'));
+    }
+    out.sort((a, b) => b.$3.compareTo(a.$3));
+    return out;
+  }
+
+  /// Вернуть разговор из архива и сделать его текущим.
+  Future<bool> restoreArchived(String id) async {
+    try {
+      final f = await _archiveFile(id);
+      if (!await f.exists()) return false;
+      final c = Conversation.fromJson(
+          jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+      conversations.removeWhere((x) => x.id == c.id);
+      conversations.insert(0, c);
+      current = c;
+      await f.delete();
+      await _save();
+      notifyListeners();
+      return true;
+    } catch (e) {
+      unawaited(appendLog('errors', 'Возврат из архива не удался: $e'));
+      return false;
     }
   }
 
-  // Activate (or stand down) the GPU clone server as the TTS engine. This is
-  // what actually switches the sidecar onto the cloning engine — it needs an
-  // endpoint AND a voice sample, and it stands down entirely while a game runs
-  // if the user chose "off" for game mode.
-  // One-time repair for copies stranded by the old auto-revert: until 2.8.1 an
-  // unreachable clone server rewrote ttsEngineChoice to 'piper' and persisted
-  // it. With no Piper voice installed that means the Windows system voice —
-  // and, because the phrase cache is only consulted while a CLONING engine is
-  // selected, a fully rendered cache of the user's own voice sat unused with no
-  // way back in the UI (the CosyVoice chip was disabled while offline).
-  // Restores the clone exactly in that state: clone configured, no Piper voice.
+  Future<void> deleteArchived(String id) async {
+    try {
+      final f = await _archiveFile(id);
+      if (await f.exists()) await f.delete();
+      notifyListeners();
+    } catch (e) {
+      unawaited(appendLog('errors', 'Удаление из архива не удалось: $e'));
+    }
+  }
+
+  /// Настоящий размер окна каждой модели, спрошенный у сервера. Ключ — имя
+  /// модели.
+  ///
+  /// Нужен потому, что окно задаётся в ТРЁХ местах, а приложение знало только
+  /// про одно: настройка здесь, параметр num_ctx в самой модели и предел её
+  /// архитектуры. Когда настройка пуста, а в модели записано 8192, шкала по
+  /// умолчанию считала 4096 — показывала вдвое меньше, чем есть, и сжатие
+  /// запускалось бы вдвое раньше нужного.
+  final Map<String, int> modelContextLimits = {};
+
+  /// Спросить у сервера, какое окно у модели. Тихо выходит при любой заминке:
+  /// не узнали — останется значение по умолчанию, это не повод шуметь.
+  /// Что модель умеет по словам самого сервера: 'completion', 'vision',
+  /// 'thinking'… Нужно, чтобы не обещать в настройках того, чего у этой
+  /// модели нет: переключатель размышления на Gemma не делает ничего, и
+  /// молчать об этом — значит оставить человека гадать.
+  final Map<String, List<String>> modelCapabilities = {};
+
+  /// Умеет ли выбранная сейчас модель рассуждать. null — ещё не спросили
+  /// или сервер не ответил: тогда переключатель не гасим, чтобы не соврать
+  /// в другую сторону.
+  bool? get selectedModelThinks {
+    return modelCapabilities[selectedModel.trim()]?.contains('thinking');
+  }
+
+  Future<void> fetchModelContext(String model) async {
+    final name = model.trim();
+    if (name.isEmpty ||
+        (modelContextLimits.containsKey(name) &&
+            modelCapabilities.containsKey(name))) {
+      return;
+    }
+    final server = serverUrl.trim();
+    if (server.isEmpty) return;
+    final url = server.startsWith('http') ? server : 'http://$server';
+    try {
+      final r = await http
+          .post(Uri.parse('$url/api/show'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'name': name}))
+          .timeout(const Duration(seconds: 8));
+      if (r.statusCode != 200) return;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      var ctx = 0;
+      // Заданный num_ctx главнее предела архитектуры: модель загружается
+      // именно с ним, и всё, что сверх него, отрезается.
+      final params = (j['parameters'] as String?) ?? '';
+      final m = RegExp(r'num_ctx\s+(\d+)').firstMatch(params);
+      if (m != null) ctx = int.tryParse(m.group(1)!) ?? 0;
+      if (ctx <= 0 && j['model_info'] is Map) {
+        for (final e in (j['model_info'] as Map).entries) {
+          if (e.key.toString().endsWith('.context_length')) {
+            ctx = (e.value as num?)?.toInt() ?? 0;
+            break;
+          }
+        }
+      }
+      final caps = j['capabilities'];
+      if (caps is List) {
+        modelCapabilities[name] =
+            caps.map((e) => e.toString()).toList(growable: false);
+      }
+      if (ctx > 0) {
+        modelContextLimits[name] = ctx;
+      }
+      if (ctx > 0 || caps is List) {
+        notifyListeners();
+      }
+    } catch (_) {
+      // Сервер молчит — шкала останется на значении по умолчанию.
+    }
+  }
+
+  /// Сколько контекста съедено разговором и сколько его всего.
+  ///
+  /// Считается оценкой, а не токенизатором: точное число знает только сама
+  /// модель, и спросить её заранее нельзя — удалённые API сообщают расход уже
+  /// после ответа. Для шкалы этого достаточно, важен порядок величины.
+  ///
+  /// Предел берётся из настройки размера окна. Когда она не задана, Ollama
+  /// использует 4096 — и молча отрезает всё, что не влезло, начиная со
+  /// старого. Поэтому «не задано» здесь не значит «без ограничений».
+  (int, int) contextUsage(Conversation? c) {
+    if (c == null) {
+      return (0, llmNumCtx ?? modelContextLimits[selectedModel.trim()] ?? 4096);
+    }
+    final rp = c.rpModeEnabled && c.rpConfig != null;
+    // Порядок важен: заданное человеком главнее, потом — что сообщила сама
+    // модель, и только в последнюю очередь значение Ollama по умолчанию.
+    final fromModel = modelContextLimits[modelForTurn(c, isSearch: false)] ??
+        modelContextLimits[selectedModel.trim()];
+    final limit =
+        rp ? c.rpConfig!.contextWindowLimit : (llmNumCtx ?? fromModel ?? 4096);
+    var used = TokenCounter.estimate(
+        (c.persona ?? persona).buildSystemPrompt() + c.pinnedContextBlock());
+    for (final m in c.messages) {
+      used += TokenCounter.estimate(m.content);
+    }
+    return (used, limit <= 0 ? 4096 : limit);
+  }
+
+  /// Подпись к кольцу заполнения контекста. Одна формулировка на все стили —
+  /// иначе они разойдутся при первой же правке.
+  String contextHint(Conversation? c) {
+    final (used, limit) = contextUsage(c);
+    final left = (limit - used) < 0 ? 0 : (limit - used);
+    return t('ctxGaugeHint')
+        .replaceAll('{used}', '$used')
+        .replaceAll('{limit}', '$limit')
+        .replaceAll('{left}', '$left');
+  }
+
+  /// Сжать разговор, если он подошёл к пределу окна.
+  ///
+  /// Работает как у Клода: старая часть переписывается кратким пересказом,
+  /// свежие сообщения остаются дословно. Иначе Ollama отрезала бы начало сама
+  /// и молча — а так человек получает связный пересказ вместо дыры.
+  Future<bool> compressContextIfNeeded(Conversation c) async {
+    if (!ctxAutoCompress) return false;
+    final (used, limit) = contextUsage(c);
+    if (limit <= 0 || used < limit * ctxCompressAt) return false;
+    // Свежие сообщения не трогаем: они и есть текущий разговор. Меньше пары
+    // обменов оставлять нельзя — модель потеряет нить прямо посреди фразы.
+    const keepTail = 6;
+    if (c.messages.length <= keepTail + 2) return false;
+    final old = c.messages.sublist(0, c.messages.length - keepTail);
+    final tail = c.messages.sublist(c.messages.length - keepTail);
+    try {
+      final service = _llmFactory.forConversation(c);
+      final summary = await RPMemoryManager.summarizeOldContext(service, old);
+      if (summary.trim().isEmpty) return false;
+      // Прежняя выжимка не выбрасывается: она уже описывает то, чего в
+      // сообщениях давно нет.
+      final prev = c.contextSummary.trim();
+      c.contextSummary =
+          prev.isEmpty ? summary.trim() : '$prev\n\n${summary.trim()}';
+      c.messages = tail;
+      await _save();
+      notifyListeners();
+      unawaited(appendLog('sidecar',
+          'Контекст сжат: ${old.length} сообщений заменены пересказом'));
+      return true;
+    } catch (e) {
+      unawaited(appendLog('errors', 'Сжатие контекста не удалось: $e'));
+      return false;
+    }
+  }
+
+  // Одноразовая починка для копий, застрявших после старого автосброса: до
+  // 2.8.1 недоступный сервер клона переписывал ttsEngineChoice на 'piper' и
+  // сохранял это. Без установленного голоса Piper это означало системный голос
+  // Windows — а поскольку кэш фраз читается только при выбранном движке
+  // клонирования, полностью заготовленный кэш собственного голоса лежал без
+  // дела, и вернуться было нечем: чип CosyVoice в интерфейсе был недоступен,
+  // пока сервер офлайн. Возвращаем клон ровно в этом состоянии.
   void _restoreCloneEngineOnce() {
     if (prefs.getBool('cloneEngineRestored') == true) return;
     unawaited(prefs.setBool('cloneEngineRestored', true));
@@ -1892,48 +2302,51 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> applyCloneServer() async {
-    final gameOff = cloneGpuInGame == 'off' &&
-        SidecarClient.instance.gameModeStatus.value.$1;
     final on = ttsEngineChoice == 'cosyvoice' &&
         cosyvoiceEndpoint.trim().isNotEmpty &&
-        cosyvoiceClonePath.trim().isNotEmpty &&
-        !gameOff;
+        cosyvoiceClonePath.trim().isNotEmpty;
     await SidecarClient.instance.applyCosy(
       enabled: on,
       endpoint: cosyvoiceEndpoint.trim(),
       ref: cosyvoiceClonePath.trim(),
       promptText: cosyvoiceClonePromptText,
       speed: cosyvoiceSpeed,
+      language: cloneLanguage,
     );
     if (on) {
       // Pre-render the fixed phrase set so common lines play from cache — the
-      // whole point of "cache + Piper" while gaming (zero GPU for known lines).
+      // Постоянные реплики заготавливаются один раз и потом играют мгновенно.
+      // На станции это особенно важно: живой синтез стоит около пяти секунд,
+      // а заготовленная фраза — нисколько.
       SidecarClient.instance.prerender(clonePhrasesToRender());
     }
-    await pushCloneGpuConfig();
-  }
-
-  // Re-apply when the game mode flips so the server frees (or reclaims) VRAM in
-  // step with the game, and the engine is restored afterwards. Wired once from
-  // the sidecar bootstrap; a cheap no-op when no clone server is configured.
-  bool _cloneGpuGameHooked = false;
-  bool? _lastGameActive;
-  void hookCloneGpuGameMode() {
-    if (_cloneGpuGameHooked) return;
-    _cloneGpuGameHooked = true;
-    SidecarClient.instance.gameModeStatus.addListener(() {
-      final active = SidecarClient.instance.gameModeStatus.value.$1;
-      if (active == _lastGameActive) return;
-      _lastGameActive = active;
-      if (cosyvoiceEndpoint.trim().isEmpty) return;
-      unawaited(applyCloneServer());
-    });
   }
 
   // Best-effort reachability probe for the CosyVoice HTTP server. Any response
   // (even an error status) means it's up; a timeout/refusal means offline. The
   // server isn't deployed yet, so this normally reports offline and CosyVoice
   // stays unselectable.
+  /// Вытащить название модели из ответа сервера. Сервер отвечает JSON вида
+  /// {"model": "...", "engine": "..."}; берём первое, что похоже на название,
+  /// и укорачиваем путь вида «Qwen/Qwen3-TTS-12Hz-1.7B-Base» до имени.
+  static String _cloneModelFrom(String body) {
+    try {
+      final j = jsonDecode(body);
+      if (j is! Map) return '';
+      for (final k in ['model', 'engine', 'name']) {
+        final v = j[k];
+        if (v is String && v.trim().isNotEmpty) {
+          final t = v.trim();
+          return t.contains('/') ? t.split('/').last : t;
+        }
+      }
+    } catch (_) {
+      // Не JSON — сервер чужой или отвечает иначе. Ничего страшного: подпись
+      // просто останется общей.
+    }
+    return '';
+  }
+
   Future<bool> checkCosyvoice() async {
     final url = cosyvoiceEndpoint.trim();
     if (url.isEmpty) {
@@ -1946,6 +2359,7 @@ class AppState extends ChangeNotifier {
           .get(Uri.parse(url))
           .timeout(const Duration(seconds: 5));
       cosyvoiceOnline = res.statusCode > 0;
+      cloneServerModel = _cloneModelFrom(res.body);
     } catch (_) {
       cosyvoiceOnline = false;
       // Do NOT switch the engine away here. The pre-rendered phrase cache is
@@ -2345,62 +2759,6 @@ class AppState extends ChangeNotifier {
     SidecarClient.instance.setSttDevice(sttDevice);
   }
 
-  // Localized game-mode notification phrases + config, pushed to the sidecar
-  // whenever any game-mode setting changes (TZ2 block 7).
-  void applyGameModeConfig() {
-    SidecarClient.instance.configureGameMode(
-      fullscreen: gameModeFullscreen,
-      vram: gameModeVram,
-      vramEnter: gameModeVramEnter,
-      vramExit: gameModeVramExit,
-      notify: gameModeNotify,
-      exclusions: gameModeExclusions,
-      texts: {
-        'fullscreen': t('gmNotifyFullscreen'),
-        'vram': t('gmNotifyVram'),
-        'exit': t('gmNotifyExit'),
-      },
-    );
-  }
-
-  void setGameModeFullscreen(bool v) {
-    gameModeFullscreen = v;
-    _save();
-    notifyListeners();
-    applyGameModeConfig();
-  }
-
-  void setGameModeVram(bool v) {
-    gameModeVram = v;
-    _save();
-    notifyListeners();
-    applyGameModeConfig();
-  }
-
-  void setGameModeNotify(bool v) {
-    gameModeNotify = v;
-    _save();
-    notifyListeners();
-    applyGameModeConfig();
-  }
-
-  // Two-sided: exit must stay below enter or the hysteresis breaks (the sidecar
-  // also guards this).
-  void setGameModeVramThresholds(double enter, double exit) {
-    gameModeVramEnter = enter.clamp(50, 99);
-    gameModeVramExit = exit.clamp(30, gameModeVramEnter - 5);
-    _save();
-    notifyListeners();
-    applyGameModeConfig();
-  }
-
-  void setGameModeExclusions(List<String> v) {
-    gameModeExclusions = v;
-    _save();
-    notifyListeners();
-    applyGameModeConfig();
-  }
-
   void setCmdMode(String v) {
     cmdMode = v;
     _save();
@@ -2515,6 +2873,19 @@ class AppState extends ChangeNotifier {
   // Applies a `cfg` message in the WIDGET process (see VizOverlayApp): this
   // AppState instance is just a mirror of the main process's settings there —
   // assign fields and notify, never save.
+  /// Настройки для окна меню трея. Оно рисуется общими помощниками, а те
+  /// читают стиль и тему отсюда — поэтому достаточно перенести три поля, и
+  /// меню красится ровно как остальная программа, без единой копии оформления.
+  void applyTrayMenuCfg(Map<String, dynamic> m) {
+    T pick<T extends Enum>(List<T> values, String? raw, T fallback) =>
+        values.firstWhere((e) => e.name == raw, orElse: () => fallback);
+    lang = (m['lang'] as String?) ?? lang;
+    appStyle = pick(AppStyle.values, m['style'] as String?, appStyle);
+    themeMode = pick(AppThemeMode.values, m['theme'] as String?, themeMode);
+    prismAccent = pick(PrismAccent.values, m['accent'] as String?, prismAccent);
+    notifyListeners();
+  }
+
   void applyVizCfg(Map<String, dynamic> m) {
     lang = (m['lang'] as String?) ?? lang;
     vizType = (m['vizType'] as String?) ?? vizType;
@@ -2834,15 +3205,17 @@ class AppState extends ChangeNotifier {
       if (!ok) return (false, t('volNotPlaying').replaceAll('{app}', appLabel));
       return (
         true,
-        cmd.speakPhrase.trim().isNotEmpty ? cmd.speakPhrase.trim() : t('vaDone')
+        speakFor(cmd)
       );
     }
-    // Use the value configured on the command (the target the user set in the
-    // wizard) first, so running it never depends on hearing a number in speech.
-    // That dependency broke both the voice path ("не расслышал число") and the
-    // manual test-run (empty utterance). A spoken number still overrides when
-    // present and the command has no fixed target.
-    var n = cmd.defaultValue ?? NumberWords.extract(utterance);
+    // Число из речи важнее заданного при создании команды. Иначе одна команда
+    // «громкость на {N}» умеет ровно один уровень — тот, что записан в
+    // настройках, — и на каждое значение приходится заводить свою команду.
+    // Само поле и задумано запасным: в описании к нему так и написано —
+    // применяется, когда в речи числа нет. Это закрывает оба случая, ради
+    // которых порядок когда-то перевернули: ручной запуск (речи нет вовсе) и
+    // неразобранное число — оба падают на заданное значение.
+    var n = NumberWords.extract(utterance) ?? cmd.defaultValue;
     if (n == null) return (false, t('volNoNumber'));
     n = n.clamp(cmd.argMin, cmd.argMax);
     final r =
@@ -2850,10 +3223,135 @@ class AppState extends ChangeNotifier {
     if (r['ok'] != true) {
       return (false, t('volNotPlaying').replaceAll('{app}', appLabel));
     }
-    final say = cmd.speakPhrase.trim().isNotEmpty
-        ? cmd.speakPhrase.trim().replaceAll('{N}', '$n')
-        : t('volSet').replaceAll('{app}', appLabel).replaceAll('{N}', '$n');
+    // Подстановка числа — уже после выбора варианта: {N} может стоять в любом
+    // из них, и заменять надо именно в том, который прозвучит.
+    final say = (cmd.speakPhrase.trim().isEmpty && cmd.speakVariants.isEmpty)
+        ? t('volSet').replaceAll('{app}', appLabel).replaceAll('{N}', '$n')
+        : speakFor(cmd)
+            .replaceAll('{N}', '$n')
+            .replaceAll('{app}', appLabel);
     return (true, say);
+  }
+
+  /// Попросить модель сочинить по нескольку вариантов каждого ответа.
+  ///
+  /// Делается ЗАРАНЕЕ, а не в момент команды, и это главное решение здесь.
+  /// Замер на станции: короткий ответ модели — 0,7–0,9 с, синтез клон-голосом —
+  /// 2,1–2,8 с; вместе около трёх секунд молчания после команды, то есть ровно
+  /// та пауза, после которой помощник кажется зависшим. Сочинённое уходит в ту
+  /// же предварительную озвучку, что и заготовки, поэтому в работе звучит
+  /// мгновенно, а разным быть перестаёт только если модель недоступна.
+  ///
+  /// Возвращает, скольким ответам сочинили варианты. [onlyMissing] — трогать
+  /// только те, у которых вариантов ещё нет.
+  Future<int> writeSpeakVariants({bool onlyMissing = false}) async {
+    final model = chatModel.isNotEmpty ? chatModel : selectedModel;
+    if (serverUrl.trim().isEmpty || model.isEmpty || isLocalModel(model)) {
+      return 0;
+    }
+    // Собираем задание: у каждого пункта свой id, текущая фраза и пояснение,
+    // на что именно отвечаем. Без пояснения модель сочиняет синонимы вместо
+    // ответов по делу.
+    final items = <Map<String, String>>[];
+    for (var i = 0; i < voiceCommands.length; i++) {
+      final c = voiceCommands[i];
+      if (c.speakPhrase.trim().isEmpty) continue;
+      if (onlyMissing && c.speakVariants.isNotEmpty) continue;
+      items.add({
+        'id': 'c$i',
+        'now': c.speakPhrase.trim(),
+        'about': 'ответ на голосовую команду «${c.phrase}»',
+      });
+    }
+    for (final k in kSpeakVariantKeys) {
+      if (onlyMissing && (speakVarsMap[k]?.isNotEmpty ?? false)) continue;
+      final now = t(k).trim();
+      if (now.isEmpty || now == k) continue;
+      items.add({'id': k, 'now': now, 'about': 'системный ответ помощника'});
+    }
+    if (items.isEmpty) return 0;
+
+    final task = StringBuffer()
+      ..writeln('Ты пишешь короткие реплики голосового помощника.')
+      ..writeln('Для каждого пункта придумай 4 РАЗНЫХ варианта той же реплики.')
+      ..writeln('Правила: тот же смысл; не длиннее исходной; живая разговорная '
+          'речь; без эмодзи, кавычек и пояснений; сохранить подстановки вида '
+          '{N} и {app}, если они есть.')
+      // Пример с ВЫМЫШЛЕННЫМИ, но настоящими по виду ключами — обязателен.
+      // С отвлечённым «{"id": [...]}» модель поняла его буквально и вернула
+      // ключ «id» со списком наших же идентификаторов вместо фраз.
+      ..writeln('Ответь ТОЛЬКО объектом JSON: ключ — это id пункта, '
+          'значение — список из 4 фраз.')
+      ..writeln('Пример ответа: {"c7": ["Уже открываю", "Секунду", '
+          '"Запускаю", "Открываю"], "vaDone": ["Сделано", "Есть", '
+          '"Всё готово", "Порядок"]}')
+      ..writeln('Пункты:');
+    for (final it in items) {
+      task.writeln('- id ${it['id']}: «${it['now']}» — ${it['about']}');
+    }
+
+    Map<String, List<String>>? got;
+    try {
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
+      final res = await http
+          .post(Uri.parse('$baseUrl/api/chat'),
+              headers: headers,
+              body: jsonEncode({
+                'model': model,
+                'stream': false,
+                'messages': [
+                  {'role': 'user', 'content': task.toString()}
+                ],
+                // Разнообразие — смысл всей затеи, поэтому температура высокая:
+                // на низкой модель дважды выдаёт одно и то же (проверено).
+                'options': {'temperature': 0.9},
+              }))
+          .timeout(const Duration(seconds: 120));
+      if (res.statusCode != 200) return 0;
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+      final msg = data is Map ? data['message'] : null;
+      final content = msg is Map ? msg['content'] : null;
+      if (content is String) got = SuggestionEngine.parseModelJson(content);
+    } catch (_) {
+      return 0;
+    }
+    if (got == null || got.isEmpty) return 0;
+
+    var touched = 0;
+    final sys = Map<String, List<String>>.from(speakVarsMap);
+    for (final it in items) {
+      final id = it['id']!;
+      final list = got[id];
+      if (list == null || list.isEmpty) continue;
+      // Отсекаем повтор исходной фразы и слишком длинные выдумки: ответ должен
+      // оставаться репликой, а не объяснением.
+      final now = it['now']!;
+      final clean = <String>{
+        for (final v in list)
+          if (v.trim().isNotEmpty &&
+              v.trim() != now &&
+              v.trim().length <= now.length * 2 + 12)
+            v.trim(),
+      }.take(4).toList();
+      if (clean.isEmpty) continue;
+      touched++;
+      if (id.startsWith('c')) {
+        final idx = int.tryParse(id.substring(1));
+        if (idx != null && idx >= 0 && idx < voiceCommands.length) {
+          voiceCommands[idx].speakVariants = clean;
+        }
+      } else {
+        sys[id] = clean;
+      }
+    }
+    if (touched == 0) return 0;
+    speakVariants = jsonEncode(sys);
+    _speakVarsCache = null;
+    _save();
+    notifyListeners();
+    unawaited(appendLog('commands', 'варианты ответов сочинены: $touched'));
+    return touched;
   }
 
   // Build AI voice-command suggestions (Ф1). Uses the real app scan (paths are
@@ -3084,6 +3582,15 @@ class AppState extends ChangeNotifier {
     _save();
   }
 
+  /// Включить или выключить команду. Сохраняется сразу, мимо черновика
+  /// настроек: тумблер в каталоге — действие, а не правка формы.
+  void setVoiceCommandEnabled(VoiceCommand c, bool v) {
+    if (c.enabled == v) return;
+    c.enabled = v;
+    _save();
+    notifyListeners();
+  }
+
   void removeVoiceCommand(VoiceCommand c) {
     voiceCommands.remove(c);
     // Best-effort scheduler-task cleanup (a leftover disabled task is harmless
@@ -3129,6 +3636,73 @@ class AppState extends ChangeNotifier {
   // the next build because the skin resolves from appStyle.
   void setAppStyle(AppStyle v) {
     appStyle = v;
+    _save();
+    notifyListeners();
+  }
+
+  // ---- Оформление «Призмы» -------------------------------------------------
+  // Читается один раз в load() и в _restoreSettingsFields(). Неизвестное
+  // значение (сборка старше, чем файл настроек) откатывается в умолчание тем же
+  // orElse, что и appStyle, поэтому prefs остаются совместимыми в обе стороны.
+  void _loadPrismLook() {
+    T pick<T extends Enum>(List<T> values, String key, T fallback) {
+      final raw = prefs.getString(key);
+      return values.firstWhere((e) => e.name == raw, orElse: () => fallback);
+    }
+
+    prismAccent = pick(PrismAccent.values, 'prismAccent', PrismAccent.google);
+    prismGlass = pick(PrismGlass.values, 'prismGlass', PrismGlass.glass);
+    prismBackground =
+        pick(PrismBackground.values, 'prismBackground', PrismBackground.spots);
+    prismDots = pick(PrismDots.values, 'prismDots', PrismDots.push);
+    prismAnim = pick(PrismAnim.values, 'prismAnim', PrismAnim.breathe);
+    prismAnimSpeed = pick(
+        PrismAnimSpeed.values, 'prismAnimSpeed', PrismAnimSpeed.normal);
+    prismWelcome = prefs.getBool('prismWelcome') ?? true;
+  }
+
+  // Все четыре — как setAppStyle: применяются немедленно и сохраняются сразу.
+  // Иначе выбор акцента в настройках не был бы виден, пока их не закроешь:
+  // окно перекрашивается на следующем кадре, потому что скин резолвится из
+  // этих полей.
+  void setPrismAccent(PrismAccent v) {
+    prismAccent = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setPrismGlass(PrismGlass v) {
+    prismGlass = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setPrismBackground(PrismBackground v) {
+    prismBackground = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setPrismDots(PrismDots v) {
+    prismDots = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setPrismAnim(PrismAnim v) {
+    prismAnim = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setPrismAnimSpeed(PrismAnimSpeed v) {
+    prismAnimSpeed = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setPrismWelcome(bool v) {
+    prismWelcome = v;
     _save();
     notifyListeners();
   }
@@ -3272,6 +3846,12 @@ class AppState extends ChangeNotifier {
         models = [...found, ...keptLocal.where((m) => !found.contains(m))];
         if (!models.contains(selectedModel)) selectedModel = models.first;
         modelsError = null;
+        // Заодно узнаём настоящий размер окна у каждой модели: он задан в
+        // самой модели, а не в приложении, и без этого шкала контекста
+        // показывала бы значение Ollama по умолчанию вместо действительного.
+        for (final m in found) {
+          unawaited(fetchModelContext(m));
+        }
       } else {
         modelsError = t('noModelsFound');
       }
@@ -3286,6 +3866,7 @@ class AppState extends ChangeNotifier {
 
   void selectModel(String m) {
     selectedModel = m;
+    unawaited(fetchModelContext(m));
     // Explicitly choosing a model = the user wants to try it again, so lift any
     // previous crash block (a fresh crash will just re-arm it).
     crashedLocalModels.remove(m);
@@ -3741,6 +4322,25 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ход рассуждения из очередного куска потока. У Ollama это `thinking`
+  /// внутри `message`, у OpenAI-совместимых — `reasoning_content`.
+  String? _extractThinking(Map<String, dynamic> data) {
+    final m = data['message'];
+    if (m is Map) {
+      final t = m['thinking'] ?? m['reasoning_content'] ?? m['reasoning'];
+      if (t != null) return t.toString();
+    }
+    final ch = data['choices'];
+    if (ch is List && ch.isNotEmpty && ch[0] is Map) {
+      final d = (ch[0] as Map)['delta'] ?? (ch[0] as Map)['message'];
+      if (d is Map) {
+        final t = d['reasoning_content'] ?? d['thinking'] ?? d['reasoning'];
+        if (t != null) return t.toString();
+      }
+    }
+    return null;
+  }
+
   String? _extractContent(Map<String, dynamic> data) {
     if (data['message'] is Map && data['message']['content'] != null) {
       return data['message']['content'].toString();
@@ -3788,6 +4388,9 @@ class AppState extends ChangeNotifier {
     }
     conv.updatedAt = DateTime.now();
     notifyListeners();
+    // Сжимаем ПОСЛЕ добавления реплики и ДО обращения к модели: считать надо
+    // тот объём, который сейчас уедет, а не тот, что был минуту назад.
+    await compressContextIfNeeded(conv);
     return _generateAssistantReply(conv, userTextForMemory: text);
   }
 
@@ -3910,6 +4513,44 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Удалённая реплика — для «Отменить» в снекбаре. Хранится одна и последняя,
+  // ровно как у удаления диалога (`_lastDeletedChat`): отмена — это «я промахнулся
+  // по кнопке», а не история правок.
+  (Conversation, ChatMessage, int)? _lastDeletedMessage;
+
+  /// Убрать одну реплику из диалога.
+  ///
+  /// Удаляется ровно та, на которую нажали. Пары «вопрос — ответ» приложение
+  /// нигде не связывает, и додумывать эту связь при удалении значило бы уносить
+  /// не то, что выбрали.
+  void deleteMessage(Conversation conv, ChatMessage msg) {
+    final idx = conv.messages.indexOf(msg);
+    if (idx < 0) return;
+    conv.messages.removeAt(idx);
+    conv.pinnedMessageIds.remove(msg.id);
+    _lastDeletedMessage = (conv, msg, idx);
+    conv.updatedAt = DateTime.now();
+    _save();
+    notifyListeners();
+  }
+
+  /// Вернуть последнюю удалённую реплику на её место.
+  void undoDeleteMessage() {
+    final d = _lastDeletedMessage;
+    if (d == null) return;
+    final (conv, msg, idx) = d;
+    // Диалог мог быть удалён целиком, пока висел снекбар.
+    if (!conversations.contains(conv)) {
+      _lastDeletedMessage = null;
+      return;
+    }
+    conv.messages.insert(idx.clamp(0, conv.messages.length), msg);
+    _lastDeletedMessage = null;
+    conv.updatedAt = DateTime.now();
+    _save();
+    notifyListeners();
+  }
+
   // Shared generation core. Assumes conv.messages already ends where the new
   // assistant reply should be generated from (sendMessage appended the user
   // turn; regenerate trimmed the old reply; continue leaves it as-is). RP
@@ -3924,6 +4565,9 @@ class AppState extends ChangeNotifier {
     final q = query?.trim() ?? '';
     if (q.isEmpty || !webSearchEnabled) return;
     if (conv?.rpModeEnabled ?? false) return; // don't web-search roleplay
+    // Про время и дату компьютер знает точнее любой выдачи — и молча,
+    // без обещания «ищу в интернете», за которым раньше следовал отказ.
+    if (WebSearchService.instance.isClockQuestion(q)) return;
     if (!WebSearchService.instance.needed(q)) return;
     if (voice) {
       VizOverlayServer.instance.note(t('webSearching'), kind: 'info');
@@ -3942,6 +4586,10 @@ class AppState extends ChangeNotifier {
     String replyText = '';
     _genCancelled = false;
     await _prepareWebContext(userTextForMemory, conv: conv);
+    // Карта у станции одна, и её может держать телефон. Местная модель считает
+    // на этом компьютере — ей чужая видеокарта не нужна.
+    final needsGpu = !isLocalModel(selectedModel);
+    if (needsGpu) await GpuArbiter.instance.holdForChat(this);
     try {
     if (conv.rpModeEnabled) {
       final history = List<ChatMessage>.from(conv.messages);
@@ -3980,23 +4628,51 @@ class AppState extends ChangeNotifier {
     } else {
       final service = _llmFactory.current;
       _cancelGeneration = () => unawaited(service.stopGeneration());
-      String rawReply;
+      // Ответ набирается на глазах, а не появляется целиком. Машинерия та же,
+      // что у ролевого режима, — второй заводить незачем; отличие только в
+      // послесловии: правило эмодзи и отмена.
+      //
+      // Снимок истории делается ДО того, как в неё лёг пустой ответ: иначе
+      // модель получит на вход собственную незаполненную реплику.
+      final history = List<ChatMessage>.from(conv.messages);
+      final assistantMessage = ChatMessage(role: 'assistant', content: '');
+      conv.messages.add(assistantMessage);
+      isGenerating = true;
+      notifyListeners();
       try {
-        rawReply = selectedModel.isEmpty
-            ? t('noModelsAvailable')
-            : await service.generateResponse(conv, conv.messages);
+        if (selectedModel.isEmpty) {
+          assistantMessage.content = t('noModelsAvailable');
+          notifyListeners();
+        } else {
+          await for (final chunk in service.generateStream(
+            conv,
+            history,
+            onThinking: (t) {
+              // Ход рассуждения показываем только когда его сами и просили.
+              if (!llmThinking) return;
+              assistantMessage.thinking = t;
+              notifyListeners();
+            },
+          )) {
+            assistantMessage.content = chunk;
+            notifyListeners();
+          }
+        }
       } finally {
+        isGenerating = false;
         _cancelGeneration = null;
       }
-      // Cancelled (voice "stop"/Stop button): drop the aborted reply instead
-      // of writing the backend's error string into the chat.
+      // Отменили голосом «стоп» или кнопкой: недописанный ответ убираем
+      // целиком, а не оставляем обрывок и не пишем в чат текст ошибки.
       if (_genCancelled) {
+        conv.messages.remove(assistantMessage);
         conv.updatedAt = DateTime.now();
         notifyListeners();
         return '';
       }
-      final reply = (conv.persona ?? persona).enforceEmojiPolicy(rawReply);
-      conv.messages.add(ChatMessage(role: 'assistant', content: reply.trim()));
+      final reply = (conv.persona ?? persona)
+          .enforceEmojiPolicy(assistantMessage.content);
+      assistantMessage.content = reply.trim();
       conv.updatedAt = DateTime.now();
       _save();
       notifyListeners();
@@ -4004,6 +4680,7 @@ class AppState extends ChangeNotifier {
     }
     } finally {
       pendingWebContext = ''; // don't leak this turn's results into later ones
+      if (needsGpu) unawaited(GpuArbiter.instance.releaseChat(this));
     }
 
     if (userTextForMemory != null) {

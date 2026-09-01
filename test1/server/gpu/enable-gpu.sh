@@ -28,17 +28,14 @@ ok "AMD в системе"
 [ -e /dev/dri ] || die "Нет /dev/dri. Ничего не меняю."
 ok "/dev/kfd и /dev/dri на месте"
 
-# Группы: без них контейнер получит устройства, но не права на них, и всё
-# свалится на процессор молча — самый неприятный вид поломки.
-MISSING=""
-for g in render video; do
-  id -nG | tr ' ' '\n' | grep -qx "$g" || MISSING="$MISSING $g"
-done
-if [ -n "$MISSING" ]; then
-  die "Пользователь не в группах:$MISSING
-  sudo usermod -aG render,video $(id -un)   # затем перелогиниться"
+# Группы хоста здесь НЕ нужны: контейнеры работают от root и открывают
+# /dev/kfd напрямую. Проверяем то, что действительно решает, — отдаёт ли docker
+# устройства контейнеру. Раньше скрипт падал на группах при полностью рабочей
+# карте.
+if ! docker run --rm --device=/dev/kfd --device=/dev/dri      --security-opt seccomp=unconfined ubuntu:24.04 true >/dev/null 2>&1; then
+  die "docker не отдаёт карту контейнеру — проверьте права на /dev/kfd"
 fi
-ok "пользователь в группах render и video"
+ok "docker отдаёт карту контейнеру"
 
 hdr "Место на диске"
 FREE=$(df -BG --output=avail "$DIR" | tail -1 | tr -dc '0-9')
@@ -53,13 +50,21 @@ if [ -e "$OVERRIDE" ]; then
   cp -a "$OVERRIDE" "$OVERRIDE.bak-$(date +%Y%m%d-%H%M%S)"
   ok "прежняя накладка сохранена рядом"
 fi
-cat > "$OVERRIDE" <<'YAML'
+# Идентификаторы групп берём с хоста и подставляем ЧИСЛАМИ. `group_add` с
+# именем резолвится внутри образа, а в ollama/ollama:rocm группы render нет —
+# контейнер падал с «unable to find group render».
+GID_RENDER=$(getent group render | cut -d: -f3)
+GID_VIDEO=$(getent group video | cut -d: -f3)
+[ -n "$GID_RENDER" ] || die "на хосте нет группы render"
+ok "группы хоста: render=$GID_RENDER, video=${GID_VIDEO:-нет}"
+
+cat > "$OVERRIDE" <<YAML
 # Ollama на видеокарте AMD (RDNA4 / gfx1200). Файл создан enable-gpu.sh.
 #
-# Для AMD карта пробрасывается устройствами, а НЕ ключом `--gpus` и не разделом
-# `deploy.resources.devices` — то путь NVIDIA, на Radeon он молча ничего не даёт.
+# Для AMD карта пробрасывается устройствами, а НЕ ключом \`--gpus\` и не разделом
+# \`deploy.resources.devices\` — то путь NVIDIA, на Radeon он молча ничего не даёт.
 #
-# Откат: удалить этот файл и выполнить `docker compose up -d ollama`.
+# Откат: удалить этот файл и выполнить \`docker compose up -d ollama\`.
 services:
   ollama:
     image: ollama/ollama:rocm
@@ -67,8 +72,8 @@ services:
       - /dev/kfd
       - /dev/dri
     group_add:
-      - video
-      - render
+      - "${GID_RENDER}"
+      - "${GID_VIDEO}"
     security_opt:
       - seccomp:unconfined
     environment:
@@ -91,10 +96,13 @@ if [ -n "$MODEL" ]; then
   echo "  модель: $MODEL"
   docker exec ollama ollama ps 2>/dev/null | sed 's/^/  /'
 fi
-if docker logs --tail 200 ollama 2>&1 | grep -qiE 'rocm|radeon|gfx12'; then
-  ok "в журнале Ollama видна видеокарта"
-  docker logs --tail 200 ollama 2>&1 | grep -iE 'rocm|radeon|gfx12' | tail -3 | sed 's/^/      /'
-else
-  no "в журнале карты не видно — вероятно, считает процессор"
-  echo "      docker logs ollama | grep -i gpu"
-fi
+# Разбираем по содержимому строки, а не по номерам столбцов: размер модели
+# занимает два поля («8.3 GB»), и подсчёт позиций давал «GB 100%» вместо
+# «100% GPU» — проверка объявляла процессор при модели на карте.
+PS_LINE=$(docker exec ollama ollama ps 2>/dev/null | sed -n '2p')
+case "$PS_LINE" in
+  *GPU*) ok "модель считает видеокарта" ;;
+  *CPU*) no "модель считает процессор"
+         echo "      docker logs ollama | grep -i -E 'rocm|gfx|gpu'" ;;
+  *)     no "модель не загружена — docker exec ollama ollama ps" ;;
+esac

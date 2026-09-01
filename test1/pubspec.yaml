@@ -1,7 +1,7 @@
 name: evs
 description: "EVS (Enhanced Voice System) — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 2.16.1+72
+version: 2.27.0+107
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -78,7 +78,37 @@ flutter:
     # рассинхронизировалась бы с оригиналом при первой же правке.
     - sidecar/qwen_tts_server.py
   uses-material-design: true
+  # Фон-аврора стиля «Призма». Собирается только на Impeller; если программа не
+  # соберётся, оболочка молча остаётся на размытых пятнах (см. _PrismBackdrop).
+  shaders:
+    - shaders/prism_aurora.frag
   fonts:
+    # Шрифты стиля «Призма». Figtree — интерфейс, JetBrains Mono — числа и
+    # горячие клавиши. Оба вариативные: один файл на все веса, как у Nunito.
+    # В Figtree нет кириллицы, русский подхватывается из Nunito через
+    # fontFamilyFallback в _buildTheme — держать оба семейства обязательно.
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree-VariableFont_wght.ttf
+          weight: 400
+        - asset: assets/fonts/Figtree-VariableFont_wght.ttf
+          weight: 500
+        - asset: assets/fonts/Figtree-VariableFont_wght.ttf
+          weight: 600
+        - asset: assets/fonts/Figtree-VariableFont_wght.ttf
+          weight: 700
+        - asset: assets/fonts/Figtree-VariableFont_wght.ttf
+          weight: 800
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-VariableFont_wght.ttf
+          weight: 400
+        - asset: assets/fonts/JetBrainsMono-VariableFont_wght.ttf
+          weight: 500
+        - asset: assets/fonts/JetBrainsMono-VariableFont_wght.ttf
+          weight: 600
+        - asset: assets/fonts/JetBrainsMono-VariableFont_wght.ttf
+          weight: 700
     - family: Nunito
       fonts:
         - asset: assets/fonts/Nunito-VariableFont_wght.ttf

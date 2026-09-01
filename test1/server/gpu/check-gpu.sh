@@ -73,11 +73,15 @@ else
   no "/dev/kfd нет: amdgpu не загружен или карта не установлена"
   NEED+=("драйвер amdgpu (на старом ядре — пакет amdgpu-dkms)")
 fi
-if lsmod 2>/dev/null | grep -q '^amdgpu'; then
-  ok "модуль amdgpu загружен"
+# По /sys/module, а не по lsmod: на этом ядре amdgpu собран внутрь, lsmod его
+# не показывает, и проверка врала «не загружен» при поднятом /dev/kfd.
+if [ -d /sys/module/amdgpu ]; then
+  ok "драйвер amdgpu работает"
 else
-  no "модуль amdgpu не загружен"
+  no "драйвера amdgpu не видно"
 fi
+VRAM=$(cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1)
+[ -n "${VRAM:-}" ] && ok "видеопамять: $((VRAM / 1024 / 1024 / 1024)) ГБ"
 # $USER есть не в каждом окружении (cron, sudo -i, некоторые ssh-сессии), а при
 # `set -u` его отсутствие роняет скрипт на середине проверки.
 ME=${USER:-$(id -un)}
@@ -85,8 +89,9 @@ for g in render video; do
   if id -nG "$ME" 2>/dev/null | tr ' ' '\n' | grep -qx "$g"; then
     ok "пользователь $ME в группе $g"
   else
-    no "пользователь $ME НЕ в группе $g — контейнеры не получат карту"
-    NEED+=("sudo usermod -aG $g $ME  (и перелогиниться)")
+    warn "пользователь $ME не в группе $g — на контейнеры не влияет"
+    echo "      (они работают от root; группа нужна лишь для запуска"
+    echo "       инструментов ROCm прямо на хосте)"
   fi
 done
 

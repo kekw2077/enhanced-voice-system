@@ -24,6 +24,34 @@ class WebSearchService {
   );
   bool needed(String q) => _freshRe.hasMatch(q);
 
+  // Вопрос про текущее время или сегодняшнюю дату — не для поиска.
+  //
+  // Слова «сейчас» и «сегодня» ведут прямиком в `_freshRe`, и поиск честно
+  // запускался: показывал «ищу в интернете», тратил секунды и приносил
+  // страницы «точное время» вместо самого времени, после чего модель отвечала,
+  // что доступа к такой информации у неё нет. Часы у компьютера свои — они
+  // теперь и в подсказке (evsNowBlock).
+  //
+  // Проверка привязана к обоим концам строки НАМЕРЕННО: «сколько времени в
+  // Токио» под неё не попадает, и такой вопрос по-прежнему уходит в поиск —
+  // чужой часовой пояс из местных часов не выводится.
+  static final RegExp _clockRe = RegExp(
+    r'^[\s«"]*(а |и )?(скажи,? )?('
+    r'сколько (сейчас )?времени|который (сейчас )?час|'
+    r'текущее время|какое (сейчас )?время|время сейчас|'
+    r'какое (сегодня )?число|какое число (сегодня)?|'
+    r'какой (сегодня )?день( недели)?|какой день недели( сегодня)?|'
+    r'какая (сегодня )?дата|сегодняшняя дата|дата сегодня|'
+    r'what time is it( now)?|what.{0,2}s the (current )?(time|date)|'
+    r'what is the (current )?(time|date)|what day is (it|today)|'
+    r'today.{0,2}s date'
+    r')[\s?!.»"]*$',
+    caseSensitive: false,
+  );
+
+  /// Спрашивают время или дату — отвечать должен компьютер, а не поисковик.
+  bool isClockQuestion(String q) => _clockRe.hasMatch(q.trim());
+
   /// Все значения настройки «Поисковик». `auto` — прежнее поведение.
   static const List<String> providers = [
     'auto',
@@ -252,14 +280,23 @@ class WebSearchService {
     final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
     final b = StringBuffer();
-    b.writeln('\n\n[Актуальные результаты веб-поиска на $date — используй их, '
-        'чтобы ответить по свежим данным; при необходимости укажи источник]');
+    // Ссылок модели НЕ ДАЁМ — ни в задании, ни в самих строках.
+    //
+    // Раньше задание просило «при необходимости укажи источник», а к каждой
+    // строке прилагался адрес: модель послушно переписывала их в конец
+    // ответа, и простой вопрос про погоду заканчивался столбиком ссылок.
+    // Одной просьбой это не убрать — соблазн остаётся, пока адреса перед
+    // глазами. Поэтому вместе с запретом убран и материал для него.
+    b.writeln('\n\n[Свежие сведения из веб-поиска на $date. Ответь по ним '
+        'коротко и по существу — двумя-четырьмя предложениями. НЕ приводи '
+        'ссылок и списка источников, не пересказывай выдачу целиком и не '
+        'упоминай сам факт поиска.]');
     var i = 1;
     for (final h in hits.take(5)) {
       final s = h.snippet.length > 320
           ? '${h.snippet.substring(0, 320)}…'
           : h.snippet;
-      b.writeln('[$i] ${h.title}${h.url.isNotEmpty ? ' (${h.url})' : ''}');
+      b.writeln('[$i] ${h.title}');
       if (s.isNotEmpty) b.writeln('    $s');
       i++;
     }
@@ -748,6 +785,7 @@ class AppUpdater {
         // and sidecar exes aren't needed to draw a logo; unins* belongs to Setup.
         if (low == 'userdata' ||
             low == 'evs_widget.exe' ||
+            low == 'evs_menu.exe' ||
             low == 'evs_sidecar.exe' ||
             low.startsWith('unins')) {
           continue;
@@ -851,12 +889,13 @@ ${splashStart}echo wait> "%USTAT%"
 set "RUNNING="
 tasklist /FI "IMAGENAME eq evs.exe" 2>nul | find /I "evs.exe" >nul && set "RUNNING=1"
 tasklist /FI "IMAGENAME eq evs_widget.exe" 2>nul | find /I "evs_widget.exe" >nul && set "RUNNING=1"
+tasklist /FI "IMAGENAME eq evs_menu.exe" 2>nul | find /I "evs_menu.exe" >nul && set "RUNNING=1"
 if defined RUNNING (
   timeout /t 1 /nobreak >nul
   goto waitloop
 )
 echo [%date% %time%] evs closed, killing leftovers >> "%RLOG%"
-taskkill /F /IM evs.exe /IM evs_widget.exe /IM evs_sidecar.exe >nul 2>&1
+taskkill /F /IM evs.exe /IM evs_widget.exe /IM evs_menu.exe /IM evs_sidecar.exe >nul 2>&1
 timeout /t 1 /nobreak >nul
 echo [%date% %time%] launching installer >> "%RLOG%"
 echo install> "%USTAT%"
@@ -948,9 +987,56 @@ del "%~f0" >nul 2>&1
   }
 
   // Minimal appcast parse (the feed is ours, format controlled): newest
-  // windows <item> by version.
-  _FeedItem? _newestItem(String xml) {
+  // windows item by version.
+  /// Текст пункта без разметки. Описание в канале — это HTML: его показывает
+  /// и WinSparkle, и наше окно, — а наше окно рисует обычным Text. Мнемоники
+  /// поэтому надо расшифровать, иначе в списке изменений вместо кавычек
+  /// стоит &laquo; словом.
+  static String _unescape(String html) {
+    var t = html.replaceAll(RegExp(r'<[^>]+>'), '');
+    t = t.replaceAllMapped(
+        RegExp(r'&#(x[0-9a-fA-F]+|\d+);'),
+        (m) {
+          final g = m.group(1)!;
+          final code = g.startsWith('x') || g.startsWith('X')
+              ? int.tryParse(g.substring(1), radix: 16)
+              : int.tryParse(g);
+          return code == null ? m.group(0)! : String.fromCharCode(code);
+        });
+    const named = {
+      '&laquo;': '«',
+      '&raquo;': '»',
+      '&mdash;': '—',
+      '&ndash;': '–',
+      '&hellip;': '…',
+      '&nbsp;': ' ',
+      '&quot;': '"',
+      '&apos;': "'",
+      '&lt;': '<',
+      '&gt;': '>',
+      // Амперсанд последним: иначе он расшифрует сам себя внутри соседей.
+      '&amp;': '&',
+    };
+    named.forEach((k, v) => t = t.replaceAll(k, v));
+    return t;
+  }
+
+  /// Список изменений самой свежей записи канала. Открыто только ради теста:
+  /// разбор ломается молча — версия и ссылка остаются верными, пропадает
+  /// ровно описание, и заметить это можно лишь в окне обновления.
+  @visibleForTesting
+  static List<String> appcastNotes(String xml) =>
+      _newestItem(xml)?.notes ?? const [];
+
+  static _FeedItem? _newestItem(String rawXml) {
     _FeedItem? best;
+    // Comments go first, and not for tidiness. The feed's header comment
+    // explains the format and spells the item tag out in prose; the regex
+    // below cannot tell that from a real one, so the first "item" it found
+    // started inside the comment and swallowed the channel's own
+    // <description> — which has no <li> at all. Result: the newest release,
+    // and only the newest, showed up with an empty "what's new".
+    final xml = rawXml.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
     for (final m in RegExp(r'<item>([\s\S]*?)</item>').allMatches(xml)) {
       final block = m.group(1)!;
       if (!block.contains('sparkle:os="windows"')) continue;
@@ -971,9 +1057,7 @@ del "%~f0" >nul 2>&1
           ?.group(1);
       if (desc != null) {
         for (final li in RegExp(r'<li>([\s\S]*?)</li>').allMatches(desc)) {
-          final t = li
-              .group(1)!
-              .replaceAll(RegExp(r'<[^>]+>'), '')
+          final t = _unescape(li.group(1)!)
               .replaceAll(RegExp(r'\s+'), ' ')
               .trim();
           if (t.isNotEmpty) notes.add(t);

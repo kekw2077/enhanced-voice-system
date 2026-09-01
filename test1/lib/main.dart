@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:ffi' hide Size;
 import 'dart:io' as io;
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
+import 'dart:ui' show ImageFilter, FragmentProgram, FragmentShader, PointMode;
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/cupertino.dart' show CupertinoSwitch;
@@ -53,15 +53,33 @@ part 'src/llm_services.dart';
 part 'src/app_state.dart';
 part 'src/theme_widgets.dart';
 part 'src/genesis_logo.dart';
+part 'src/shell_common.dart';
 part 'src/desktop_integration.dart';
 part 'src/updater_and_web.dart';
+part 'src/relay_client.dart';
 part 'src/sidecar_client.dart';
 part 'src/desktop_home.dart';
 part 'src/noctur_shell.dart';
+part 'src/prism_icons.dart';
+part 'src/prism_controls.dart';
+part 'src/prism_shell.dart';
+part 'src/prism_chat.dart';
+part 'src/prism_hub.dart';
+part 'src/prism_modules.dart';
+part 'src/prism_commands.dart';
+part 'src/prism_lumina.dart';
+part 'src/prism_sonora.dart';
+part 'src/prism_welcome.dart';
+part 'src/tray_menu.dart';
+part 'src/relay_panel.dart';
+part 'src/czn_translator.dart';
+part 'src/prism_appearance.dart';
+part 'src/prism_orb.dart';
 part 'src/remote_input.dart';
 part 'src/voice_viz.dart';
 part 'src/desktop_settings.dart';
 part 'src/studio_panel.dart';
+part 'src/lumina_studio.dart';
 part 'src/chat_screen.dart';
 part 'src/voice_screen.dart';
 part 'src/settings_screens.dart';
@@ -88,6 +106,14 @@ void main(List<String> args) async {
   // setup — it only draws the Genesis logo and exits (see _updateSplashMain).
   if (isWindows && args.contains('--update-splash')) {
     await _updateSplashMain(args);
+    return;
+  }
+
+  // Ещё один режим: окно меню трея (`evs.exe --tray-menu --port=N`). Оно
+  // висит спрятанным и показывается по правому щелчку на значке — системное
+  // меню покрасить нельзя, а это наше окно и красится как вся программа.
+  if (isWindows && args.contains('--tray-menu')) {
+    await _trayMenuMain(args);
     return;
   }
 
@@ -195,6 +221,11 @@ void main(List<String> args) async {
   if (isWindows) {
     BootSplash.instance.phase('tray');
     await DesktopIntegration.instance.init(app);
+
+    // Сторож игры для переводчика. Здесь, а не на экране расширения: смысл
+    // настройки в том, чтобы переводчик поднялся сам, не открывая ничего.
+    // Ставится после init и ничего не ждёт — на путь запуска не влияет.
+    CznTranslator.instance.watchForGame(app);
   }
 
   final elapsed = DateTime.now().difference(startedAt);

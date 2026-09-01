@@ -835,7 +835,12 @@ class GpuArbiter {
     if (_held) return;
     _held = true;
     _app = app;
-    notice.value = app.t('gpuBusyBanner');
+    // «Призма» держит студию вкладкой, а не окном: там закрывать нечего, и
+    // обещание «вернутся, когда закроете окно» было бы неправдой — модель
+    // возвращается при уходе с экрана (тот же dispose студии).
+    notice.value = app.appStyle == AppStyle.prism
+        ? app.t('gpuBusyBannerTab')
+        : app.t('gpuBusyBanner');
     unawaited(appendLog('sidecar', 'GPU: освобождаю под генерацию картинок'));
     await _unloadLlm(app);
     if (app.imageFreeVoiceToo) await _unloadVoice(app);
@@ -863,6 +868,130 @@ class GpuArbiter {
     unawaited(appendLog('sidecar', 'GPU: возвращена языковой модели'));
   }
 
+  // --- разговор против картинок --------------------------------------------
+  //
+  // Обратная сторона `takeForImages`. Там карту освобождают ПОД картинки, и
+  // спрашивать некого — студию открыл сам человек. Здесь наоборот: карту может
+  // держать телефон, о котором на компьютере никто не знает.
+  //
+  // Без заявки выходило так: телефон считает кадр, человек за компьютером
+  // спрашивает модель — Ollama грузит её поверх картинок, не помещается и
+  // уходит считать на процессор (ответ вместо трёх секунд идёт минуту), а
+  // следующий кадр с телефона выгоняет её посреди ответа.
+  //
+  // Кто с кем разговаривает, сервер картинок не знает и знать не должен: он
+  // считает только заявки. Поэтому «занято» здесь — это `who: desktop`, а не
+  // имя окна или пользователя.
+  static const String _who = 'desktop';
+  bool _chat = false;
+  Timer? _renew;
+
+  /// Занять карту на время ответа модели. Возвращается, когда карта свободна:
+  /// если телефон досчитывает кадр, ждём его — прервать чужую минуту счёта
+  /// ради своей секунды было бы обменом не в ту сторону.
+  ///
+  /// Молчит и уходит сразу, если сервера картинок нет в сети: разговор не
+  /// должен ждать выключенную станцию.
+  Future<void> holdForChat(AppState app) async {
+    if (_held || _chat) return; // студия и так владеет картой
+    final url = _base(app.imageServerUrl);
+    if (url.isEmpty) return;
+    final prog = await _getJson(url, '/progress', const Duration(seconds: 2));
+    if (prog == null) return;
+    _chat = true;
+    var frame = prog['running'] == true;
+    if (frame) {
+      // Полоса наверху окна — та же, что и у студии. Человек должен понимать,
+      // почему ответ не начинается: не «подвисло», а телефон дорисовывает.
+      notice.value = app.t('gpuWaitFrame');
+      unawaited(_watchFrame(app, url, () => frame && _chat));
+    }
+    await _postJson(url, '/gpu/hold', {
+      'who': _who,
+      'note': app.t('gpuHoldNote'),
+      'sec': 90,
+    }, const Duration(seconds: 240));
+    frame = false;
+    notice.value = null;
+    // Заявка берётся ненадолго и продлевается: если приложение упадёт или
+    // оборвётся сеть, телефон получит карту через полторы минуты сам, без
+    // разбирательств и перезапусков.
+    _renew?.cancel();
+    _renew = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (!_chat) return;
+      unawaited(_postJson(url, '/gpu/hold', {
+        'who': _who,
+        'note': app.t('gpuHoldNote'),
+        'sec': 90,
+      }, const Duration(seconds: 20)));
+    });
+  }
+
+  /// Отпустить карту. Зовётся из `finally` — ответ мог и не получиться.
+  Future<void> releaseChat(AppState app) async {
+    if (!_chat) return;
+    _chat = false;
+    _renew?.cancel();
+    _renew = null;
+    notice.value = null;
+    final url = _base(app.imageServerUrl);
+    if (url.isEmpty) return;
+    await _postJson(
+        url, '/gpu/release', {'who': _who}, const Duration(seconds: 8));
+  }
+
+  /// Показывать в полосе, сколько осталось чужому кадру.
+  Future<void> _watchFrame(
+      AppState app, String url, bool Function() alive) async {
+    while (alive()) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (!alive()) return;
+      final p = await _getJson(url, '/progress', const Duration(seconds: 3));
+      if (p == null || p['running'] != true) return;
+      final step = p['step'], total = p['total'];
+      final stage = (p['stage'] ?? '').toString();
+      final head = app.t('gpuWaitFrame');
+      final tail = stage.isEmpty ? '' : ' ($stage)';
+      notice.value =
+          total is num && total > 0 ? '$head - $step/$total$tail' : head;
+    }
+  }
+
+  String _base(String raw) {
+    final u = raw.trim();
+    if (u.isEmpty) return '';
+    return u.startsWith('http') ? u : 'http://$u';
+  }
+
+  Future<Map<String, dynamic>?> _getJson(
+      String url, String path, Duration t) async {
+    try {
+      final r = await http.get(Uri.parse('$url$path')).timeout(t);
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(utf8.decode(r.bodyBytes));
+      return j is Map<String, dynamic> ? j : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _postJson(
+      String url, String path, Map<String, dynamic> body, Duration t) async {
+    try {
+      final r = await http
+          .post(Uri.parse('$url$path'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode(body))
+          .timeout(t);
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(utf8.decode(r.bodyBytes));
+      return j is Map<String, dynamic> ? j : null;
+    } catch (e) {
+      unawaited(appendLog('errors', 'GPU: $path на $url — $e'));
+      return null;
+    }
+  }
+
   Future<void> _post(String base, String path) async {
     final url = base.trim();
     if (url.isEmpty) return;
@@ -876,19 +1005,45 @@ class GpuArbiter {
 
   /// Выгрузка модели из Ollama — это её же обычный запрос с `keep_alive: 0`.
   /// Отдельной команды «выгрузи» у неё нет.
+  ///
+  /// Выгружаем всё, что лежит в памяти, а не только выбранную модель: под чат,
+  /// команды и поиск в настройках можно указать разные, и на карте их окажется
+  /// несколько. Освободить одну и уйти — значит не освободить карту, а
+  /// генерация упрётся в нехватку памяти с невнятной ошибкой.
   Future<void> _unloadLlm(AppState app) async {
     final server = app.serverUrl.trim();
-    final model = app.selectedModel.trim();
-    if (server.isEmpty || model.isEmpty) return;
+    if (server.isEmpty) return;
     final url = server.startsWith('http') ? server : 'http://$server';
+    final names = <String>{};
     try {
-      await http
-          .post(Uri.parse('$url/api/generate'),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'model': model, 'keep_alive': 0}))
-          .timeout(const Duration(seconds: 60));
-    } catch (e) {
-      unawaited(appendLog('errors', 'GPU: не выгрузилась языковая модель — $e'));
+      final r = await http
+          .get(Uri.parse('$url/api/ps'))
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode == 200) {
+        final list = (jsonDecode(r.body) as Map)['models'];
+        if (list is List) {
+          for (final m in list) {
+            final n = (m is Map ? (m['model'] ?? m['name']) : null)?.toString();
+            if (n != null && n.isNotEmpty) names.add(n);
+          }
+        }
+      }
+    } catch (_) {
+      // Спросить не удалось — выгрузим хотя бы выбранную, это лучше, чем ничего.
+    }
+    if (names.isEmpty && app.selectedModel.trim().isNotEmpty) {
+      names.add(app.selectedModel.trim());
+    }
+    for (final n in names) {
+      try {
+        await http
+            .post(Uri.parse('$url/api/generate'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({'model': n, 'keep_alive': 0}))
+            .timeout(const Duration(seconds: 60));
+      } catch (e) {
+        unawaited(appendLog('errors', 'GPU: не выгрузилась $n — $e'));
+      }
     }
   }
 
@@ -964,6 +1119,11 @@ class DesktopIntegration with WindowListener, TrayListener {
       // Порядок важен: сначала виджет (у него свой процесс и своё окно), потом
       // главное окно — чтобы фокус остался на нём, а не уехал на виджет.
       unawaited(VizOverlayServer.instance.start(a));
+      // Окно меню трея — тоже отдельный процесс, и поднимается оно ЗДЕСЬ, а не
+      // при первом щелчке: смысл держать его наготове в том, чтобы меню
+      // открывалось мгновенно. Пока не поднялось, правый щелчок покажет
+      // системное меню — оно никуда не делось.
+      unawaited(TrayMenuServer.instance.start(a, onPick: _trayAction));
       if (a.startupShowWindow) unawaited(_show());
       unawaited(_rebuildTrayMenu()); // «Загрузка…» → обычное меню
     };
@@ -1141,12 +1301,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       // рабочая распакованная папка точно на месте.
       unawaited(ComponentManager.instance.purgeLegacySidecar());
       await SidecarClient.instance.start();
-      // Push game-mode config (thresholds, exclusions, localized phrases) now
-      // that the socket is up; the sidecar started the monitor with defaults.
-      app.applyGameModeConfig();
-      // Clone server (GPU): activate it as the TTS engine if configured, and
-      // follow game mode so it releases/reclaims VRAM with the game.
-      app.hookCloneGpuGameMode();
+      // Сервер клон-голоса: включаем его движком озвучки, если он настроен.
       unawaited(app.applyCloneServer());
       unawaited(app.syncActiveMics()); // resolve multi-mic devices (block 8.2)
     } catch (_) {
@@ -1158,6 +1313,9 @@ class DesktopIntegration with WindowListener, TrayListener {
 
   Future<void> _rebuildTrayMenu() async {
     final app = _app;
+    // Своё окно узнаёт о переменах тем же вызовом: и состав пунктов, и
+    // галочка у плавающего виджета живут в одном месте.
+    TrayMenuServer.instance.setItems(_trayEntries());
     // Пока идёт загрузка, «Показать EVS» всё равно ничего не откроет — значит
     // и предлагать его нельзя: неактивный пункт честнее кнопки, которая молча
     // не срабатывает. Меню пересобирается по готовности (BootSplash.onDone).
@@ -1220,6 +1378,9 @@ class DesktopIntegration with WindowListener, TrayListener {
     // never runs.
     try {
       VizOverlayServer.instance.dispose();
+    } catch (_) {}
+    try {
+      await TrayMenuServer.instance.stop();
     } catch (_) {}
     try {
       await SidecarClient.instance.stop();
@@ -1316,11 +1477,49 @@ class DesktopIntegration with WindowListener, TrayListener {
   void onTrayIconMouseDown() => _show();
 
   @override
-  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+  void onTrayIconRightMouseDown() => unawaited(_popUpTrayMenu());
+
+  /// Своё меню, если его окно поднялось; системное — если нет. Плагин трея на
+  /// Windows сам ничего не показывает: он только сообщает о щелчке, а меню
+  /// открывается отсюда. Поэтому подмена полная, без мигания двух меню.
+  Future<void> _popUpTrayMenu() async {
+    if (await TrayMenuServer.instance.popUp()) return;
+    await trayManager.popUpContextMenu();
+  }
+
+  /// Пункты меню — одни и те же для системного и для своего, чтобы они не
+  /// разошлись при первой же правке.
+  List<TrayMenuEntry> _trayEntries() {
+    final app = _app;
+    if (BootSplash.instance.active) {
+      return [
+        TrayMenuEntry('loading', app?.t('trayLoading') ?? 'Загрузка…',
+            d: PrismIcons.refresh,
+            disabled: true),
+        TrayMenuEntry('quit', app?.t('trayQuit') ?? 'Quit',
+            d: PrismIcons.remove,
+            separatorBefore: true, danger: true),
+      ];
+    }
+    return [
+      TrayMenuEntry('show', app?.t('trayShow') ?? 'Show EVS',
+          d: PrismIcons.hub),
+      TrayMenuEntry('overlay', app?.t('trayOverlay') ?? 'Floating widget',
+          d: PrismIcons.spark,
+          checked: app?.overlayMode ?? false),
+      TrayMenuEntry('quit', app?.t('trayQuit') ?? 'Quit',
+          d: PrismIcons.remove,
+          separatorBefore: true, danger: true),
+    ];
+  }
 
   @override
-  void onTrayMenuItemClick(MenuItem menuItem) {
-    switch (menuItem.key) {
+  void onTrayMenuItemClick(MenuItem menuItem) => _trayAction(menuItem.key ?? '');
+
+  /// Что делает пункт меню. Одна точка для системного меню и для своего: две
+  /// копии этого switch разошлись бы на первой же новой строке.
+  void _trayAction(String key) {
+    switch (key) {
       case 'show':
         _show();
         break;

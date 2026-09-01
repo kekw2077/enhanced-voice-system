@@ -37,6 +37,7 @@ http://127.0.0.1:8760, и выбрать образец голоса (WAV).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -108,6 +109,11 @@ def pin_cache_to(cache_dir: str) -> None:
 # --------------------------------------------------------------------------
 # Engine: lazy load, idle unload, VRAM cap, throttle.
 # --------------------------------------------------------------------------
+class UnknownReference(Exception):
+    """Клиент прислал только контрольную сумму образца, а такого отпечатка у нас
+    нет. Не ошибка, а сигнал: пришлите файл, и он будет разобран один раз."""
+
+
 class QwenTtsEngine:
     def __init__(self, model_id: str = DEFAULT_MODEL) -> None:
         self.model_id = model_id
@@ -115,6 +121,13 @@ class QwenTtsEngine:
         self._lock = threading.Lock()   # serialises synthesis (one job at a time)
         self._last_used = 0.0
         self._loading = False
+        # Готовый отпечаток голоса и ключ, по которому он построен. Строить
+        # его заново на каждую фразу — самая дорогая часть постоянных
+        # накладных расходов: образец декодируется, из него считается
+        # мел-спектрограмма и вектор диктора, и всё это ради одного и того
+        # же файла, который не менялся неделями.
+        self._clone_prompt = None
+        self._clone_key = ''
 
         # Live-tunable settings (pushed by EVS via POST /config).
         self.language = "Russian"
@@ -245,11 +258,27 @@ class QwenTtsEngine:
         finally:
             self._loading = False
 
+    def warm(self) -> None:
+        """Загрузить модель, если её нет. Ошибки глушим: прогрев — услуга, а не
+        обязательство, и сорвавшийся прогрев не должен ломать синтез."""
+        try:
+            with self._lock:
+                self._load()
+        except Exception as e:
+            _log(f"прогрев не удался: {e}")
+
     def unload(self) -> None:
         with self._lock:
-            if self._model is None:
+            if self._model is None and self._clone_prompt is None:
                 return
             self._model = None
+            # Отпечаток голоса тоже держит тензоры НА КАРТЕ. Без его сброса
+            # выгрузка освобождала лишь часть: сервер отчитывался «выгружен», а
+            # видеопамять оставалась занятой на три с половиной гигабайта — и
+            # генерация картинок падала с нехваткой памяти, хотя соседей на
+            # карте формально не было.
+            self._clone_prompt = None
+            self._clone_key = ''
             try:
                 import gc
                 import torch
@@ -273,16 +302,19 @@ class QwenTtsEngine:
 
     # ---- synthesis ------------------------------------------------------
     def synthesize(self, text: str, ref_wav: bytes, ref_text: str,
-                   language: str = "") -> tuple[bytes, int]:
+                   language: str = "", ref_sha: str = "") -> tuple[bytes, int]:
         """Returns (wav_bytes, sample_rate). Raises on failure."""
         import numpy as np
         import soundfile as sf
 
-        # The model takes a path/URL/base64/ndarray — hand it a decoded array so
-        # nothing touches the disk per request.
-        data, sr_in = sf.read(io.BytesIO(ref_wav), dtype="float32")
-        if getattr(data, "ndim", 1) > 1:
-            data = data.mean(axis=1)
+        # Образец разбираем, только если он вообще приехал. Обычно приезжает
+        # одна контрольная сумма: файл на 480 КБ по сети стоит около трёх
+        # секунд на каждую фразу, а разобран он уже был.
+        data = sr_in = None
+        if ref_wav:
+            data, sr_in = sf.read(io.BytesIO(ref_wav), dtype="float32")
+            if getattr(data, "ndim", 1) > 1:
+                data = data.mean(axis=1)
 
         # Without a transcript of the reference clip the model can only clone the
         # TIMBRE (x-vector mode); its in-context mode hard-fails with "ref_text is
@@ -291,18 +323,40 @@ class QwenTtsEngine:
         # supplying it (Настройки → образец голоса) gives the better clone.
         ref_text = (ref_text or "").strip()
         x_only = not ref_text
+        sha = (hashlib.sha256(ref_wav).hexdigest() if ref_wav
+               else (ref_sha or "").strip().lower())
+        if not sha:
+            raise ValueError("нужен образец голоса или его контрольная сумма")
+        key = sha + "|" + ref_text + "|" + str(x_only)
         with self._lock:
             t0 = time.time()
             self._load()
+            t_load = time.time()
+            # Отпечаток строится только когда сменился образец или его
+            # расшифровка. В остальное время берётся готовый — это снимает с
+            # каждой фразы разбор образца и вычисление вектора диктора.
+            if self._clone_prompt is None or self._clone_key != key:
+                if data is None:
+                    # Отпечатка нет, а файла не прислали — просим прислать.
+                    raise UnknownReference(sha)
+                self._clone_prompt = self._model.create_voice_clone_prompt(
+                    ref_audio=(data, sr_in),
+                    ref_text=ref_text or None,
+                    x_vector_only_mode=x_only,
+                )
+                self._clone_key = key
+                _log(f"отпечаток голоса построен за {time.time() - t_load:.2f}s")
+            t_prompt = time.time()
             wavs, sr = self._model.generate_voice_clone(
                 text=text,
                 language=language or self.language,
-                ref_audio=(data, sr_in),
-                ref_text=ref_text or None,
-                x_vector_only_mode=x_only,
+                voice_clone_prompt=self._clone_prompt,
             )
-            self._last_used = time.time()
-            elapsed = self._last_used - t0
+            t_gen = time.time()
+            self._last_used = t_gen
+            elapsed = t_gen - t0
+            _log(f"синтез: загрузка {t_load - t0:.2f}s, отпечаток "
+                 f"{t_prompt - t_load:.2f}s, речь {t_gen - t_prompt:.2f}s")
 
         wav = wavs[0] if hasattr(wavs, "__len__") and len(wavs) else wavs
         wav = np.asarray(wav, dtype=np.float32)
@@ -387,6 +441,18 @@ class Handler(BaseHTTPRequestHandler):
                 ENGINE.unload()
                 self._json(ENGINE.status())
                 return
+            if self.path.rstrip("/") == "/load":
+                # Прогрев: поднять модель заранее, не дожидаясь фразы. Первая
+                # реплика после простоя иначе стоит 15 секунд загрузки — а
+                # позвать этот путь можно в момент, когда человек ещё говорит
+                # и языковая модель ещё думает над ответом.
+                #
+                # Отвечаем СРАЗУ, а грузим в стороне: вызывающему нужно знать,
+                # что просьба принята, а не ждать конца загрузки — иначе прогрев
+                # превращается в ту же задержку, только в другом месте.
+                threading.Thread(target=ENGINE.warm, daemon=True).start()
+                self._json(ENGINE.status())
+                return
             if self.path.rstrip("/") == "/inference_zero_shot":
                 self._synth()
                 return
@@ -413,15 +479,27 @@ class Handler(BaseHTTPRequestHandler):
         ref_wav = form.get("prompt_wav") or b""
         ref_text = form.get("prompt_text") or ""
         language = form.get("language") or ""
+        # Вместо файла можно прислать его контрольную сумму: если отпечаток по
+        # ней уже построен, образец не нужен вовсе.
+        ref_sha = (form.get("prompt_wav_sha") or b"")
+        if isinstance(ref_sha, bytes):
+            ref_sha = ref_sha.decode("utf-8", "replace")
         if not text:
             self._json({"error": "empty tts_text"}, 400)
             return
-        if not ref_wav:
+        if not ref_wav and not ref_sha:
             self._json({"error": "missing prompt_wav"}, 400)
             return
         # NOTE: `speed` is accepted for contract compatibility but ignored —
         # EVS only caches/plays clone audio at rate 1.0.
-        wav, _sr = ENGINE.synthesize(text, ref_wav, ref_text, language)
+        try:
+            wav, _sr = ENGINE.synthesize(text, ref_wav, ref_text, language,
+                                         ref_sha=ref_sha)
+        except UnknownReference:
+            # Отдельный код, а не общая ошибка: клиент по нему понимает, что
+            # надо переслать образец, и повторяет запрос уже с файлом.
+            self._json({"error": "unknown_ref"}, 409)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "audio/wav")
         self.send_header("Content-Length", str(len(wav)))
@@ -437,10 +515,13 @@ def main() -> int:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--model", default=os.environ.get("EVS_QWEN_MODEL", DEFAULT_MODEL))
     ap.add_argument("--language", default="Russian")
-    ap.add_argument("--precision", default="auto", choices=["auto", "bf16", "fp16"])
+    ap.add_argument("--precision",
+                    default=os.environ.get("EVS_QWEN_PRECISION", "auto"),
+                    choices=["auto", "bf16", "fp16"])
     ap.add_argument("--vram-fraction", type=float, default=0.0,
                     help="hard VRAM cap as a fraction of the card (0 = none)")
-    ap.add_argument("--idle-unload", type=int, default=120,
+    ap.add_argument("--idle-unload", type=int,
+                    default=int(os.environ.get("EVS_QWEN_IDLE", "120")),
                     help="release VRAM after N idle seconds (0 = never)")
     ap.add_argument("--throttle", type=float, default=0.0,
                     help="0..1 — sleep this share of the synthesis time after each job")

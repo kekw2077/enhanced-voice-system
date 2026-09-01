@@ -97,7 +97,10 @@ class NocturTopBar extends StatelessWidget {
 
   void _openStudio(BuildContext context, StudioMode mode) => Navigator.of(
     context,
-  ).push(MaterialPageRoute(builder: (_) => StudioPanel(mode: mode)));
+  ).push(MaterialPageRoute(
+    builder: (_) =>
+        mode == StudioMode.image ? const LuminaStudio() : StudioPanel(mode: mode),
+  ));
 
   // «Модели» — тот же раздел настроек, который открывает рейл Nexus.
   void _openModels(BuildContext context) =>
@@ -253,6 +256,19 @@ class NocturTopBar extends StatelessWidget {
             active: false,
             onTap: () => _openStudio(context, StudioMode.speech),
           ),
+          // Остальные функции — тем же общим меню, что в двух других стилях.
+          // «Команды» и «Журнал» в нём ведут на здешние вкладки, а не на
+          // страницы настроек: экраны для них у этого стиля свои.
+          EvsMoreButton(
+            onCommands: () => onTab(NocturTab.commands),
+            onLog: () => onTab(NocturTab.log),
+            builder: (ctx, open) => _tabLabel(
+              ctx,
+              ctx.read<AppState>().t('evsMore'),
+              active: false,
+              onTap: open,
+            ),
+          ),
           // Распорка тянет окно за шапку.
           const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
           _statePill(context, app, MediaQuery.of(context).size.width < 1000),
@@ -329,12 +345,6 @@ class NocturStatusStrip extends StatelessWidget {
       .replaceFirst(RegExp(r'^https?://'), '')
       .replaceFirst(RegExp(r'/.*$'), '');
 
-  String _shortModel(String m) {
-    var s = m.replaceFirst('local:', '');
-    if (s.contains('/')) s = s.split('/').last;
-    return s;
-  }
-
   Widget _seg(BuildContext c, String key, String value, {Color? color}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -389,7 +399,6 @@ class NocturStatusStrip extends StatelessWidget {
           sc.status,
           sc.deviceStatus,
           sc.gpuInfo,
-          sc.gameModeStatus,
           SystemMonitor.instance.stats,
         ]),
         builder: (context, _) {
@@ -402,7 +411,7 @@ class NocturStatusStrip extends StatelessWidget {
           final local = app.isLocalModel(app.selectedModel);
           final model = app.selectedModel.isEmpty
               ? '—'
-              : _shortModel(app.selectedModel);
+              : evsShortModel(app.selectedModel);
           final where = local
               ? 'on-device'
               : (app.inferenceMode == 'remote' && app.apiKey.isNotEmpty
@@ -415,7 +424,10 @@ class NocturStatusStrip extends StatelessWidget {
             tts = app.t('nxTtsClone');
             ttsWhere = 'XTTS';
           } else if (app.ttsEngineChoice == 'cosyvoice') {
-            tts = 'CosyVoice';
+            // Название берём у самого сервера, а не из кода.
+            tts = app.cloneServerModel.isNotEmpty
+                ? app.cloneServerModel
+                : app.t('nxTtsClone');
             ttsWhere = (app.cosyvoiceOnline ?? false)
                 ? app.t('nxOnline')
                 : app.t('nxOffline');
@@ -426,7 +438,6 @@ class NocturStatusStrip extends StatelessWidget {
             tts = 'Piper';
             ttsWhere = app.ttsPiperVoice.replaceAll('ru_RU-', '');
           }
-          final (offload, _) = sc.gameModeStatus.value;
           final gpu = sc.gpuInfo.value;
           final hasVram = gpu.$1 && gpu.$3 > 0;
           final reply = pipe.lastReplySec;
@@ -462,16 +473,6 @@ class NocturStatusStrip extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              if (offload) ...[
-                Text(
-                  app.t('gmOffloadBadge').toUpperCase(),
-                  style: EvsType.mono.copyWith(
-                    fontSize: 11,
-                    color: _warn(context),
-                  ),
-                ),
-                _dot(context),
-              ],
               if (hasVram)
                 Text(
                   'GPU ${(gpu.$4 / 1024).toStringAsFixed(1)} / ${(gpu.$3 / 1024).round()} ${app.t('ncGb')}',
@@ -1140,15 +1141,9 @@ class _NocturHomeState extends State<_NocturHome> {
     context.select<AppState, AppThemeMode>((a) => a.themeMode);
     return Scaffold(
       backgroundColor: _bg(context),
-      drawerEdgeDragWidth: 24,
-      // История диалогов — выдвижной ящик (в «Ноктюрне» нет постоянной колонки
-      // чата; отдельный экран диалога — этап 3).
-      drawer: const Drawer(
-        width: 320,
-        backgroundColor: Colors.transparent,
-        shape: RoundedRectangleBorder(),
-        child: ConversationsSheet(embedded: true),
-      ),
+      // Выдвижного ящика с историей здесь больше нет: его никто не открывал
+      // кнопкой (только краем окна), а список диалогов в приложении теперь
+      // один — колонка вкладки «Диалог» и общее окно `EvsChatsDialog`.
       body: Container(
         decoration: _evsShellBg(context),
         child: Column(
@@ -1164,8 +1159,8 @@ class _NocturHomeState extends State<_NocturHome> {
                   ? const _NocturStage()
                   : switch (_tab) {
                       NocturTab.dialog => const _NocturDialogTab(),
-                      NocturTab.commands => const _NocturCommandsTab(),
-                      NocturTab.log => const _NocturLogTab(),
+                      NocturTab.commands => const EvsCommandsTab(),
+                      NocturTab.log => const EvsLogTab(),
                     },
             ),
             const NocturStatusStrip(),
@@ -1190,6 +1185,13 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
   final TextEditingController _search = TextEditingController();
   final TextEditingController _input = TextEditingController();
   final ScrollController _thread = ScrollController();
+  // Вернулись в поле ввода — значит собираемся писать, а не читать историю:
+  // отматываем к последнему сообщению.
+  final FocusNode _inputFocus = FocusNode();
+
+  void _onInputFocus() {
+    if (_inputFocus.hasFocus) _scrollDown();
+  }
   bool _sending = false;
 
   @override
@@ -1213,6 +1215,8 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
 
   @override
   void dispose() {
+    _inputFocus.removeListener(_onInputFocus);
+    _inputFocus.dispose();
     _search.dispose();
     _input.dispose();
     _thread.dispose();
@@ -1227,6 +1231,8 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
     app.buzz();
     _input.clear();
     setState(() => _sending = true);
+    // Отматываем сразу: своя реплика уже в списке, ждать ответа незачем.
+    _scrollDown();
     await app.sendMessage(text);
     if (!mounted) return;
     setState(() => _sending = false);
@@ -1445,6 +1451,9 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
                       color: _faint(context),
                     ),
                   ),
+                  // Видимая кнопка меню строки: раньше переименовать или
+                  // закрепить чат здесь можно было, только угадав правый клик.
+                  evsChatRowMenuButton(context, c, app),
                 ],
               ),
               if (preview.isNotEmpty)
@@ -1475,10 +1484,10 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
         ),
       );
     }
-    final model = conv.rpConfig?.lockedModel ?? app.selectedModel;
+    // Модель ушла из мета-строки в пилюлю ниже: там на неё можно нажать и
+    // сменить, как в двух других стилях, а не только прочитать.
     final meta = [
       _evsRelTime(app, conv.updatedAt),
-      if (model.isNotEmpty) model.replaceFirst('local:', ''),
       app.t('ncReplies').replaceAll('{n}', '${conv.messages.length}'),
     ].join('  ·  ');
     return Column(
@@ -1501,14 +1510,22 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
                 ),
               ),
               const SizedBox(height: 6),
-              Text(
-                meta,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: EvsType.mono.copyWith(
-                  fontSize: 11,
-                  color: _faint(context),
-                ),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      meta,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: EvsType.mono.copyWith(
+                        fontSize: 11,
+                        color: _faint(context),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  evsModelPill(context, fontSize: 12),
+                ],
               ),
               const SizedBox(height: 14),
               const _NocturRule(),
@@ -1537,7 +1554,48 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
     );
   }
 
+  // Реплика в общей рамке: правый клик — меню, снизу — полоса действий
+  // (копировать · править · перегенерировать · продолжить · удалить), одна и
+  // та же во всех трёх стилях.
   Widget _message(
+    BuildContext context,
+    AppState app,
+    Conversation conv,
+    ChatMessage m, {
+    required bool last,
+  }) {
+    final waiting = last && app.isGenerating && m.content.trim().isEmpty;
+    return EvsMessageFrame(
+      conversation: conv,
+      message: m,
+      isLast: last,
+      alignEnd: m.role == 'user',
+      actions: !waiting,
+      onCompose: (text) {
+        _input.text = text;
+        _inputFocus.requestFocus();
+      },
+      onRegenerate: () {
+        app.buzz();
+        setState(() => _sending = true);
+        unawaited(app.regenerateLastReply(conv).whenComplete(() {
+          if (mounted) setState(() => _sending = false);
+          _scrollDown();
+        }));
+      },
+      onContinue: () {
+        app.buzz();
+        setState(() => _sending = true);
+        unawaited(app.continueReply(conv).whenComplete(() {
+          if (mounted) setState(() => _sending = false);
+          _scrollDown();
+        }));
+      },
+      child: _messageBody(context, app, conv, m, last: last),
+    );
+  }
+
+  Widget _messageBody(
     BuildContext context,
     AppState app,
     Conversation conv,
@@ -1590,6 +1648,16 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Ход рассуждения — над ответом и свёрнутым, как в двух других
+          // стилях: здесь его не показывали вовсе.
+          if (m.thinking.trim().isNotEmpty)
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: EvsThinkingBlock(
+                text: m.thinking,
+                live: m.content.trim().isEmpty,
+              ),
+            ),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 820),
             child: Row(
@@ -1597,8 +1665,9 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
-                  child: SelectableText(
+                  child: EvsTypingText(
                     m.content,
+                    selectable: true,
                     style: TextStyle(
                       fontSize: 14.5,
                       height: 1.55,
@@ -1631,40 +1700,49 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
       borderSide: BorderSide(color: c),
     );
     return Row(
-      children: [
-        Expanded(
-          child: SizedBox(
-            height: 42,
-            child: TextField(
-              controller: _input,
-              enabled: !_sending,
-              onSubmitted: (_) => _send(),
-              style: TextStyle(fontSize: 13.5, color: _txt(context)),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 42,
+                child: TextField(
+                  controller: _input,
+                  focusNode: _inputFocus,
+                  enabled: !_sending,
+                  onSubmitted: (_) => _send(),
+                  // Кнопка отправки загорается по мере набора.
+                  onChanged: (_) => setState(() {}),
+                  style: TextStyle(fontSize: 13.5, color: _txt(context)),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    hintText: app.t('ncComposerHint'),
+                    hintStyle:
+                        TextStyle(fontSize: 13.5, color: _faint(context)),
+                    enabledBorder: border(_stroke(context)),
+                    focusedBorder: border(_accent(context)),
+                    disabledBorder: border(_stroke(context)),
+                  ),
                 ),
-                hintText: app.t('ncComposerHint'),
-                hintStyle: TextStyle(fontSize: 13.5, color: _faint(context)),
-                enabledBorder: border(_stroke(context)),
-                focusedBorder: border(_accent(context)),
-                disabledBorder: border(_stroke(context)),
               ),
             ),
-          ),
-        ),
-        const SizedBox(width: 10),
-        const _NocturChatToggle(),
-        const SizedBox(width: 8),
-        _NocturIconBtn(
-          icon: Icons.arrow_upward_rounded,
-          accent: true,
-          onTap: _send,
-        ),
-      ],
-    );
+            const SizedBox(width: 10),
+            const _NocturChatToggle(),
+            const SizedBox(width: 8),
+            evsContextGauge(context, app),
+            const SizedBox(width: 8),
+            // Пока идёт ответ, кнопка становится «Остановить» — как в двух
+            // других стилях.
+            evsSendButton(
+              context,
+              hasContent: _input.text.trim().isNotEmpty,
+              busy: _sending,
+              onSend: _send,
+            ),
+          ],
+        );
   }
 
   @override
@@ -1832,13 +1910,16 @@ class _NocturChatToggle extends StatelessWidget {
    Таблица вместо карточек: фраза-триггер · действие · тип · отклик, а два
    глобальных правила (порог совпадения и подтверждение) закреплены внизу. */
 
-class _NocturCommandsTab extends StatefulWidget {
-  const _NocturCommandsTab();
+/// Экран голосовых команд. Живёт в этом файле по историческим причинам — сюда
+/// он был написан первым, — но к «Ноктюрну» не привязан: ни его вкладок, ни его
+/// геометрии внутри нет. «Призма» показывает этот же экран своей вкладкой.
+class EvsCommandsTab extends StatefulWidget {
+  const EvsCommandsTab({super.key});
   @override
-  State<_NocturCommandsTab> createState() => _NocturCommandsTabState();
+  State<EvsCommandsTab> createState() => EvsCommandsTabState();
 }
 
-class _NocturCommandsTabState extends State<_NocturCommandsTab> {
+class EvsCommandsTabState extends State<EvsCommandsTab> {
   final TextEditingController _search = TextEditingController();
   VoiceCommandType? _filter;
 
@@ -2401,13 +2482,15 @@ class _NocturButton extends StatelessWidget {
    Сами файлы читает EvsLogFeed (desktop_integration.dart) — тот же источник,
    что у страницы «Журнал» в настройках, которую открывает рейл Nexus. */
 
-class _NocturLogTab extends StatefulWidget {
-  const _NocturLogTab();
+/// Журнал работы. Тоже общий экран: те же файлы, тот же фильтр, тот же поиск
+/// во всех стилях, где он показан вкладкой.
+class EvsLogTab extends StatefulWidget {
+  const EvsLogTab({super.key});
   @override
-  State<_NocturLogTab> createState() => _NocturLogTabState();
+  State<EvsLogTab> createState() => EvsLogTabState();
 }
 
-class _NocturLogTabState extends State<_NocturLogTab> {
+class EvsLogTabState extends State<EvsLogTab> {
   final TextEditingController _search = TextEditingController();
   String _filter = 'all';
   List<EvsLogLine> _lines = const [];

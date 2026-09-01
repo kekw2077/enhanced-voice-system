@@ -43,7 +43,11 @@ class DesktopHome extends StatelessWidget {
     // «Ноктюрн» is a third shell of its own (noctur_shell.dart): tabs header,
     // full-window ring stage, telemetry strip.
     final style = context.select<AppState, AppStyle>((a) => a.appStyle);
-    final Widget shell = style == AppStyle.noctur
+    // «Призма» — четвёртая оболочка (prism_shell.dart): стекло, сетка точек и
+    // фон-аврора поверх того же набора функций.
+    final Widget shell = style == AppStyle.prism
+        ? const _PrismHome()
+        : style == AppStyle.noctur
         ? const _NocturHome()
         : style == AppStyle.nexus
         ? const _NexusHome()
@@ -90,28 +94,18 @@ class _DesktopSidebar extends StatelessWidget {
 
   void _openStudioFrom(BuildContext context, StudioMode mode) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => StudioPanel(mode: mode)),
+      MaterialPageRoute(
+          builder: (_) => mode == StudioMode.image
+              ? const LuminaStudio()
+              : StudioPanel(mode: mode)),
     );
   }
 
+  // Кнопка рейки — общая `evsIconButton`: свою держали все три оболочки, и
+  // вели они себя по-разному (где-то без подсказки, где-то без отклика).
   Widget _iconBtn(BuildContext context, IconData icon, VoidCallback onTap,
-      {String? tooltip}) {
-    final btn = InkResponse(
-      radius: 22,
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: _overlayFill(context, 0.042),
-          border: Border.all(color: _stroke(context)),
-        ),
-        child: Icon(icon, size: 15, color: _sub(context)),
-      ),
-    );
-    return tooltip == null ? btn : Tooltip(message: tooltip, child: btn);
-  }
+          {String? tooltip}) =>
+      evsIconButton(context, icon: icon, tooltip: tooltip, onTap: onTap);
 
   @override
   Widget build(BuildContext context) {
@@ -124,21 +118,32 @@ class _DesktopSidebar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Марка и кнопки — двумя строками, а не одной.
+            //
+            // Одной они не помещались: рейка шириной 264, пять кнопок с
+            // просветами занимают 202, поля съедают ещё 28 — на марку с
+            // подписью остаётся 34 при нужных ей 76. Flutter это и говорил
+            // красной полосой «RIGHT OVERFLOWED BY 44» поверх логотипа. Раньше
+            // пятой кнопкой был архив, теперь общее меню, но дело не в том,
+            // ЧТО пятое: одна строка была тесна с самого начала.
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 20, 14, 16),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(14, 20, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // The sidebar now reaches the top of the window, so its header
                   // doubles as the drag area (the window title bar sits only over
                   // the main content). Buttons stay outside the drag region.
-                  Expanded(
-                    child: DragToMoveArea(
-                      child: Row(
-                        children: [
-                          const _EvsLogoMark(),
-                          const SizedBox(width: 9),
-                          Text(
+                  DragToMoveArea(
+                    child: Row(
+                      children: [
+                        const _EvsLogoMark(),
+                        const SizedBox(width: 9),
+                        Expanded(
+                          child: Text(
                             'EVS',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w800,
@@ -146,29 +151,37 @@ class _DesktopSidebar extends StatelessWidget {
                               color: _txt(context),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  // Студия доступна из каждого стиля — в Nexus это две иконки
-                  // на рейке, в «Ноктюрне» две вкладки в шапке, здесь две
-                  // кнопки рядом с настройками.
-                  _iconBtn(context, Icons.image_outlined,
-                      () => _openStudioFrom(context, StudioMode.image),
-                      tooltip: app.t('navImages')),
-                  const SizedBox(width: 8),
-                  _iconBtn(context, Icons.record_voice_over_outlined,
-                      () => _openStudioFrom(context, StudioMode.speech),
-                      tooltip: app.t('navSpeech')),
-                  const SizedBox(width: 8),
-                  _iconBtn(context, Icons.settings_outlined,
-                      () => _openSettings(context),
-                      tooltip: app.t('settings')),
-                  const SizedBox(width: 8),
-                  _iconBtn(context, Icons.add, () {
-                    app.buzz();
-                    app.newChat();
-                  }, tooltip: app.t('newChat')),
+                  const SizedBox(height: 14),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Студия доступна из каждого стиля — в Nexus это две
+                      // иконки на рейке, в «Ноктюрне» две вкладки в шапке,
+                      // здесь две кнопки рядом с настройками.
+                      _iconBtn(context, Icons.image_outlined,
+                          () => _openStudioFrom(context, StudioMode.image),
+                          tooltip: app.t('navImages')),
+                      _iconBtn(context, Icons.record_voice_over_outlined,
+                          () => _openStudioFrom(context, StudioMode.speech),
+                          tooltip: app.t('navSpeech')),
+                      _iconBtn(context, Icons.settings_outlined,
+                          () => _openSettings(context),
+                          tooltip: app.t('settings')),
+                      // Здесь была отдельная кнопка архива. Архив никуда не
+                      // делся — он в общем меню, вместе с остальными
+                      // функциями, и теперь одинаково находится во всех трёх
+                      // стилях, а не только тут.
+                      const EvsMoreButton(),
+                      _iconBtn(context, Icons.add, () {
+                        app.buzz();
+                        app.newChat();
+                      }, tooltip: app.t('newChat')),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -275,25 +288,9 @@ class _DesktopSidebar extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Visible affordance for users who don't try right-click.
-                  Builder(
-                    builder: (btnCtx) => InkResponse(
-                      radius: 16,
-                      onTap: () {
-                        final box =
-                            btnCtx.findRenderObject() as RenderBox?;
-                        final pos = box != null
-                            ? box.localToGlobal(box.size.center(Offset.zero))
-                            : Offset.zero;
-                        showChatContextMenu(context, pos, c, app);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 4),
-                        child: Icon(Icons.more_vert,
-                            size: 16, color: _faint(context)),
-                      ),
-                    ),
-                  ),
+                  // Видимый способ добраться до меню строки — общий для всех
+                  // списков диалогов (см. `evsChatRowMenuButton`).
+                  evsChatRowMenuButton(context, c, app),
                 ],
               ),
             ),
@@ -314,6 +311,7 @@ Future<void> showChatContextMenu(
     if (v == 'rename') promptRenameChat(ctx, c, app);
     if (v == 'pin') app.togglePin(c);
     if (v == 'delete') deleteChatWithUndo(ctx, c, app);
+    if (v == 'archive') unawaited(_archiveChatFrom(ctx, c, app));
   }
 
   if (_isGlass(ctx)) {
@@ -323,6 +321,7 @@ Future<void> showChatContextMenu(
       items: [
         GlassMenuItem('rename', app.t('rename')),
         GlassMenuItem('pin', c.pinned ? app.t('unpin') : app.t('pin')),
+        GlassMenuItem('archive', app.t('archiveChat')),
         GlassMenuItem('delete', app.t('delete'), color: Colors.redAccent),
       ],
     );
@@ -348,6 +347,10 @@ Future<void> showChatContextMenu(
             style: TextStyle(color: _txt(ctx))),
       ),
       PopupMenuItem(
+        value: 'archive',
+        child: Text(app.t('archiveChat'), style: TextStyle(color: _txt(ctx))),
+      ),
+      PopupMenuItem(
         value: 'delete',
         child: Text(app.t('delete'),
             style: const TextStyle(color: Colors.redAccent)),
@@ -355,6 +358,117 @@ Future<void> showChatContextMenu(
     ],
   );
   handle(v);
+}
+
+// Список того, что лежит в архиве. Читается с диска при каждом открытии, а не
+// держится в памяти: заглядывают сюда редко, а лишний список, который надо
+// держать в согласии с диском, — источник рассинхрона на ровном месте.
+Future<void> showChatArchive(BuildContext ctx, AppState app) async {
+  await showDialog<void>(
+    context: ctx,
+    builder: (dialogCtx) => _ChatArchiveDialog(app: app),
+  );
+}
+
+class _ChatArchiveDialog extends StatefulWidget {
+  const _ChatArchiveDialog({required this.app});
+  final AppState app;
+
+  @override
+  State<_ChatArchiveDialog> createState() => _ChatArchiveDialogState();
+}
+
+class _ChatArchiveDialogState extends State<_ChatArchiveDialog> {
+  late Future<List<(String, String, DateTime, int)>> _items =
+      widget.app.listArchived();
+
+  void _reload() => setState(() => _items = widget.app.listArchived());
+
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    return AlertDialog(
+      backgroundColor: _card(context),
+      title: Text(app.t('archiveTitle'), style: TextStyle(color: _txt(context))),
+      content: SizedBox(
+        width: 460,
+        child: FutureBuilder<List<(String, String, DateTime, int)>>(
+          future: _items,
+          builder: (context, snap) {
+            if (!snap.hasData) {
+              return const SizedBox(
+                  height: 80,
+                  child: Center(child: CircularProgressIndicator()));
+            }
+            final list = snap.data!;
+            if (list.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 18),
+                child: Text(app.t('archiveEmpty'),
+                    style: TextStyle(color: _sub(context))),
+              );
+            }
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 380),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: list.length,
+                itemBuilder: (context, i) {
+                  final (id, title, at, count) = list[i];
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(title.isEmpty ? id : title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: _txt(context), fontSize: 13.5)),
+                    subtitle: Text(
+                        '${at.day}.${at.month}.${at.year} · $count ${app.t('archiveMsgs')}',
+                        style: TextStyle(color: _faint(context), fontSize: 11.5)),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      TextButton(
+                        onPressed: () async {
+                          final ok = await app.restoreArchived(id);
+                          if (!context.mounted) return;
+                          if (ok) Navigator.of(context).pop();
+                        },
+                        child: Text(app.t('archiveRestore')),
+                      ),
+                      IconButton(
+                        tooltip: app.t('delete'),
+                        icon: const Icon(Icons.delete_outline,
+                            size: 18, color: Colors.redAccent),
+                        onPressed: () async {
+                          await app.deleteArchived(id);
+                          _reload();
+                        },
+                      ),
+                    ]),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(app.t('close')),
+        ),
+      ],
+    );
+  }
+}
+
+// Убрать чат в архив: он уезжает файлом на диск и пропадает из списка. В
+// отличие от удаления, возвращается целиком — поэтому подтверждения не просим,
+// но о том, где его искать, сообщаем сразу.
+Future<void> _archiveChatFrom(
+    BuildContext ctx, Conversation c, AppState app) async {
+  final ok = await app.archiveChat(c);
+  if (!ctx.mounted) return;
+  showAppSnackBar(ctx, ok ? app.t('archiveDone') : app.t('archiveFailed'));
 }
 
 // Delete a chat but offer a few seconds to undo (deletes are otherwise
@@ -947,8 +1061,14 @@ class _NexusRail extends StatelessWidget {
   // поверх окна. Отдельного механизма «панель во весь экран» в проекте нет, и
   // заводить его ради двух кнопок незачем.
   void _openStudio(BuildContext context, StudioMode mode) {
+    // Картинки открываются в «Nexus Lumina» — том же наборе функций в
+    // раскладке с рейкой и панелью настроек; озвучка осталась в прежнем
+    // окне, ей эта раскладка ни к чему.
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => StudioPanel(mode: mode)),
+      MaterialPageRoute(
+          builder: (_) => mode == StudioMode.image
+              ? const LuminaStudio()
+              : StudioPanel(mode: mode)),
     );
   }
 
@@ -1001,12 +1121,15 @@ class _NexusRail extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             // Inside settings the "Диалог" icon leads back to the home view;
-            // on the home view it opens the conversations switcher.
+            // on the home view it opens the conversations switcher — то же
+            // окно списка диалогов, что и в двух других стилях. Раньше это был
+            // выдвижной ящик с `ConversationsSheet`: четвёртый по счёту список
+            // чатов в приложении, со своим набором действий над строкой.
             _navIcon(context, Icons.forum_outlined, app.t('nxNavDialog'),
                 active: onSection == null,
                 onTap: () => onSection != null
                     ? Navigator.of(context).maybePop()
-                    : Scaffold.of(context).openDrawer()),
+                    : unawaited(showEvsChatsDialog(context, app))),
             // Здесь были «Команды», «Модели» и «Журнал». Все три открывали
             // страницы настроек — то же самое делает кнопка «Настройки» внизу
             // этой же рейки, то есть место занимали дубликаты. «Диалог» выше
@@ -1017,6 +1140,12 @@ class _NexusRail extends StatelessWidget {
                 app.t('navSpeech'),
                 onTap: () => _openStudio(context, StudioMode.speech)),
             const Spacer(),
+            // Остальные функции — общим меню, тем же, что в двух других стилях.
+            EvsMoreButton(
+              builder: (ctx, open) => _navIcon(
+                  ctx, Icons.more_horiz, ctx.read<AppState>().t('evsMore'),
+                  onTap: open),
+            ),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
                 active: activePage != null &&
                     !_inGroup(_Pages.cmdExec) &&
@@ -1238,7 +1367,6 @@ class _NexusSubsystemCards extends StatelessWidget {
         sc.ttsStatus,
         sc.deviceStatus,
         sc.gpuInfo,
-        sc.gameModeStatus,
         SystemMonitor.instance.stats,
       ]),
       builder: (context, _) {
@@ -1351,22 +1479,7 @@ class _NexusSubsystemCards extends StatelessWidget {
 
   Widget _ttsCard(
       BuildContext c, AppState app, SidecarClient sc, NexusPipeline pipe) {
-    final String engine;
-    final String sub;
-    if (app.cloneEnabled) {
-      engine = app.t('nxTtsClone');
-      sub = 'XTTS';
-    } else if (app.ttsEngineChoice == 'cosyvoice') {
-      engine = 'CosyVoice';
-      sub =
-          (app.cosyvoiceOnline ?? false) ? app.t('nxOnline') : app.t('nxOffline');
-    } else if (app.ttsPiperVoice.isEmpty) {
-      engine = app.t('nxTtsSystem');
-      sub = 'pyttsx3';
-    } else {
-      engine = 'Piper · ${_voiceName(app.ttsPiperVoice)}';
-      sub = 'ru_RU · 22 кГц';
-    }
+    final (engine, sub) = evsTtsEngineLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
     // Cosyvoice health only gates the dot when cosyvoice is the engine actually
     // in use — a clone (XTTS) override makes cosyvoice reachability irrelevant.
@@ -1384,27 +1497,10 @@ class _NexusSubsystemCards extends StatelessWidget {
         body: _valSub(c, engine, sub));
   }
 
-  String _voiceName(String id) {
-    const m = {
-      'irina': 'Ирина',
-      'denis': 'Денис',
-      'dmitri': 'Дмитрий',
-      'ruslan': 'Руслан',
-    };
-    for (final e in m.entries) {
-      if (id.contains(e.key)) return e.value;
-    }
-    final s = id
-        .replaceAll('ru_RU-', '')
-        .replaceAll('-medium', '')
-        .replaceAll('-low', '');
-    return s.isEmpty ? id : s;
-  }
-
   Widget _llmCard(BuildContext c, AppState app, NexusPipeline pipe) {
     final local = app.isLocalModel(app.selectedModel);
     final model =
-        app.selectedModel.isEmpty ? '—' : _shortModel(app.selectedModel);
+        app.selectedModel.isEmpty ? '—' : evsShortModel(app.selectedModel);
     final String mode;
     if (local) {
       mode = 'on-device · fllama';
@@ -1427,32 +1523,20 @@ class _NexusSubsystemCards extends StatelessWidget {
         body: _valSub(c, model, mode));
   }
 
-  String _shortModel(String m) {
-    var s = m.replaceFirst('local:', '');
-    if (s.contains('/')) s = s.split('/').last;
-    return s;
-  }
-
   String _host(String url) => url
       .replaceFirst(RegExp(r'^https?://'), '')
       .replaceFirst(RegExp(r'/.*$'), '');
 
   Widget _systemCard(BuildContext c, AppState app, SidecarClient sc) {
-    final (offload, reason) = sc.gameModeStatus.value;
     final gpu = sc.gpuInfo.value;
     final hasVram = gpu.$1 && gpu.$3 > 0;
     final vramFrac = hasVram ? (gpu.$4 / gpu.$3).clamp(0.0, 1.0) : 0.0;
     final s = SystemMonitor.instance.stats.value;
     final active = s.totalRamBytes > 0;
-    final tip = offload
-        ? (reason == 'vram'
-            ? app.t('gmReasonVram')
-            : app.t('gmReasonFullscreen'))
-        : (hasVram ? gpu.$2 : '');
+    final tip = hasVram ? gpu.$2 : '';
     return _shell(c,
-        label: offload ? app.t('gmOffloadBadge') : app.t('nxSystem'),
-        dot: offload ? _warn(c) : _success(c),
-        keyColor: offload ? _warn(c) : null,
+        label: app.t('nxSystem'),
+        dot: _success(c),
         tooltip: tip.isEmpty ? null : tip,
         onTap: () => _open(c, _Pages.voiceClone),
         body: Column(
@@ -1555,13 +1639,8 @@ class _NexusHomeState extends State<_NexusHome> {
     context.select<AppState, AppThemeMode>((a) => a.themeMode);
     return Scaffold(
       backgroundColor: _bg(context),
-      drawerEdgeDragWidth: 24,
-      drawer: const Drawer(
-        width: 320,
-        backgroundColor: Colors.transparent,
-        shape: RoundedRectangleBorder(),
-        child: ConversationsSheet(embedded: true),
-      ),
+      // Выдвижного ящика со списком диалогов здесь больше нет: список один на
+      // всё приложение — `EvsChatsDialog`, его открывает «Диалог» на рейке.
       body: Container(
         decoration: _evsShellBg(context),
         // Rail spans the full window height; the title bar sits over the whole
@@ -1581,7 +1660,9 @@ class _NexusHomeState extends State<_NexusHome> {
                     child: Row(
                       children: [
                         Expanded(child: _NexusStage()),
-                        SizedBox(width: 360, child: _NexusChatColumn()),
+                        // Тянущийся край между главным экраном и диалогом.
+                        _NexusChatGrip(),
+                        _NexusChatPane(),
                       ],
                     ),
                   ),
@@ -1608,10 +1689,25 @@ class _NexusChatColumn extends StatefulWidget {
 class _NexusChatColumnState extends State<_NexusChatColumn> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
+  // Вернулись в поле ввода — значит собираемся писать, а не читать историю:
+  // отматываем к последнему сообщению.
+  final _inputFocus = FocusNode();
   bool _sending = false;
+
+  void _onInputFocus() {
+    if (_inputFocus.hasFocus) _scrollDown();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _inputFocus.addListener(_onInputFocus);
+  }
 
   @override
   void dispose() {
+    _inputFocus.removeListener(_onInputFocus);
+    _inputFocus.dispose();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();
@@ -1621,14 +1717,6 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
 
   // Trim provider/path noise for the meta line: 'ollama/qwen3:4b' → 'qwen3:4b',
   // 'local:.../model.gguf' → 'model.gguf'.
-  String _shortModel(String m) {
-    if (m.isEmpty) return '—';
-    var s = m.replaceFirst('local:', '');
-    if (s.contains('/')) s = s.split('/').last;
-    if (s.contains('\\')) s = s.split('\\').last;
-    return s;
-  }
-
   Future<void> _send() async {
     final app = context.read<AppState>();
     final text = _controller.text.trim();
@@ -1640,6 +1728,8 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
     app.buzz();
     _controller.clear();
     setState(() => _sending = true);
+    // Отматываем сразу: своя реплика уже в списке, ждать ответа незачем.
+    _scrollDown();
     await app.sendMessage(text);
     if (!mounted) return;
     setState(() => _sending = false);
@@ -1661,20 +1751,90 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: _stroke(context))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(app.t('nxNavDialog'),
-              style: EvsType.label.copyWith(fontSize: 14, color: _txt(context))),
-          Text('${app.t('nxToday')} · ${_two(now.hour)}:${_two(now.minute)}',
-              style:
-                  EvsType.caption.copyWith(fontSize: 11.5, color: _faint(context))),
+          Row(
+            children: [
+              Text(app.t('nxNavDialog'),
+                  style: EvsType.label
+                      .copyWith(fontSize: 14, color: _txt(context))),
+              const Spacer(),
+              Text('${app.t('nxToday')} · ${_two(now.hour)}:${_two(now.minute)}',
+                  style: EvsType.caption
+                      .copyWith(fontSize: 11.5, color: _faint(context))),
+              const SizedBox(width: 6),
+              // Список диалогов и новый диалог. В «Ноктюрне» это отдельная
+              // колонка, здесь — две кнопки в шапке: колонка отобрала бы у
+              // переписки половину и без того узкой ширины.
+              IconButton(
+                tooltip: app.t('nxChats'),
+                visualDensity: VisualDensity.compact,
+                icon:
+                    Icon(Icons.forum_outlined, size: 16, color: _faint(context)),
+                onPressed: () => unawaited(showEvsChatsDialog(context, app)),
+              ),
+              IconButton(
+                tooltip: app.t('newChat'),
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.add_comment_outlined,
+                    size: 16, color: _faint(context)),
+                onPressed: app.newChat,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Модель диалога — здесь же, а не только в настройках: сменить её на
+          // ходу можно в любом стиле, как в классической шапке чата.
+          Align(alignment: Alignment.centerLeft, child: evsModelPill(context)),
         ],
       ),
     );
   }
 
+  // Реплика в общей рамке: правый клик — меню, снизу — полоса действий
+  // (копировать · править · перегенерировать · продолжить · удалить). Раньше
+  // всё это было только в классическом чате.
   Widget _bubble(BuildContext context, AppState app, ChatMessage m, bool isLast) {
+    final conv = app.current;
+    final body = _bubbleBody(context, app, m, isLast);
+    if (conv == null) return body;
+    final waiting = app.isGenerating && isLast && m.content.trim().isEmpty;
+    return Align(
+      alignment: m.role == 'user'
+          ? Alignment.centerRight
+          : Alignment.centerLeft,
+      child: EvsMessageFrame(
+        conversation: conv,
+        message: m,
+        isLast: isLast,
+        alignEnd: m.role == 'user',
+        actions: !waiting,
+        onCompose: (text) {
+          _controller.text = text;
+          _inputFocus.requestFocus();
+        },
+        onRegenerate: () {
+          app.buzz();
+          setState(() => _sending = true);
+          unawaited(app.regenerateLastReply(conv).whenComplete(() {
+            if (mounted) setState(() => _sending = false);
+          }));
+        },
+        onContinue: () {
+          app.buzz();
+          setState(() => _sending = true);
+          unawaited(app.continueReply(conv).whenComplete(() {
+            if (mounted) setState(() => _sending = false);
+          }));
+        },
+        child: body,
+      ),
+    );
+  }
+
+  Widget _bubbleBody(
+      BuildContext context, AppState app, ChatMessage m, bool isLast) {
     if (m.role == 'user') {
       return Align(
         alignment: Alignment.centerRight,
@@ -1711,36 +1871,29 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(waiting ? '· · ·' : m.content,
-              style: EvsType.body.copyWith(
-                  fontSize: 13.5,
-                  color: waiting ? _faint(context) : _txt(context))),
+          // Ход рассуждения — над ответом и свёрнутым.
+          if (m.thinking.trim().isNotEmpty)
+            EvsThinkingBlock(text: m.thinking, live: m.content.trim().isEmpty),
+          if (waiting)
+            // Слово и значок метка выбирает сама. Заголовок блока рассуждения
+            // над ней уже говорит «Думает…» — повторять это второй раз было бы
+            // не сообщением, а эхом.
+            const EvsShimmerLabel()
+          else
+            EvsTypingText(m.content,
+                style: EvsType.body
+                    .copyWith(fontSize: 13.5, color: _txt(context))),
           if (!waiting)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                '${_two(m.time.hour)}:${_two(m.time.minute)} · ${_shortModel(app.selectedModel)}',
+                '${_two(m.time.hour)}:${_two(m.time.minute)} · '
+                '${app.selectedModel.isEmpty ? '—' : evsShortModel(app.selectedModel)}',
                 style: EvsType.caption
                     .copyWith(fontSize: 10.5, color: _faint(context)),
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _iconBtn(BuildContext context, IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: _overlayFill(context, 0.05),
-          border: Border.all(color: _stroke(context)),
-        ),
-        child: Icon(icon, size: 18, color: _sub(context)),
       ),
     );
   }
@@ -1785,7 +1938,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
       );
     }
     final loading = app.isModelLoading;
-    final busy = _sending || app.isGenerating || loading;
+    final busy = _sending || loading;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
@@ -1794,56 +1947,56 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
       child: Row(
         children: [
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: _overlayFill(context, 0.05),
-                border: Border.all(color: _stroke(context)),
-              ),
-              child: TextField(
-                controller: _controller,
-                enabled: !loading,
-                minLines: 1,
-                maxLines: 4,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _send(),
-                style:
-                    EvsType.body.copyWith(fontSize: 13, color: _txt(context)),
-                decoration: InputDecoration(
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 11),
-                  border: InputBorder.none,
-                  hintText:
-                      loading ? app.t('preparingModel') : app.t('nxChatHint'),
-                  hintStyle: TextStyle(color: _faint(context), fontSize: 13),
+            // Поле постоянной высоты: с растущим по мере набора (minLines/
+            // maxLines) вся строка поднималась и опускалась под курсором, а в
+            // узкой колонке даже подсказка переносилась на вторую строку и
+            // двигала кнопки. Столько же — 42 — у «Ноктюрна».
+            child: SizedBox(
+              height: 42,
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: _overlayFill(context, 0.05),
+                  border: Border.all(color: _stroke(context)),
+                ),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _inputFocus,
+                  enabled: !loading,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  // Кнопка отправки загорается по мере набора — как в
+                  // классическом чате.
+                  onChanged: (_) => setState(() {}),
+                  style:
+                      EvsType.body.copyWith(fontSize: 13, color: _txt(context)),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 11),
+                    border: InputBorder.none,
+                    hintText:
+                        loading ? app.t('preparingModel') : app.t('nxChatHint'),
+                    hintStyle: TextStyle(color: _faint(context), fontSize: 13),
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 9),
-          // Send is locked while a reply generates / the model loads — the busy
-          // spinner replaces the button so no second message can be fired off,
-          // matching the classic chat's behaviour.
-          busy
-              ? Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: _overlayFill(context, 0.05),
-                    border: Border.all(color: _stroke(context)),
-                  ),
-                  child: Center(
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: _sub(context)),
-                    ),
-                  ),
-                )
-              : _iconBtn(context, Icons.send_rounded, _send),
+          // Отправить · остановить · подождать — общая кнопка. Пока идёт
+          // ответ, она становится «Остановить»: раньше остановить генерацию
+          // можно было только в классическом стиле и только в ролевой игре.
+          evsSendButton(
+            context,
+            hasContent: _controller.text.trim().isNotEmpty,
+            busy: busy,
+            onSend: _send,
+          ),
+          // Кольцо контекста стоит вплотную к отправке намеренно: решение
+          // «не пора ли сжать» принимается ровно в момент отправки.
+          const SizedBox(width: 9),
+          evsContextGauge(context, app),
           const SizedBox(width: 9),
           _chatToggleBtn(context, app),
         ],
@@ -1854,38 +2007,10 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
   // Chat on/off, in the slot the mic button used to occupy (the mic listens
   // continuously, so a push-to-talk button there was redundant). Off = the
   // assistant only takes voice commands.
-  Widget _chatToggleBtn(BuildContext context, AppState app) {
-    final on = app.chatEnabled;
-    return Tooltip(
-      message: on ? app.t('chatToggleOff') : app.t('chatToggleOn'),
-      child: GestureDetector(
-        onTap: () {
-          app.buzz();
-          app.setChatEnabled(!on);
-        },
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: on ? null : _overlayFill(context, 0.05),
-            border: on ? null : Border.all(color: _stroke(context)),
-            gradient: on
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [_accent(context), _accent2(context)],
-                  )
-                : null,
-          ),
-          child: Icon(
-              on ? Icons.chat_bubble_outline : Icons.speaker_notes_off_outlined,
-              size: 18,
-              color: on ? Colors.white : _sub(context)),
-        ),
-      ),
-    );
-  }
+  // Тумблер чата — общий (`evsChatToggleButton`): своя копия была здесь и в
+  // «Ноктюрне», а в классическом стиле её не было вовсе.
+  Widget _chatToggleBtn(BuildContext context, AppState app) =>
+      evsChatToggleButton(context);
 
   Widget _empty(BuildContext context, AppState app) {
     return Center(
@@ -1929,6 +2054,76 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
           ),
           _inputRow(context, app),
         ],
+      ),
+    );
+  }
+}
+
+// Список диалогов для стиля «Nexus» здесь больше не живёт: их было три —
+// колонка «Ноктюрна», это окно и выдвижной ящик `ConversationsSheet`, и
+// каждый умел своё. Остался один общий — `EvsChatsDialog` в
+// shell_common.dart, с поиском и полным набором действий над строкой.
+
+// Колонка диалога своей ширины. Отдельным виджетом, потому что вся раскладка
+// вокруг — `const`: следить за настройкой должен тот, кому она нужна, а не всё
+// дерево целиком.
+class _NexusChatPane extends StatelessWidget {
+  const _NexusChatPane();
+
+  @override
+  Widget build(BuildContext context) {
+    final w = context.select<AppState, double>((a) => a.nexusChatWidth);
+    return SizedBox(width: w, child: const _NexusChatColumn());
+  }
+}
+
+// Тянущийся край между главным экраном и колонкой диалога.
+//
+// Ширину колонки хранит настройка, а не только это окно: раскладка — часть
+// рабочей обстановки, и заново растягивать её после каждого запуска было бы
+// той же досадой, что и заново выбирать модель.
+class _NexusChatGrip extends StatefulWidget {
+  const _NexusChatGrip();
+
+  @override
+  State<_NexusChatGrip> createState() => _NexusChatGripState();
+}
+
+class _NexusChatGripState extends State<_NexusChatGrip> {
+  bool _hover = false;
+  bool _drag = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    final lit = _hover || _drag;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragStart: (_) => setState(() => _drag = true),
+        onHorizontalDragEnd: (_) => setState(() => _drag = false),
+        onHorizontalDragCancel: () => setState(() => _drag = false),
+        // Тянем влево — колонка шире: край принадлежит ей, а не главному экрану.
+        onHorizontalDragUpdate: (d) =>
+            app.setNexusChatWidth(app.nexusChatWidth - d.delta.dx),
+        // Полоса шире того, что видно: попасть в три пикселя мышью трудно, а
+        // видеть широкую черту между колонками незачем.
+        child: SizedBox(
+          width: 9,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              width: lit ? 3 : 1,
+              decoration: BoxDecoration(
+                color: lit ? _accent(context) : _stroke(context),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

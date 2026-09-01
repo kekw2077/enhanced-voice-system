@@ -286,6 +286,10 @@ class VoiceCommand {
   // Музыку". Only spoken when voice responses are enabled. Empty = say the
   // generic "done" line instead.
   String speakPhrase;
+  // Сочинённые моделью варианты того же ответа. Нужны, чтобы помощник не
+  // повторял одну заготовку слово в слово; сочиняются ЗАРАНЕЕ и попадают в ту
+  // же предварительную озвучку, что и `speakPhrase`, — поэтому звучат мгновенно.
+  List<String> speakVariants;
   // Parametric fields for VoiceCommandType.appVolume (new-features Ф2). `value`
   // holds the app's display name; `process` the audio-session exe. `phrase` is
   // a template with {N} (e.g. "громкость на {N}"). action is one of
@@ -300,17 +304,24 @@ class VoiceCommand {
   // single UAC consent) so admin-only apps start without the confirmation
   // window. See CommandExecutor.ensureElevatedTask.
   bool elevated;
+  // Команда в каталоге, но выключена: сопоставитель фраз её пропускает
+  // (см. _matchCommand). Отдельное поле, а не удаление, потому что выключить
+  // на время и потерять настройку — разные вещи; в макете это тумблер в
+  // строке каталога.
+  bool enabled;
   VoiceCommand({
     required this.phrase,
     required this.type,
     required this.value,
     this.speakPhrase = '',
+    this.speakVariants = const [],
     this.process = '',
     this.action = 'set',
     this.defaultValue,
     this.argMin = 0,
     this.argMax = 100,
     this.elevated = false,
+    this.enabled = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -318,7 +329,11 @@ class VoiceCommand {
         'type': type.name,
         'value': value,
         if (speakPhrase.isNotEmpty) 'speak': speakPhrase,
+        if (speakVariants.isNotEmpty) 'speakVars': speakVariants,
         if (elevated) 'elevated': true,
+        // Пишем только выключенные: у всех уже сохранённых команд ключа нет,
+        // и файл настроек остаётся совместимым со старыми сборками.
+        if (!enabled) 'off': true,
         if (type == VoiceCommandType.appVolume) ...{
           'process': process,
           'action': action,
@@ -336,7 +351,13 @@ class VoiceCommand {
         ),
         value: j['value'] as String? ?? '',
         speakPhrase: j['speak'] as String? ?? '',
+        speakVariants: (j['speakVars'] as List?)
+                ?.map((e) => e.toString())
+                .where((e) => e.trim().isNotEmpty)
+                .toList() ??
+            const [],
         elevated: j['elevated'] == true,
+        enabled: j['off'] != true,
         process: j['process'] as String? ?? '',
         action: j['action'] as String? ?? 'set',
         defaultValue: (j['default'] as num?)?.toInt(),

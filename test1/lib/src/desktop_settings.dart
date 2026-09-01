@@ -432,8 +432,17 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final accent = Color(app.vizAccent);
-    return Padding(
+    final prism = _isPrism(context);
+    return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      // В «Призме» превью — карточка на подложке поля, как в макете.
+      decoration: prism
+          ? BoxDecoration(
+              color: _prismField(context),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _stroke(context)),
+            )
+          : null,
       child: Column(children: [
         SizedBox(
           height: 230,
@@ -441,6 +450,13 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
             child: ValueListenableBuilder<double>(
               valueListenable: _lvl,
               builder: (_, lv, __) {
+                if (app.vizType == 'prismorb') {
+                  // Состояние берётся из переключателя под превью, а не из
+                  // конвейера: в настройках ассистент молчит, и шар иначе
+                  // стоял бы серым, что бы ни нажимали.
+                  return PrismOrb(
+                      size: 210, showMic: false, stage: _preview);
+                }
                 switch (app.vizType) {
                   case 'waves':
                     return const EvsRingViz(size: 200);
@@ -531,32 +547,48 @@ class _VizStyleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // «Призма»: плитка из макета — превью 50px в скруглении 11, подпись под
+    // ним по центру, выбранная обведена акцентом и залита мягко.
+    final prism = _isPrism(context);
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        width: 148,
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        width: prism ? 152 : 148,
+        padding: EdgeInsets.all(prism ? 11 : 0)
+            .add(prism
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(vertical: 14)),
         decoration: BoxDecoration(
           color: selected
-              ? _accent(context).withValues(alpha: 0.1)
-              : _overlayFill(context, 0.03),
-          borderRadius: BorderRadius.circular(14),
+              ? (prism
+                  ? _prismAccentSoft(context)
+                  : _accent(context).withValues(alpha: 0.1))
+              : (prism ? _prismField(context) : _overlayFill(context, 0.03)),
+          borderRadius: BorderRadius.circular(prism ? 16 : 14),
           border: Border.all(
-            color: selected ? accent : _stroke(context),
-            width: selected ? 1.5 : 1,
+            color: selected
+                ? (prism ? _ramp(context).a2 : accent)
+                : _stroke(context),
+            width: selected && !prism ? 1.5 : 1,
           ),
         ),
         child: Column(children: [
-          SizedBox(height: 56, child: Center(child: preview)),
-          const SizedBox(height: 10),
+          SizedBox(
+            height: prism ? 50 : 56,
+            child: Center(child: preview),
+          ),
+          SizedBox(height: prism ? 9 : 10),
           Text(label,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: prism ? 12 : 12.5,
+                  fontWeight: prism
+                      ? FontWeight.w600
+                      : (selected ? FontWeight.w700 : FontWeight.w500),
                   color: selected
-                      ? _body(context)
-                      : _sectionLabel(context))),
+                      ? (prism ? _txt(context) : _body(context))
+                      : (prism ? _sub(context) : _sectionLabel(context)))),
         ]),
       ),
     );
@@ -654,14 +686,13 @@ class _DeviceSelector extends StatelessWidget {
     final sc = SidecarClient.instance;
     return AnimatedBuilder(
       animation: Listenable.merge(
-          [sc.gpuInfo, sc.engineGpu, sc.deviceStatus, sc.gameModeStatus]),
+          [sc.gpuInfo, sc.engineGpu, sc.deviceStatus]),
       builder: (context, _) {
         final gpu = sc.gpuInfo.value; // (available, name, ...)
         final supported = sc.engineGpu.value[engine] == true;
         if (!gpu.$1 || !supported) return const SizedBox.shrink();
         final name = gpu.$2;
         final ds = sc.deviceStatus.value;
-        final offloaded = sc.gameModeStatus.value.$1;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -680,14 +711,7 @@ class _DeviceSelector extends StatelessWidget {
             const SizedBox(height: 4),
             Text(app.t(hintKey),
                 style: TextStyle(color: _faint(context), fontSize: 11)),
-            if (offloaded)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(app.t('gmOffloadActive'),
-                    style: const TextStyle(
-                        color: Color(0xFFF0A030), fontSize: 11)),
-              )
-            else if (ds != null && ds.$3)
+            if (ds != null && ds.$3)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(app.t('deviceFellBack'),
@@ -1023,19 +1047,29 @@ class _RemoteSttFieldsState extends State<_RemoteSttFields> {
       });
       return;
     }
+    final sc = SidecarClient.instance;
+    // Спрашивает сервер не приложение, а сайдкар. Если он не подключён,
+    // отвечать некому — и сказать это надо сразу, а не через пятнадцать секунд
+    // ожидания ответа, которого не будет.
+    if (sc.status.value != SidecarStatus.connected) {
+      setState(() {
+        _ok = false;
+        _verdict = app.t('engRemoteNoSidecar');
+      });
+      return;
+    }
     setState(() {
       _checking = true;
       _verdict = '';
     });
-    final sc = SidecarClient.instance;
+    // Ждём именно события пробы (`sttProbe`), а не смены `engineStatus`:
+    // у ValueNotifier повторное присвоение того же значения молчит, и удачная
+    // проверка живого сервера — всегда одно и то же `('remote','ready',null)` —
+    // до этого выпадала в таймаут с вердиктом «спросить некого».
     final done = Completer<(String, String?)>();
-    void listener() {
-      final st = sc.engineStatus.value;
-      if (st == null || st.$1 != 'remote') return;
-      if (!done.isCompleted) done.complete((st.$2, st.$3));
-    }
-
-    sc.engineStatus.addListener(listener);
+    final sub = sc.sttProbe.listen((r) {
+      if (!done.isCompleted) done.complete(r);
+    });
     try {
       await app.checkSttRemote();
       final r = await done.future.timeout(const Duration(seconds: 15));
@@ -1048,13 +1082,14 @@ class _RemoteSttFieldsState extends State<_RemoteSttFields> {
       });
     } catch (_) {
       if (!mounted) return;
-      // Сайдкар не ответил вовсе — это не «сервер офлайн», а «спросить некого».
+      // Сайдкар был на связи, но за пятнадцать секунд не ответил — это уже про
+      // него, а не про сервер.
       setState(() {
         _ok = false;
         _verdict = app.t('engRemoteNoSidecar');
       });
     } finally {
-      sc.engineStatus.removeListener(listener);
+      unawaited(sub.cancel());
       if (mounted) setState(() => _checking = false);
     }
   }
@@ -1985,181 +2020,6 @@ class _MultiMicCardState extends State<_MultiMicCard> {
     );
   }
 }
-
-// TZ2 block 7: game / heavy-GPU mode settings + live "GPU offload" badge.
-// Hidden entirely when no GPU is detected (there's nothing to offload).
-class _GameModeCard extends StatelessWidget {
-  final AppState app;
-  const _GameModeCard(this.app);
-
-  Future<void> _addExclusion(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (_) => _AppDialog(
-        backgroundColor: _card(context),
-        title: Text(app.t('gmExclAdd'), style: TextStyle(color: _txt(context))),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: _txt(context)),
-          decoration: const InputDecoration(hintText: 'game.exe'),
-          onSubmitted: (v) => Navigator.pop(context, v),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: Text(app.t('cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, ctrl.text),
-              child: Text(app.t('mdlAdd'))),
-        ],
-      ),
-    );
-    final n = (name ?? '').trim().toLowerCase();
-    if (n.isNotEmpty && !app.gameModeExclusions.contains(n)) {
-      app.setGameModeExclusions([...app.gameModeExclusions, n]);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sc = SidecarClient.instance;
-    return AnimatedBuilder(
-      animation: Listenable.merge([sc.gpuInfo, sc.gameModeStatus]),
-      builder: (context, _) {
-        if (!sc.gpuInfo.value.$1) return const SizedBox.shrink();
-        final (active, reason) = sc.gameModeStatus.value;
-        return evsCard(
-          context,
-          icon: Icons.sports_esports_outlined,
-          title: app.t('cardGameMode'),
-          rows: [
-            if (active)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 2),
-                child: Row(children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                        color: const Color(0x22F0A030),
-                        borderRadius: BorderRadius.circular(8)),
-                    child: Text(app.t('gmOffloadBadge'),
-                        style: const TextStyle(
-                            color: Color(0xFFF0A030),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600)),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                      reason == 'vram'
-                          ? app.t('gmReasonVram')
-                          : app.t('gmReasonFullscreen'),
-                      style: TextStyle(
-                          color: _sub(context), fontSize: 11)),
-                ]),
-              ),
-            evsRow(context, 
-              label: app.t('gmFullscreen'),
-              desc: app.t('gmFullscreenDesc'),
-              control: evsToggle(context, 
-                  app.gameModeFullscreen, (v) => app.setGameModeFullscreen(v)),
-            ),
-            evsRow(context, 
-              label: app.t('gmVram'),
-              desc: app.t('gmVramDesc'),
-              control: evsToggle(context, app.gameModeVram, (v) => app.setGameModeVram(v)),
-            ),
-            if (app.gameModeVram) ...[
-              evsRow(context, 
-                label: app.t('gmVramEnter'),
-                control: evsSlider(context, 
-                  value: app.gameModeVramEnter.clamp(50, 99),
-                  min: 50,
-                  max: 99,
-                  divisions: 49,
-                  label: '${app.gameModeVramEnter.round()}%',
-                  onChanged: (v) => app.setGameModeVramThresholds(
-                      v, app.gameModeVramExit),
-                ),
-              ),
-              evsRow(context, 
-                label: app.t('gmVramExit'),
-                control: evsSlider(context, 
-                  value: app.gameModeVramExit
-                      .clamp(30, app.gameModeVramEnter - 5),
-                  min: 30,
-                  max: 94,
-                  divisions: 64,
-                  label: '${app.gameModeVramExit.round()}%',
-                  onChanged: (v) => app.setGameModeVramThresholds(
-                      app.gameModeVramEnter, v),
-                ),
-              ),
-            ],
-            evsRow(context, 
-              label: app.t('gmNotify'),
-              desc: app.t('gmNotifyDesc'),
-              control:
-                  evsToggle(context, app.gameModeNotify, (v) => app.setGameModeNotify(v)),
-            ),
-            evsRow(context, 
-              stacked: true,
-              label: app.t('gmExclusions'),
-              desc: app.t('gmExclusionsDesc'),
-              control: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (app.gameModeExclusions.isNotEmpty)
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final ex in app.gameModeExclusions)
-                          Chip(
-                            label: Text(ex,
-                                style: const TextStyle(fontSize: 12)),
-                            onDeleted: () => app.setGameModeExclusions(app
-                                .gameModeExclusions
-                                .where((e) => e != ex)
-                                .toList()),
-                          ),
-                      ],
-                    ),
-                  const SizedBox(height: 6),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.add, size: 16),
-                      label: Text(app.t('gmExclAdd')),
-                      onPressed: () => _addExclusion(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Settings navigation — two levels: group -> page.
-//
-// The panel used to be ten flat sections, each one long scroll. "Голос
-// ассистента" alone stacked the engine picker, the whole clone block, the
-// GPU-load knobs, the interpreter and five FX sliders into ONE card — and a
-// card cannot be split across masonry columns, so that column ran several
-// screens deep while the others ended after two cards. Every group is now cut
-// into short pages: one screen = one topic.
-//
-// Pages are addressed by a stable string id, never by position. The numeric
-// section indexes the Nexus rail passed around silently started pointing at
-// the wrong screen every time a section was split (the LLM and System
-// subsystem cards opened "Телефоны" instead of the model settings).
 class _Pages {
   static const basics = 'general.basics';
   static const startup = 'general.startup';
@@ -2198,66 +2058,70 @@ class _NavPage {
 
 class _NavGroup {
   final IconData icon;
+
+  /// Контур того же раздела из макета — рисуется в «Призме» вместо
+  /// Material-иконки (см. [PrismIcons]). Три остальные оболочки берут [icon].
+  final String d;
   final String titleKey;
   final String subKey;
   final List<_NavPage> pages;
-  const _NavGroup(this.icon, this.titleKey, this.subKey, this.pages);
+  const _NavGroup(this.icon, this.d, this.titleKey, this.subKey, this.pages);
   // A one-page group needs no second level: the rail row IS the destination.
   bool get single => pages.length == 1;
 }
 
 const List<_NavGroup> _kNav = [
-  _NavGroup(Icons.settings_outlined, 'navGeneral', 'navGeneralSub', [
+  _NavGroup(Icons.settings_outlined, PrismIcons.general, 'navGeneral', 'navGeneralSub', [
     _NavPage(_Pages.basics, 'pgBasics'),
     _NavPage(_Pages.startup, 'pgStartup'),
   ]),
-  _NavGroup(Icons.mic_none, 'navVoiceInput', 'navVoiceInputSub', [
+  _NavGroup(Icons.mic_none, PrismIcons.mic, 'navVoiceInput', 'navVoiceInputSub', [
     _NavPage(_Pages.micDevice, 'pgMicDevice'),
     _NavPage(_Pages.stt, 'pgStt'),
     _NavPage(_Pages.sttSensitivity, 'pgSensitivity'),
     _NavPage(_Pages.listen, 'pgListen'),
   ]),
   _NavGroup(
-      Icons.record_voice_over_outlined, 'navAssistantVoice',
-      'navAssistantVoiceSub', [
+      Icons.record_voice_over_outlined, PrismIcons.speaker,
+      'navAssistantVoice', 'navAssistantVoiceSub', [
     _NavPage(_Pages.voiceOut, 'pgVoiceOut'),
     _NavPage(_Pages.voiceEngine, 'pgVoiceEngine'),
     _NavPage(_Pages.voiceClone, 'pgVoiceClone'),
     _NavPage(_Pages.voiceFx, 'pgVoiceFx'),
     _NavPage(_Pages.voicePhrases, 'pgVoicePhrases'),
   ]),
-  _NavGroup(Icons.auto_awesome_outlined, 'navWidgets', 'navWidgetsSub', [
+  _NavGroup(Icons.auto_awesome_outlined, PrismIcons.spark, 'navWidgets', 'navWidgetsSub', [
     _NavPage(_Pages.widgetsLook, 'pgWsLook'),
     _NavPage(_Pages.widgetsParams, 'pgWsParams'),
   ]),
-  _NavGroup(Icons.bolt_outlined, 'navVoiceCommands', 'navVoiceCommandsSub', [
+  _NavGroup(Icons.bolt_outlined, PrismIcons.commands, 'navVoiceCommands', 'navVoiceCommandsSub', [
     _NavPage(_Pages.cmdExec, 'pgCmdExec'),
     _NavPage(_Pages.cmdCatalog, 'pgCmdCatalog'),
     _NavPage(_Pages.cmdSecurity, 'pgCmdSecurity'),
   ]),
-  _NavGroup(Icons.phone_iphone, 'navRemote', 'navRemoteSub', [
+  _NavGroup(Icons.phone_iphone, PrismIcons.phone, 'navRemote', 'navRemoteSub', [
     _NavPage(_Pages.remote, 'navRemote'),
   ]),
-  _NavGroup(Icons.memory, 'navModel', 'navModelSub', [
+  _NavGroup(Icons.memory, PrismIcons.chip, 'navModel', 'navModelSub', [
     _NavPage(_Pages.llmConn, 'pgLlmConn'),
     _NavPage(_Pages.llmModels, 'pgLlmModels'),
     _NavPage(_Pages.llmParams, 'pgLlmParams'),
   ]),
-  _NavGroup(Icons.chat_bubble_outline, 'navPersona', 'navPersonaSub', [
+  _NavGroup(Icons.chat_bubble_outline, PrismIcons.person, 'navPersona', 'navPersonaSub', [
     _NavPage(_Pages.personaStyle, 'pgPersonaStyle'),
     _NavPage(_Pages.personaMemory, 'pgPersonaMemory'),
   ]),
-  _NavGroup(Icons.lock_outline, 'navPrivacy', 'navPrivacySub', [
+  _NavGroup(Icons.lock_outline, PrismIcons.lock, 'navPrivacy', 'navPrivacySub', [
     _NavPage(_Pages.privAccess, 'pgPrivAccess'),
     _NavPage(_Pages.privData, 'pgPrivData'),
   ]),
   // Журнал работы приложения. Своя группа, а не пункт внутри «О программе»:
   // рейл Nexus подсвечивается по группе (_inGroup), и внутри «О программе»
   // кнопка журнала загоралась бы заодно на версии и списке изменений.
-  _NavGroup(Icons.receipt_long_outlined, 'navLog', 'navLogSub', [
+  _NavGroup(Icons.receipt_long_outlined, PrismIcons.doc, 'navLog', 'navLogSub', [
     _NavPage(_Pages.appLog, 'navLog'),
   ]),
-  _NavGroup(Icons.info_outline, 'navAbout', 'navAboutSub', [
+  _NavGroup(Icons.info_outline, PrismIcons.info, 'navAbout', 'navAboutSub', [
     _NavPage(_Pages.about, 'pgAboutInfo'),
     _NavPage(_Pages.changelog, 'pgChangelog'),
   ]),
@@ -2275,12 +2139,122 @@ _NavPage _navPageOf(String id) {
   return g.pages.firstWhere((p) => p.id == id, orElse: () => g.pages.first);
 }
 
+/// Диалог «есть несохранённые изменения»: «Остаться» / «Не сохранять» /
+/// «Сохранить». Возвращает 'stay', 'discard', 'save' или null, если закрыли
+/// мимо кнопок.
+///
+/// Вынесен из [_DesktopSettingsState._handleExit], потому что спрашивать
+/// приходится из двух мест: при выходе из ОКНА настроек и при уходе с ЭКРАНА
+/// настроек в «Призме», где выхода нет — есть переключение пункта рейки.
+/// Две копии этого диалога разошлись бы на первой же правке текста.
+Future<String?> showEvsSettingsExitPrompt(
+    BuildContext context, AppState app) async {
+  return showDialog<String>(
+    context: context,
+    builder: (dctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(dctx).size.height * 0.85),
+        child: SingleChildScrollView(
+          child: Container(
+            width: 440,
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
+            decoration: BoxDecoration(
+              color: _card2(context),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0x1AFFFFFF)),
+              boxShadow: const [
+                BoxShadow(
+                    color: Colors.black54,
+                    blurRadius: 40,
+                    offset: Offset(0, 16)),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const _EvsLogoMark(),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        app.t('settingsExitTitle'),
+                        style: TextStyle(
+                            color: _txt(context),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(app.t('settingsUnsaved'),
+                    style: TextStyle(
+                        color: _faint(context), fontSize: 12)),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dctx, 'stay'),
+                      child: Text(app.t('settingsExitStay'),
+                          style: TextStyle(color: _sub(context))),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(dctx, 'discard'),
+                      child: Text(app.t('settingsExitDiscard'),
+                          style: TextStyle(color: _sub(context))),
+                    ),
+                    const SizedBox(width: 8),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.pop(dctx, 'save'),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFF5068D8), Color(0xFF8855CC)]),
+                        ),
+                        child: Text(app.t('settingsExitSave'),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class DesktopSettings extends StatefulWidget {
   // Which page to open on (a _Pages id). Lets the Nexus rail and the subsystem
   // cards jump straight to Commands / Models / About instead of landing on the
   // first page.
   final String initialPage;
-  const DesktopSettings({super.key, this.initialPage = _Pages.basics});
+
+  /// Настройки открыты ВНУТРИ оболочки, а не своим окном. Тогда ни Scaffold,
+  /// ни полосы заголовка, ни фона рисовать не надо — их уже нарисовала
+  /// оболочка. И выхода нет: уходят переключением пункта рейки, поэтому
+  /// охрана несохранённого переезжает на полосу сохранения (см. `_saveBar`).
+  final bool embedded;
+
+  const DesktopSettings({
+    super.key,
+    this.initialPage = _Pages.basics,
+    this.embedded = false,
+  });
   @override
   State<DesktopSettings> createState() => _DesktopSettingsState();
 }
@@ -2412,6 +2386,57 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // «Призма» держит настройки ЭКРАНОМ оболочки: ни Scaffold, ни полосы
+    // заголовка, ни фона — их уже нарисовала оболочка, и вторая пара выглядела
+    // бы окном в окне. Охрана черновика при этом никуда не девается: она
+    // переезжает на полосу сохранения внизу, потому что выхода, на котором
+    // окно успевало спросить, у экрана нет.
+    if (_isPrism(context)) {
+      if (widget.embedded) return _prismSettings(app);
+      // Отдельным окном «Призма» раскладывается ТАК ЖЕ, как встроенным экраном.
+      // Иначе получалось вот что: стиль переключают из окна настроек другого
+      // стиля, окно тут же перекрашивается в «Призму», но остаётся в прежней
+      // раскладке — узкие колонки, рваные переносы, аврора сквозь всё. И
+      // приходило в порядок только после выхода и повторного захода.
+      return PopScope(
+        canPop: !app.settingsDirty && !app.settingsApplying,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _handleExit(app);
+        },
+        child: Scaffold(
+          backgroundColor: _bg(context),
+          body: CallbackShortcuts(
+            bindings: {
+              const SingleActivator(LogicalKeyboardKey.escape): () =>
+                  _handleExit(app),
+            },
+            child: Focus(
+              autofocus: true,
+              child: Stack(
+                children: [
+                  const Positioned.fill(child: _PrismBackdrop()),
+                  Positioned.fill(
+                    child: Column(
+                      children: [
+                        const _WindowTitleBar(),
+                        Expanded(
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.fromLTRB(24, 12, 24, 20),
+                            child: _prismSettings(app),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Positioned.fill(child: PrismPointerWatcher()),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return PopScope(
       canPop: !app.settingsDirty && !app.settingsApplying,
       onPopInvokedWithResult: (didPop, _) {
@@ -2430,13 +2455,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               : const {},
           child: Focus(
             autofocus: app.appStyle != AppStyle.standard,
-            child: Container(
-              decoration: _evsShellBg(context),
+            child: evsShellBackdrop(
+              context,
               // Same shell shape as DesktopHome: the nav rail spans the FULL window
               // height and the title bar sits only over the content column. The old
               // order (title bar across the top, rail below it) left a strip above a
               // visibly shortened rail.
-              child: Column(
+              Column(
                 children: [
                   Expanded(
                     child: Row(
@@ -2476,63 +2501,111 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     // Nexus style shows no floating "unsaved changes" bar (TZ §6.3): the exit
     // dialog (PopScope → _handleExit) stays the single confirmation point. The
     // settingsDirty / settingsApplying state itself is left untouched.
-    if (app.appStyle != AppStyle.standard) {
+    //
+    // Встроенный экран «Призмы» — исключение: у него нет выхода, на котором
+    // этот диалог мог бы сработать, и без полосы правки терялись бы молча.
+    if (app.appStyle != AppStyle.standard && !widget.embedded) {
       return const SizedBox(width: double.infinity);
     }
     final show = app.settingsDirty || app.settingsApplying;
+    final prism = _isPrism(context);
     return AnimatedSize(
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
       alignment: Alignment.topCenter,
       child: !show
           ? const SizedBox(width: double.infinity)
-          : Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
-              decoration: BoxDecoration(
-                color: _card2(context),
-                border: Border(top: BorderSide(color: _stroke(context))),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.edit_note_outlined,
-                      size: 19, color: Color(0xFFB9A6FF)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(app.t('settingsUnsaved'),
-                        style:
-                            TextStyle(color: _txt(context), fontSize: 13)),
-                  ),
-                  if (app.settingsApplying)
-                    const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                  else ...[
-                    TextButton(
-                      onPressed: () => _revertSettings(app),
-                      child: Text(app.t('cancel'),
-                          style: TextStyle(color: _sub(context))),
+          : Padding(
+              // В «Призме» полоса не приклеена к краю окна во всю ширину:
+              // глухая плашка поперёк стеклянного экрана читалась как чужое
+              // окно, всплывшее снизу. Здесь это такая же панель, как всё
+              // остальное, — с воздухом по краям и своими скруглениями.
+              padding: prism
+                  ? const EdgeInsets.only(top: 14)
+                  : EdgeInsets.zero,
+              child: prism
+                  ? PrismPanel(
+                      radius: 20,
+                      shadow: true,
+                      padding: const EdgeInsets.fromLTRB(18, 12, 14, 12),
+                      child: _saveBarRow(app, prism),
+                    )
+                  : Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                      decoration: BoxDecoration(
+                        color: _card2(context),
+                        border:
+                            Border(top: BorderSide(color: _stroke(context))),
+                      ),
+                      child: _saveBarRow(app, prism),
                     ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: () => _saveSettings(app),
-                      child: Text(app.t('save')),
-                    ),
-                  ],
-                ],
-              ),
             ),
+    );
+  }
+
+  Widget _saveBarRow(AppState app, bool prism) {
+    return Builder(
+      builder: (context) => Row(
+        children: [
+          if (prism)
+            PrismIcon(PrismIcons.edit, size: 17, color: _ramp(context).a2)
+          else
+            const Icon(Icons.edit_note_outlined,
+                size: 19, color: Color(0xFFB9A6FF)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(app.t('settingsUnsaved'),
+                style: TextStyle(
+                    color: _txt(context),
+                    fontSize: 13,
+                    fontWeight: prism ? FontWeight.w600 : null)),
+          ),
+          if (app.settingsApplying)
+            const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2))
+          else if (prism) ...[
+            _PrismGhostButton(
+              label: app.t('cancel'),
+              onTap: () => _revertSettings(app),
+            ),
+            const SizedBox(width: 10),
+            PrismGradientButton(
+              label: app.t('save'),
+              fontSize: 12.5,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              onTap: () => _saveSettings(app),
+            ),
+          ] else ...[
+            TextButton(
+              onPressed: () => _revertSettings(app),
+              child: Text(app.t('cancel'),
+                  style: TextStyle(color: _sub(context))),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: () => _saveSettings(app),
+              child: Text(app.t('save')),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   Future<void> _saveSettings(AppState app) async {
     final ok = await app.commitSettingsEdit();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content:
-          Text(ok ? app.t('settingsSaved') : app.t('settingsSaveFailed')),
-    ));
+    // Через общий `showAppSnackBar`, а не своим `showSnackBar`: тот ставил
+    // сообщение в очередь, и два одинаковых текста подряд (сохранили дважды)
+    // оказывались на экране разом. Flutter на это ругается — Hero-метка
+    // снекбара собрана из его текста, а две одинаковые в одном поддереве
+    // запрещены. Общий сначала убирает предыдущее. Заодно сообщение выглядит
+    // как все остальные в приложении, а не как стандартный снекбар Material.
+    showAppSnackBar(
+        context, ok ? app.t('settingsSaved') : app.t('settingsSaveFailed'));
     // Stay on the screen — re-arm draft mode for further edits.
     app.beginSettingsEdit();
   }
@@ -2556,101 +2629,17 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   // Exit guard (TZ2.2): leaving with unsaved changes asks Save / Don't save /
   // Stay. Reached from the back button and the system pop (via PopScope).
+  /// Показать экран приветствия прямо сейчас. Работает только во встроенных
+  /// настройках «Призмы»: приветствие рисует оболочка, и попросить её об этом
+  /// может лишь тот, кто внутри неё и живёт.
+  void _showWelcome() => prismShowWelcomeHook?.call();
+
   Future<void> _handleExit(AppState app) async {
     if (!app.settingsDirty) {
       if (mounted) Navigator.of(context).pop();
       return;
     }
-    // Styled to match the update-restart prompt (_showPrompt): dark rounded card,
-    // logo mark + title, a hint line, and Stay / Don't-save / Save actions with a
-    // gradient primary. Height-capped + scrollable so long copy can't overflow.
-    final choice = await showDialog<String>(
-      context: context,
-      builder: (dctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(dctx).size.height * 0.85),
-          child: SingleChildScrollView(
-            child: Container(
-              width: 440,
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
-              decoration: BoxDecoration(
-                color: _card2(context),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0x1AFFFFFF)),
-                boxShadow: const [
-                  BoxShadow(
-                      color: Colors.black54,
-                      blurRadius: 40,
-                      offset: Offset(0, 16)),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const _EvsLogoMark(),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          app.t('settingsExitTitle'),
-                          style: TextStyle(
-                              color: _txt(context),
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(app.t('settingsUnsaved'),
-                      style: TextStyle(
-                          color: _faint(context), fontSize: 12)),
-                  const SizedBox(height: 14),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dctx, 'stay'),
-                        child: Text(app.t('settingsExitStay'),
-                            style: TextStyle(color: _sub(context))),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(dctx, 'discard'),
-                        child: Text(app.t('settingsExitDiscard'),
-                            style: TextStyle(color: _sub(context))),
-                      ),
-                      const SizedBox(width: 8),
-                      InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => Navigator.pop(dctx, 'save'),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 10),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            gradient: const LinearGradient(
-                                colors: [Color(0xFF5068D8), Color(0xFF8855CC)]),
-                          ),
-                          child: Text(app.t('settingsExitSave'),
-                              style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+    final choice = await showEvsSettingsExitPrompt(context, app);
     if (!mounted) return;
     if (choice == 'save') {
       await app.commitSettingsEdit();
@@ -2660,6 +2649,207 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       if (mounted) Navigator.of(context).pop();
     }
     // 'stay' / dismissed → remain on the screen (draft intact).
+  }
+
+  // ------------------------------------------------------------------------
+  // «ПРИЗМА» — настройки экраном оболочки
+  // ------------------------------------------------------------------------
+
+  /// Раскладка макета (блок `isSet`): слева стеклянная панель на 252px с
+  /// одиннадцатью разделами, справа заголовок с вкладками подстраниц и
+  /// карточки строк одной колонкой.
+  ///
+  /// Разделы, страницы и КАЖДАЯ строка — существующие: тот же `_kNav`, тот же
+  /// `_cardsFor`, та же охрана черновика. Из макета взята только расстановка,
+  /// потому что настроек в программе кратно больше одиннадцати разделов
+  /// прототипа, и выкидывать их ради сходства с картинкой нельзя.
+  ///
+  /// Чего в макете нет, а здесь осталось: поиск по настройкам и полоса
+  /// сохранения. Поиск — рабочая функция, прототип её просто не рисовал.
+  /// Полоса нужна тем более: у ЭКРАНА нет выхода, при котором окно успевало
+  /// спросить про несохранённое, — уходят переключением пункта рейки.
+  Widget _prismSettings(AppState app) {
+    final g = _navGroupOf(_page);
+    final p = _navPageOf(_page);
+    final title = g.single ? app.t(g.titleKey) : app.t(p.titleKey);
+    final sub = g.single ? app.t(g.subKey) : app.t(g.titleKey);
+    final searching = _query.trim().isNotEmpty;
+
+    return Column(
+      children: [
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(width: 252, child: _prismSettingsNav(app)),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 19,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.42,
+                                  color: _txt(context),
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                sub,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    fontSize: 12.5, color: _sub(context)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        SizedBox(width: 216, child: _prismSettingsSearch(app)),
+                        // Вкладки подстраниц — только там, где их больше одной.
+                        // У одностраничного раздела полоса из единственной
+                        // вкладки означала бы выбор, которого нет.
+                        if (!g.single && !searching) ...[
+                          const SizedBox(width: 12),
+                          _prismPageTabs(app, g),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: searching
+                          ? _searchResults(app)
+                          : SingleChildScrollView(
+                              // Дорожка под полосу прокрутки: она ложится
+                              // поверх содержимого у правого края.
+                              padding: const EdgeInsets.only(right: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Живая полоса конвейера на голосовых
+                                  // страницах — она показывает, что РАБОТАЕТ,
+                                  // а не что настроено, и без неё половина
+                                  // вопросов к этим страницам не снимается.
+                                  if (_page.startsWith('mic.') ||
+                                      _page.startsWith('voice.')) ...[
+                                    _voiceStatus(app),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  // Карточки идут одной колонкой, как в
+                                  // макете: у экрана слева рейка оболочки и
+                                  // панель разделов, и три колонки карточек в
+                                  // остатке ширины стали бы полосками.
+                                  for (final c in _cardsFor(app)) ...[
+                                    c.child,
+                                    const SizedBox(height: 16),
+                                  ],
+                                ],
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        _saveBar(app),
+      ],
+    );
+  }
+
+  /// Панель разделов: номер, контур, название. Выбранный залит акцентным
+  /// градиентом и обведён изнутри — как в макете.
+  Widget _prismSettingsNav(AppState app) {
+    return PrismPanel(
+      radius: 22,
+      padding: const EdgeInsets.all(12),
+      shadow: true,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          for (var i = 0; i < _kNav.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: _PrismSettingsNavRow(
+                index: i + 1,
+                group: _kNav[i],
+                selected: _navGroupOf(_page) == _kNav[i],
+                onTap: () => setState(() => _page = _kNav[i].pages.first.id),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Полоса вкладок подстраниц над карточками.
+  Widget _prismPageTabs(AppState app, _NavGroup g) {
+    return PrismPanel(
+      radius: 16,
+      padding: const EdgeInsets.all(4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < g.pages.length; i++) ...[
+            if (i > 0) const SizedBox(width: 3),
+            _PrismSettingsPageTab(
+              label: app.t(g.pages[i].titleKey),
+              selected: _page == g.pages[i].id,
+              onTap: () => setState(() => _page = g.pages[i].id),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Поиск по настройкам в форме макета — та же таблетка, что в шапке
+  /// оболочки. Поле и запрос общие с остальными стилями (`_searchCtrl`).
+  Widget _prismSettingsSearch(AppState app) {
+    return Container(
+      height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      decoration: BoxDecoration(
+        color: _prismField(context),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _stroke(context)),
+      ),
+      child: Row(
+        children: [
+          PrismIcon(PrismIcons.search,
+              size: 15, stroke: 1.9, color: _faint(context)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _query = v),
+              style: TextStyle(fontSize: 12.5, color: _body(context)),
+              decoration: InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                hintText: app.t('settingsSearchHint'),
+                hintStyle: TextStyle(fontSize: 12.5, color: _faint(context)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // -------- left nav rail --------
@@ -3113,6 +3303,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'uiStyle': _Pages.basics,
     'fontSize': _Pages.basics,
     'motionMode': _Pages.basics,
+    'prismAccent': _Pages.basics,
+    'prismGlass': _Pages.basics,
+    'prismBackground': _Pages.basics,
+    'prismDots': _Pages.basics,
     'startupView': _Pages.startup,
     'autostart': _Pages.startup,
     'minimizeToTray': _Pages.startup,
@@ -3141,10 +3335,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'ttsInterp': _Pages.voiceEngine,
     'ttsCosyClone': _Pages.voiceClone,
     'ttsCosySpeed': _Pages.voiceClone,
-    'ttsCosyEmotion': _Pages.voiceClone,
-    'gpuLoadTitle': _Pages.voiceClone,
-    'gpuProfile': _Pages.voiceClone,
-    'gpuInGame': _Pages.voiceClone,
+    'cloneLanguage': _Pages.voiceClone,
     'ttsFx': _Pages.voiceFx,
     'ttsFxPreset': _Pages.voiceFx,
     'clonePhr2Title': _Pages.voicePhrases,
@@ -3413,7 +3604,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       case _Pages.remote:
         return _remoteInputCards(app);
       case _Pages.llmConn:
-        return [..._llmConnCards(app), ..._imageServerCard(app)];
+        return [
+          ..._llmConnCards(app),
+          ..._imageServerCard(app),
+          ..._relayCard(app),
+        ];
       case _Pages.llmModels:
         return _llmAssetCards(app);
       // Быстрых профилей здесь больше нет: они меняли несколько настроек разом
@@ -3494,19 +3689,23 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             desc: app.t('uiStyleDesc'),
             control: const _StylePicker(),
           ),
-          evsRow(context,
-            stacked: true,
-            label: app.t('themeMode'),
-            control: evsSegmentedWide<AppThemeMode>(context, 
-              [
-                (AppThemeMode.dark, app.t('themeDark')),
-                (AppThemeMode.claude, app.t('themeClaude')),
-                (AppThemeMode.claudeDark, app.t('themeClaudeDark')),
-              ],
-              app.themeMode,
-              (v) => app.setThemeMode(v),
+          // В «Призме» тему выбирают карточками с превью в блоке оформления
+          // ниже; вторая такая же строка была бы вторым местом для одного и
+          // того же выбора.
+          if (app.appStyle != AppStyle.prism)
+            evsRow(context,
+              stacked: true,
+              label: app.t('themeMode'),
+              control: evsSegmentedWide<AppThemeMode>(context,
+                [
+                  (AppThemeMode.dark, app.t('themeDark')),
+                  (AppThemeMode.claude, app.t('themeClaude')),
+                  (AppThemeMode.claudeDark, app.t('themeClaudeDark')),
+                ],
+                app.themeMode,
+                (v) => app.setThemeMode(v),
+              ),
             ),
-          ),
           evsRow(context, 
             label: app.t('fontSize'),
             desc: app.t('fontSizeDesc'),
@@ -3556,6 +3755,19 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
       )),
+      // Оформление «Призмы». Карточка появляется только когда стиль выбран:
+      // в классике, Nexus и «Ноктюрне» эти поля ни на что не влияют, и
+      // показывать их там значило бы предлагать настройку, которая ничего не
+      // делает.
+      //
+      // Рисуется НЕ строками, а своим блоком: тема и фон в макете — карточки
+      // с превью, акцент и анимация — пилюли с образцом. Словами «Аврора» и
+      // «Шейдер» не различить, картинкой — с одного взгляда.
+      if (app.appStyle == AppStyle.prism)
+        _CardSpec(
+          PrismAppearanceCard(onWelcome: widget.embedded ? _showWelcome : null),
+          full: true,
+        ),
     ];
   }
 
@@ -4275,6 +4487,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   runSpacing: 10,
                   children: [
                     for (final (key, label) in [
+                      ('prismorb', app.t('vizPrismOrb')),
                       ('sphere', app.t('vizSphere')),
                       ('waves', app.t('vizWaves')),
                       ('bars', app.t('vizBars')),
@@ -4410,6 +4623,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     switch (key) {
       case 'waves':
         return const EvsRingViz(size: 52);
+      case 'prismorb':
+        return const PrismOrb(size: 52, showMic: false, reactive: false);
       case 'bars':
         return const EvsBarsViz(width: 62, height: 38);
       case 'orb':
@@ -4497,19 +4712,62 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       initial: app.imageServerUrl,
                       hint: 'http://100.79.130.7:8770',
                       onChanged: app.setImageServerUrl)),
+              // Не поле для ввода, а список с сервера. Имя чекпоинта раньше
+              // набирали руками, и опечатка в нём ничего не подсвечивала: всё
+              // выглядело настроенным, а генерация падала с «нет файла модели».
               evsRow(context,
-                  stacked: true,
                   label: app.t('imgModel'),
-                  desc: app.t('imgModelDesc'),
-                  control: _PlainField(
-                      initial: app.imageModel,
-                      hint: 'wai-illustrious',
-                      onChanged: app.setImageModel)),
+                  desc: app.imageModel.trim().isEmpty
+                      ? app.t('imgModelDesc')
+                      : app.imageModel,
+                  control: evsGhostButton(
+                      context, app.t('studioModelManage'), Icons.tune,
+                      onTap: () => unawaited(showDialog<void>(
+                          context: context,
+                          builder: (_) => ImageModelsSheet(app: app))))),
               evsRow(context,
                   label: app.t('imgFreeVoice'),
                   desc: app.t('imgFreeVoiceDesc'),
                   control: evsToggle(context, app.imageFreeVoiceToo,
                       app.setImageFreeVoiceToo)),
+            ]),
+        full: true,
+      ),
+    ];
+  }
+
+  /// Агент канала на станции. Стоит рядом с сервером картинок, потому что это
+  /// та же история: служба на станции, к которой EVS ходит по адресу с токеном.
+  ///
+  /// Поля здесь не дублируются: адрес правит тот же диалог, что и экран «Сеть».
+  /// Две копии одних полей разъезжаются — одна получает проверку ввода, другая
+  /// нет, и человек попадает то на исправную, то на сломанную.
+  List<_CardSpec> _relayCard(AppState app) {
+    final set = app.relayUrl.trim().isNotEmpty;
+    return [
+      _CardSpec(
+        evsCard(context,
+            icon: Icons.network_check_outlined,
+            title: app.t('cardRelay'),
+            rows: [
+              evsRow(context,
+                  stacked: true,
+                  label: app.t('relayAddressField'),
+                  desc: app.t('cardRelayDesc'),
+                  control: evsGhostButton(
+                      context,
+                      set ? app.relayUrl : app.t('relaySetAddress'),
+                      Icons.tune,
+                      onTap: () =>
+                          unawaited(showRelayAddressDialog(context, app)))),
+              evsRow(context,
+                  label: app.t('prismNavRelay'),
+                  desc: app.t('cardRelayOpenDesc'),
+                  control: evsGhostButton(
+                      context, app.t('relayShow'), Icons.open_in_new,
+                      onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                              builder: (_) => const RelayPanel())))),
             ]),
         full: true,
       ),
@@ -4578,11 +4836,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             child: Text(app.t('genParamsDesc'),
                 style: TextStyle(fontSize: 12, color: _faint(context))),
           ),
+          // Переключатель говорит правду о ВЫБРАННОЙ модели. Сервер сам
+          // сообщает, что она умеет (`capabilities` в /api/show): у Gemma там
+          // нет «thinking», и включать нечего. Молчать об этом — значит
+          // оставить человека наедине с переключателем, который не работает.
           evsRow(context,
             label: app.t('genThinking'),
-            desc: app.t('genThinkingDesc'),
-            control: evsToggle(context, app.llmThinking,
-                (v) => app.setLlmThinking(v)),
+            desc: app.selectedModelThinks == false
+                ? app.t('genThinkingNone').replaceAll('{m}', app.selectedModel)
+                : app.t('genThinkingDesc'),
+            control: app.selectedModelThinks == false
+                ? Text(app.t('genThinkingNA'),
+                    style: TextStyle(fontSize: 12, color: _faint(context)))
+                : evsToggle(context, app.llmThinking,
+                    (v) => app.setLlmThinking(v)),
           ),
           _GenParam(app, 'temperature', 'Temperature', 'genTemperatureDesc',
               min: 0, max: 2, decimals: 2, fallback: 0.7),
@@ -4600,6 +4867,25 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               min: 64, max: 4096, decimals: 0, fallback: 512),
           _GenParam(app, 'num_ctx', app.t('genNumCtx'), 'genNumCtxDesc',
               min: 512, max: 32768, decimals: 0, fallback: 4096),
+          // Сжатие стоит рядом с размером окна намеренно: это две стороны
+          // одного вопроса — сколько разговора помещается и что делать, когда
+          // он перестал помещаться.
+          evsRow(context,
+            label: app.t('ctxAutoCompress'),
+            desc: app.t('ctxAutoCompressDesc'),
+            control: evsToggle(context, app.ctxAutoCompress,
+                (v) => app.setCtxAutoCompress(v)),
+          ),
+          if (app.ctxAutoCompress)
+            evsNamedSlider(context,
+              label: app.t('ctxCompressAt'),
+              desc: app.t('ctxCompressAtDesc'),
+              value: app.ctxCompressAt.clamp(0.5, 0.95),
+              min: 0.5,
+              max: 0.95,
+              valueLabel: '${(app.ctxCompressAt * 100).round()}%',
+              onChanged: (v) => app.setCtxCompressAt(v),
+            ),
         ]),
         full: true,
       ),
@@ -5450,9 +5736,6 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         title: app.t('ttsCosySectionTitle'),
         rows: [_TtsCloneCard(app)],
       )),
-      // Game mode belongs next to the GPU-load profile: both answer "what
-      // happens while a game is running".
-      _CardSpec(_GameModeCard(app)),
     ];
   }
 
@@ -6064,23 +6347,8 @@ class _TtsCloneCard extends StatefulWidget {
 
 class _TtsCloneCardState extends State<_TtsCloneCard> {
   // CosyVoice deep-control text fields (§3.2).
-  late final TextEditingController _voice =
-      TextEditingController(text: widget.app.cosyvoiceVoice);
   late final TextEditingController _clonePrompt =
       TextEditingController(text: widget.app.cosyvoiceClonePromptText);
-  late final TextEditingController _instruct =
-      TextEditingController(text: widget.app.cosyvoiceInstruct);
-  bool _gpuAdvOpen = false; // raw GPU-load knobs, collapsed by default
-
-  // Emotion presets → i18n label keys (map to instruct phrases once wired).
-  static const List<(String, String)> _emotions = [
-    ('neutral', 'ttsCosyEmotionNeutral'),
-    ('happy', 'ttsCosyEmotionHappy'),
-    ('sad', 'ttsCosyEmotionSad'),
-    ('serious', 'ttsCosyEmotionSerious'),
-    ('calm', 'ttsCosyEmotionCalm'),
-    ('excited', 'ttsCosyEmotionExcited'),
-  ];
 
   AppState get app => widget.app;
 
@@ -6092,16 +6360,30 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
 
   @override
   void dispose() {
-    _voice.dispose();
     _clonePrompt.dispose();
-    _instruct.dispose();
     super.dispose();
   }
 
-  // Emotion preset dropdown (§3.2 wireframe shows a "[ нейтральная ▾ ]" select).
-  Widget _cosyEmotionDropdown() {
-    final value =
-        _emotions.any((e) => e.$1 == app.cosyvoiceEmotion) ? app.cosyvoiceEmotion : 'neutral';
+  // Языки, которым обучена Qwen3-TTS. Список закрытый намеренно: модель знает
+  // ровно эти десять, и произвольная строка тут молча ухудшила бы речь вместо
+  // того, чтобы сообщить об ошибке.
+  static const List<(String, String)> _cloneLanguages = [
+    ('Russian', 'Русский'),
+    ('English', 'English'),
+    ('Chinese', '中文'),
+    ('Japanese', '日本語'),
+    ('Korean', '한국어'),
+    ('German', 'Deutsch'),
+    ('French', 'Français'),
+    ('Spanish', 'Español'),
+    ('Portuguese', 'Português'),
+    ('Italian', 'Italiano'),
+  ];
+
+  Widget _cloneLanguageDropdown() {
+    final value = _cloneLanguages.any((e) => e.$1 == app.cloneLanguage)
+        ? app.cloneLanguage
+        : 'Russian';
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 11),
@@ -6119,22 +6401,16 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
           style: TextStyle(fontSize: 12.5, color: _body(context)),
           icon: Icon(Icons.expand_more, size: 18, color: _sub(context)),
           items: [
-            for (final e in _emotions)
-              DropdownMenuItem(value: e.$1, child: Text(app.t(e.$2))),
+            for (final e in _cloneLanguages)
+              DropdownMenuItem(value: e.$1, child: Text(e.$2)),
           ],
-          onChanged: (v) {
-            if (v != null) app.setCosyvoiceEmotion(v);
-          },
+          onChanged: (v) => v == null ? null : app.setCloneLanguage(v),
         ),
       ),
     );
   }
 
-  // Deep CosyVoice controls (§3.2). UI + persisted state only — no synthesis
-  // routing yet. Shown once an endpoint is entered so it can be configured
-  // before the server is actually reachable.
   List<Widget> _cosyDeepControls() {
-    final sc = SidecarClient.instance;
     return [
       // Scope header: everything below belongs to the REMOTE CosyVoice server
       // (including its own clone sample) — not to the local XTTS clone card.
@@ -6154,13 +6430,6 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
         padding: const EdgeInsets.fromLTRB(18, 0, 18, 6),
         child: Text(app.t('ttsCosyWiringHint'),
             style: TextStyle(fontSize: 11, color: _faint(context))),
-      ),
-      evsRow(context, 
-        stacked: true,
-        label: app.t('ttsCosyVoice'),
-        desc: app.t('ttsCosyVoiceHint'),
-        control:
-            _RemoteField(controller: _voice, onChanged: app.setCosyvoiceVoice),
       ),
       evsRow(context, 
         stacked: true,
@@ -6222,35 +6491,11 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
           onChanged: app.setCosyvoiceSpeed,
         ),
       ),
-      evsRow(context, 
+      evsRow(context,
         stacked: true,
-        label: app.t('ttsCosyEmotion'),
-        control: _cosyEmotionDropdown(),
-      ),
-      evsRow(context, 
-        stacked: true,
-        label: app.t('ttsCosyInstruct'),
-        desc: app.t('ttsCosyInstructHint'),
-        control: _RemoteField(
-            controller: _instruct, onChanged: app.setCosyvoiceInstruct),
-      ),
-      evsRow(context, 
-        stacked: true,
-        label: app.t('ttsCosyDevice'),
-        control: AnimatedBuilder(
-          animation: sc.gpuInfo,
-          builder: (context, _) {
-            final name = sc.gpuInfo.value.$2;
-            return evsSegmentedWide<String>(context, 
-              [
-                ('cpu', app.t('deviceCpu')),
-                ('cuda', name.isNotEmpty ? 'GPU · $name' : app.t('deviceGpu')),
-              ],
-              app.cosyvoiceDevice,
-              app.setCosyvoiceDevice,
-            );
-          },
-        ),
+        label: app.t('cloneLanguage'),
+        desc: app.t('cloneLanguageHint'),
+        control: _cloneLanguageDropdown(),
       ),
     ];
   }
@@ -6263,141 +6508,16 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Deep CosyVoice controls (§3.2) — voice/preset, clone-by-WAV sample,
-        // speed, emotion, instruct and synthesis device. Always visible so the
-        // voice cloner is discoverable and can be configured up front (they
-        // still only take effect once the clone server is reachable).
+        // Настройки клонирования: образец голоса, его расшифровка, скорость
+        // и язык. Всё, что относилось к CustomVoice (пресет, эмоция,
+        // инструкция) и к локальному серверу (устройство, доля видеопамяти,
+        // выгрузка, троттлинг), убрано: при клонировании на станции эти ручки
+        // ни на что не влияли и создавали видимость управления.
         ..._cosyDeepControls(),
-        ..._gpuLoadControls(),
       ],
     );
   }
 
-  // GPU-load control for the clone server. There is no driver-level "use N% of
-  // the GPU" knob, so the load is shaped by a VRAM ceiling, idle unloading, a
-  // duty-cycle throttle and a game-mode stand-down — presented as one profile
-  // with the raw knobs tucked under "Дополнительно".
-  List<Widget> _gpuLoadControls() {
-    final totalMb = SidecarClient.instance.gpuInfo.value.$3;
-    final maxGb = totalMb > 0 ? (totalMb / 1024).floorToDouble() : 12.0;
-    return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
-        child: Text(app.t('gpuLoadTitle'),
-            style: TextStyle(
-                color: _body(context),
-                fontSize: 13,
-                fontWeight: FontWeight.w700)),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-        child: Text(app.t('gpuLoadHint'),
-            style: TextStyle(fontSize: 11, color: _faint(context))),
-      ),
-      evsRow(context,
-        stacked: true,
-        label: app.t('gpuProfile'),
-        control: evsSegmentedWide<String>(context, [
-          ('max', app.t('gpuProfileMax')),
-          ('balanced', app.t('gpuProfileBalanced')),
-          ('quiet', app.t('gpuProfileQuiet')),
-          if (app.cloneGpuProfile == 'custom')
-            ('custom', app.t('gpuProfileCustom')),
-        ], app.cloneGpuProfile, app.setCloneGpuProfile),
-      ),
-      evsRow(context,
-        stacked: true,
-        label: app.t('gpuInGame'),
-        desc: app.t('gpuInGameDesc'),
-        control: evsSegmentedWide<String>(context, [
-          ('cache', app.t('gpuInGameCache')),
-          ('normal', app.t('gpuInGameNormal')),
-          ('off', app.t('gpuInGameOff')),
-        ], app.cloneGpuInGame, app.setCloneGpuInGame),
-      ),
-      // Collapsible raw knobs — touching any of them switches the profile to
-      // "Своё", so the preset never silently misreports the real values.
-      Padding(
-        padding: const EdgeInsets.fromLTRB(14, 2, 14, 2),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
-          onTap: () => setState(() => _gpuAdvOpen = !_gpuAdvOpen),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(children: [
-              Icon(
-                  _gpuAdvOpen
-                      ? Icons.keyboard_arrow_down
-                      : Icons.keyboard_arrow_right,
-                  size: 18,
-                  color: _sub(context)),
-              const SizedBox(width: 4),
-              Text(app.t('gpuAdvanced'),
-                  style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: _sub(context))),
-            ]),
-          ),
-        ),
-      ),
-      if (_gpuAdvOpen) ...[
-        evsRow(context,
-          label: app.t('gpuVramLimit'),
-          desc: app.cloneGpuVramLimitGb <= 0
-              ? app.t('gpuVramNoLimit')
-              : '${app.cloneGpuVramLimitGb.toStringAsFixed(1)} ГБ / '
-                  '${maxGb.toStringAsFixed(0)} ГБ',
-          control: evsSlider(context,
-            value: app.cloneGpuVramLimitGb.clamp(0, maxGb),
-            min: 0,
-            max: maxGb,
-            divisions: (maxGb * 2).round(),
-            label: app.cloneGpuVramLimitGb <= 0
-                ? app.t('gpuVramNoLimit')
-                : '${app.cloneGpuVramLimitGb.toStringAsFixed(1)} ГБ',
-            onChanged: app.setCloneGpuVramLimitGb,
-          ),
-        ),
-        evsRow(context,
-          label: app.t('gpuIdleUnload'),
-          desc: app.t('gpuIdleUnloadDesc'),
-          control: evsSlider(context,
-            value: app.cloneGpuIdleUnloadSec.toDouble().clamp(0, 600),
-            min: 0,
-            max: 600,
-            divisions: 20,
-            label: app.cloneGpuIdleUnloadSec <= 0
-                ? app.t('gpuIdleNever')
-                : '${app.cloneGpuIdleUnloadSec} c',
-            onChanged: (v) => app.setCloneGpuIdleUnloadSec(v.round()),
-          ),
-        ),
-        evsRow(context,
-          label: app.t('gpuThrottle'),
-          desc: app.t('gpuThrottleDesc'),
-          control: evsSlider(context,
-            value: app.cloneGpuThrottle.clamp(0.0, 1.0),
-            min: 0,
-            max: 1,
-            divisions: 10,
-            label: '${(app.cloneGpuThrottle * 100).round()}%',
-            onChanged: app.setCloneGpuThrottle,
-          ),
-        ),
-        evsRow(context,
-          stacked: true,
-          label: app.t('gpuPrecision'),
-          desc: app.t('gpuPrecisionDesc'),
-          control: evsSegmentedWide<String>(context, [
-            ('auto', app.t('gpuPrecisionAuto')),
-            ('bf16', 'bf16'),
-            ('fp16', 'fp16'),
-          ], app.cloneGpuPrecision, app.setCloneGpuPrecision),
-        ),
-      ],
-    ];
-  }
 }
 
 // Editor for ONE quick profile: pick which settings it applies and their
@@ -6663,6 +6783,42 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
   // cloned voice, grouped by source. It is derived live from AppState
   // (clonePhrasesToRender), so it updates itself the moment a voice command or
   // a library phrase is added/removed — no manual sync.
+  // Сочинить варианты ответов. Кнопка, а не фон: запрос к модели заметный, и
+  // человек должен понимать, что он сейчас происходит и почему.
+  bool _varsBusy = false;
+
+  Widget _speakVariants() {
+    final have = app.voiceCommands.where((c) => c.speakVariants.isNotEmpty).length
+        + app.speakVarsMap.length;
+    return Row(children: [
+      evsGhostButton(context, app.t('speakVarWrite'), Icons.auto_awesome,
+          onTap: _varsBusy
+              ? null
+              : () async {
+                  setState(() => _varsBusy = true);
+                  final n = await app.writeSpeakVariants();
+                  if (!mounted) return;
+                  setState(() => _varsBusy = false);
+                  showAppSnackBar(
+                      context,
+                      n > 0
+                          ? app.t('speakVarDone').replaceAll('{n}', '$n')
+                          : app.t('speakVarFail'));
+                }),
+      const SizedBox(width: 12),
+      if (_varsBusy)
+        const SizedBox(
+            width: 15, height: 15,
+            child: CircularProgressIndicator(strokeWidth: 2))
+      else
+        Text(
+            have > 0
+                ? app.t('speakVarHave').replaceAll('{n}', '$have')
+                : app.t('speakVarNone'),
+            style: TextStyle(fontSize: 12, color: _sub(context))),
+    ]);
+  }
+
   Widget _phrasesTable() {
     final rows = <(String, String)>[]; // (source label, phrase)
     void add(String src, String? s) {
@@ -6671,9 +6827,6 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
     }
 
     add(app.t('cloneSrcSystem'), app.t('readyGreeting'));
-    add(app.t('cloneSrcSystem'), app.t('gmNotifyFullscreen'));
-    add(app.t('cloneSrcSystem'), app.t('gmNotifyVram'));
-    add(app.t('cloneSrcSystem'), app.t('gmNotifyExit'));
     add(app.t('cloneSrcSystem'), app.t('vaDone'));
     for (final c in app.voiceCommands) {
       add(app.t('cloneSrcCommand'), c.speakPhrase);
@@ -6904,6 +7057,12 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
             label: app.t('clonePhr2Title'),
             desc: app.t('clonePhrasesDesc'),
             control: _phrasesTable(),
+          ),
+          evsRow(context,
+            stacked: true,
+            label: app.t('speakVarTitle'),
+            desc: app.t('speakVarDesc'),
+            control: _speakVariants(),
           ),
           evsRow(context,
             stacked: true,
@@ -7479,6 +7638,21 @@ class _StylePicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // «Призма»: в макете стиль выбирают сегментами справа в строке, а не
+    // четырьмя карточками с превью во всю ширину — от них страница настроек
+    // вытягивалась на треть экрана.
+    if (_isPrism(context)) {
+      return PrismSegmented<AppStyle>(
+        options: [
+          (AppStyle.standard, app.t('uiStyleClassic')),
+          (AppStyle.nexus, app.t('uiStyleNexus')),
+          (AppStyle.noctur, app.t('uiStyleNoctur')),
+          (AppStyle.prism, app.t('uiStylePrism')),
+        ],
+        value: app.appStyle,
+        onChanged: app.setAppStyle,
+      );
+    }
     Widget tile(AppStyle style, String label) {
       final selected = app.appStyle == style;
       return GestureDetector(
@@ -7501,8 +7675,8 @@ class _StylePicker extends StatelessWidget {
               ),
               clipBehavior: Clip.antiAlias,
               child: CustomPaint(
-                painter: _StylePreviewPainter(
-                    style, skinFor(style, app.themeMode)),
+                painter: _StylePreviewPainter(style,
+                    skinFor(style, app.themeMode, accent: app.prismAccent)),
               ),
             ),
             const SizedBox(height: 6),
@@ -7533,6 +7707,7 @@ class _StylePicker extends StatelessWidget {
       AppStyle.standard => app.t('uiStyleClassicDesc'),
       AppStyle.nexus => app.t('uiStyleNexusDesc'),
       AppStyle.noctur => app.t('uiStyleNocturDesc'),
+      AppStyle.prism => app.t('uiStylePrismDesc'),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -7544,6 +7719,7 @@ class _StylePicker extends StatelessWidget {
             tile(AppStyle.standard, app.t('uiStyleClassic')),
             tile(AppStyle.nexus, app.t('uiStyleNexus')),
             tile(AppStyle.noctur, app.t('uiStyleNoctur')),
+            tile(AppStyle.prism, app.t('uiStylePrism')),
           ],
         ),
         const SizedBox(height: 10),
@@ -7781,6 +7957,176 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Строка панели разделов в «Призме»: номер, контур и название.
+class _PrismSettingsNavRow extends StatefulWidget {
+  const _PrismSettingsNavRow({
+    required this.index,
+    required this.group,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int index;
+  final _NavGroup group;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrismSettingsNavRow> createState() => _PrismSettingsNavRowState();
+}
+
+class _PrismSettingsNavRowState extends State<_PrismSettingsNavRow>
+    with SingleTickerProviderStateMixin {
+  bool _hover = false;
+  late final AnimationController _draw = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+    value: 1,
+  );
+
+  @override
+  void didUpdateWidget(_PrismSettingsNavRow old) {
+    super.didUpdateWidget(old);
+    // Контур раздела прочерчивается при переходе — `drawline` из макета.
+    if (widget.selected && !old.selected) _draw.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _draw.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    final on = widget.selected;
+    final lit = on || _hover;
+    final fg = lit ? _txt(context) : _sub(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: on
+                ? LinearGradient(
+                    begin: const Alignment(-1, -0.2),
+                    end: const Alignment(1, 0.2),
+                    colors: [
+                      _prismAccentSoft(context),
+                      _prismAccentSoft(context).withValues(alpha: 0),
+                    ],
+                  )
+                : null,
+            color: on ? null : (_hover ? _prismHover(context) : null),
+            borderRadius: BorderRadius.circular(14),
+            border:
+                Border.all(color: on ? _stroke(context) : Colors.transparent),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 13,
+                child: Text(
+                  widget.index.toString().padLeft(2, '0'),
+                  style: PrismType.numeric
+                      .copyWith(color: _faint(context), fontSize: 9.5),
+                ),
+              ),
+              const SizedBox(width: 10),
+              AnimatedBuilder(
+                animation: _draw,
+                builder: (context, _) => PrismIcon(
+                  widget.group.d,
+                  size: 16,
+                  progress: _draw.value,
+                  color: Color.lerp(_ramp(context).a1, fg, _draw.value),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  app.t(widget.group.titleKey),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 12.8, fontWeight: FontWeight.w600, color: fg),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Вкладка подстраницы над карточками настроек.
+class _PrismSettingsPageTab extends StatefulWidget {
+  const _PrismSettingsPageTab({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_PrismSettingsPageTab> createState() => _PrismSettingsPageTabState();
+}
+
+class _PrismSettingsPageTabState extends State<_PrismSettingsPageTab> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = widget.selected;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: on
+                ? LinearGradient(
+                    begin: const Alignment(-1, -0.2),
+                    end: const Alignment(1, 0.2),
+                    colors: [
+                      _prismAccentSoft(context),
+                      _prismAccentSoft(context).withValues(alpha: 0),
+                    ],
+                  )
+                : null,
+            color: on ? null : (_hover ? _prismHover(context) : null),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: on ? _stroke(context) : Colors.transparent),
+          ),
+          child: Text(
+            widget.label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: on ? _txt(context) : _sub(context),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -54,7 +54,15 @@ if [ "$FORCE_CPU" = "1" ]; then
   warn "принудительно на процессоре — синтез будет медленным, только для проверки"
 elif [ -e /dev/kfd ] && [ -e /dev/dri ]; then
   ok "/dev/kfd и /dev/dri на месте"
-  GPU_ARGS="--device=/dev/kfd --device=/dev/dri --security-opt seccomp=unconfined --group-add video --group-add render"
+  # Идентификаторы групп — ЧИСЛАМИ с хоста: имена docker резолвит внутри образа,
+  # а там групп render/video обычно нет. На этом уже спотыкались: контейнер падал
+  # с «unable to find group render».
+  GID_RENDER=$(getent group render | cut -d: -f3)
+  GID_VIDEO=$(getent group video | cut -d: -f3)
+  GRP=""
+  [ -n "${GID_RENDER:-}" ] && GRP="$GRP --group-add $GID_RENDER"
+  [ -n "${GID_VIDEO:-}" ] && GRP="$GRP --group-add $GID_VIDEO"
+  GPU_ARGS="--device=/dev/kfd --device=/dev/dri --security-opt seccomp=unconfined$GRP"
 else
   die "Нет /dev/kfd — видеокарта не установлена или драйвер не поднялся.
   Синтез на процессоре имеет смысл только для проверки: запустите с --cpu.
@@ -62,12 +70,33 @@ else
 fi
 
 # ---- 2. Место ----------------------------------------------------------------
+# Сколько нужно — зависит от того, собрана ли уже общая основа. Пока torch
+# качал каждый образ отдельно, требовалось 25 ГБ; теперь основа общая, и синтезу
+# остаётся свой небольшой слой плюс модель. Проверять по старому числу значило
+# отказываться работать при вполне достаточном месте — так и вышло.
+if docker image inspect evs-rocm-base:latest >/dev/null 2>&1; then
+  NEED=8
+else
+  NEED=25
+fi
+# docker освобождает временные файлы распаковки не мгновенно: сразу после сборки
+# основы df показывал 8 ГБ, а через десять секунд — 22. Даём ему договорить.
+sync; sleep 5
 FREE=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc '0-9')
-say "Место на диске: ${FREE} ГБ"
-[ "${FREE:-0}" -lt 25 ] && die "Нужно хотя бы 25 ГБ: образ с torch+ROCm около 12-15, модель ещё 2."
+say "Место на диске: ${FREE} ГБ (нужно ${NEED})"
+[ "${FREE:-0}" -lt "$NEED" ] && die "Не хватает места: свободно ${FREE} ГБ, нужно ${NEED}."
 ok "хватает"
 
 # ---- 3. Сборка ---------------------------------------------------------------
+# Общая основа с torch под ROCm: собирается один раз и используется обоими
+# контейнерами. Без неё каждый тянул бы свою копию torch — на станции это
+# лишние десять гигабайт.
+if ! docker image inspect evs-rocm-base:latest >/dev/null 2>&1; then
+  say "Собираю общую основу (torch под ROCm, это долго и один раз)"
+  docker build -t evs-rocm-base:latest "$DIR/../rocm-base"     || docker build -t evs-rocm-base:latest "$HOME/evs-rocm-base"     || die "не собралась основа evs-rocm-base"
+fi
+ok "общая основа на месте"
+
 say "Сборка образа (первый раз — долго, качается torch под ROCm)"
 if [ "$REBUILD" = "1" ] || ! docker image inspect evs-tts:latest >/dev/null 2>&1; then
   docker build -t evs-tts:latest "$DIR" || die "образ не собрался"
@@ -107,47 +136,56 @@ ok "сервер отвечает"
 curl -fsS "http://127.0.0.1:${PORT}/health" | sed 's/^/      /'
 
 # ---- 6. Проверка ТЕМ ЖЕ запросом, что шлёт EVS -------------------------------
+# Образцом берём файл из самого CosyVoice, а не синтетический тон. Тон здесь был
+# ошибкой: речевых признаков из него не извлечь, и проверка не отличала рабочий
+# синтез от сломанного — сервер отвечал, а речи не получалось. У этого файла
+# известна расшифровка, и ответ сверяется по длительности.
 say "Проверка настоящим запросом синтеза"
-python3 - "$PORT" <<'PY'
-import io, json, sys, urllib.request, wave, math, struct
-port = sys.argv[1]
-# Образец голоса: секунда тона. Для проверки контракта годится — важно, что
-# сервер принял файл, синтезировал и вернул разборный WAV.
-buf = io.BytesIO()
-with wave.open(buf, "wb") as w:
-    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
-    w.writeframes(b"".join(struct.pack("<h", int(6000*math.sin(2*math.pi*180*t/16000)))
-                           for t in range(16000)))
-ref = buf.getvalue()
+REF=/tmp/evs-cosy-ref.wav
+docker cp evs-tts:/opt/CosyVoice/asset/zero_shot_prompt.wav "$REF" >/dev/null 2>&1 \
+  || die "не достать образец из контейнера"
+python3 - "$PORT" "$REF" <<'INNER'
+import io, sys, urllib.request, wave
+port, ref_path = sys.argv[1], sys.argv[2]
+ref = open(ref_path, "rb").read()
+CRLF = chr(13) + chr(10)          # без экранирования: так надёжнее в heredoc
 b = "----evsCheck"
 parts = []
 def field(n, v):
-    parts.append(("--"+b).encode())
-    parts.append(('Content-Disposition: form-data; name="%s"\r\n' % n).encode())
-    parts.append(str(v).encode())
-field("tts_text", "Проверка синтеза на станции.")
-field("prompt_text", "проверка")
+    parts.append(("--" + b).encode())
+    parts.append(('Content-Disposition: form-data; name="%s"' % n + CRLF).encode())
+    parts.append(str(v).encode("utf-8"))
+field("tts_text", "收到好友从远方寄来的生日礼物，那份意外的惊喜让我心中充满了甜蜜的快乐。")
+field("prompt_text", "希望你以后能够做的比我还好呦。")
 field("speed", 1.0)
-parts.append(("--"+b).encode())
-parts.append(b'Content-Disposition: form-data; name="prompt_wav"; filename="ref.wav"\r\nContent-Type: audio/wav\r\n')
+parts.append(("--" + b).encode())
+parts.append(('Content-Disposition: form-data; name="prompt_wav"; filename="ref.wav"' + CRLF + 'Content-Type: audio/wav' + CRLF).encode())
 parts.append(ref)
-parts.append(("--"+b+"--").encode())
-body = b"\r\n".join(parts) + b"\r\n"
-req = urllib.request.Request(f"http://127.0.0.1:{port}/inference_zero_shot",
-                             data=body,
-                             headers={"Content-Type": "multipart/form-data; boundary="+b})
+parts.append(("--" + b + "--").encode())
+body = CRLF.encode().join(parts) + CRLF.encode()
+req = urllib.request.Request(
+    "http://127.0.0.1:%s/inference_zero_shot" % port, data=body,
+    headers={"Content-Type": "multipart/form-data; boundary=" + b})
 try:
-    with urllib.request.urlopen(req, timeout=600) as r:
+    with urllib.request.urlopen(req, timeout=900) as r:
         audio = r.read()
 except Exception as e:
-    print(f"  [x] синтез не удался: {e}"); sys.exit(1)
+    print("  [x] синтез не удался: %s" % e); sys.exit(1)
 try:
     with wave.open(io.BytesIO(audio), "rb") as w:
         secs = w.getnframes() / w.getframerate()
-    print(f"  [v] получен WAV: {len(audio)} байт, {secs:.1f} с, {w.getframerate()} Гц")
+        rate = w.getframerate()
 except Exception as e:
-    print(f"  [x] ответ не разбирается как WAV: {e}"); sys.exit(1)
-PY
+    print("  [x] ответ не разбирается как WAV: %s" % e); sys.exit(1)
+print("  [v] получен WAV: %d байт, %.1f с, %d Гц" % (len(audio), secs, rate))
+# Эта фраза звучит около восьми секунд. Втрое дольше — верный признак, что
+# модель не проговаривает текст, а бормочет: так и было, пока не выяснилось,
+# что transformers стоит не той версии, какую требует CosyVoice.
+if not 4.0 <= secs <= 16.0:
+    print("  [x] длительность %.1f с не похожа на эту фразу —" % secs)
+    print("      синтез отвечает, но говорит не то. Проверьте версии пакетов.")
+    sys.exit(1)
+INNER
 [ $? -eq 0 ] || die "контракт не подтверждён — в EVS это тоже не заработает"
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')

@@ -455,12 +455,20 @@ class CosyVoiceEngine(BaseTtsEngine):
     name = "cosyvoice"
 
     def __init__(self, endpoint: str = "", ref: str = "",
-                 prompt_text: str = "", speed: float = 1.0) -> None:
+                 prompt_text: str = "", speed: float = 1.0,
+                 language: str = "Russian") -> None:
         super().__init__()
         self._endpoint = (endpoint or "").rstrip("/")
         self._ref = ref or ""
         self._prompt = prompt_text or ""
         self._speed = speed or 1.0
+        # Qwen3-TTS обучена десяти языкам и берёт язык отдельным полем. По
+        # тексту она его угадывает и на коротких фразах ошибается — а у
+        # ассистента почти все реплики короткие.
+        self._language = language or "Russian"
+        # Знает ли сервер наш образец. Сбрасывается при смене образца или
+        # его расшифровки, а также по ответу 409 — сервер мог перезапуститься.
+        self._ref_known = False
 
     @property
     def available(self) -> bool:
@@ -474,56 +482,84 @@ class CosyVoiceEngine(BaseTtsEngine):
         return ""
 
     def set_config(self, endpoint=None, ref=None, prompt_text=None,
-                   speed=None) -> None:
+                   speed=None, language=None) -> None:
         if endpoint is not None:
             self._endpoint = endpoint.rstrip("/")
         if ref is not None:
+            if ref != self._ref:
+                self._ref_known = False
             self._ref = ref
         if prompt_text is not None:
+            if prompt_text != self._prompt:
+                self._ref_known = False
             self._prompt = prompt_text
         if speed is not None:
             self._speed = speed
+        if language is not None:
+            self._language = language
 
     def load(self) -> None:
         if not self.available:
             raise RuntimeError(self.unavailable_reason())
         self._loaded = True
 
+    def _request(self, text: str, wav_bytes: bytes, sha: str) -> bytes:
+        """Один запрос синтеза. Пустой `wav_bytes` — уезжает только контрольная
+        сумма образца, а сам файл остаётся дома."""
+        import urllib.request
+        boundary = "----evsCosy%d" % (threading.get_ident() & 0xffffff)
+        parts = []
+
+        def field(name, value):
+            parts.append(("--" + boundary).encode())
+            parts.append(
+                ('Content-Disposition: form-data; name="%s"\r\n' % name)
+                .encode())
+            parts.append(str(value).encode("utf-8"))
+
+        field("tts_text", text)
+        field("prompt_text", self._prompt)
+        field("speed", self._speed)
+        field("language", self._language)
+        field("prompt_wav_sha", sha)
+        if wav_bytes:
+            parts.append(("--" + boundary).encode())
+            parts.append(
+                b'Content-Disposition: form-data; name="prompt_wav"; '
+                b'filename="ref.wav"\r\nContent-Type: audio/wav\r\n')
+            parts.append(wav_bytes)
+        parts.append(("--" + boundary + "--").encode())
+        body = b"\r\n".join(parts) + b"\r\n"
+        req = urllib.request.Request(
+            self._endpoint + "/inference_zero_shot", data=body,
+            headers={"Content-Type":
+                     "multipart/form-data; boundary=" + boundary})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read()
+
     def synthesize(self, text: str, rate: float = 1.0, volume: float = 1.0):
         import io as _io
-        import urllib.request
+        import urllib.error
 
         import numpy as np
         import soundfile as sf
         try:
             with open(self._ref, "rb") as f:
                 wav_bytes = f.read()
-            boundary = "----evsCosy%d" % (threading.get_ident() & 0xffffff)
-            parts = []
-
-            def field(name, value):
-                parts.append(("--" + boundary).encode())
-                parts.append(
-                    ('Content-Disposition: form-data; name="%s"\r\n' % name)
-                    .encode())
-                parts.append(str(value).encode("utf-8"))
-
-            field("tts_text", text)
-            field("prompt_text", self._prompt)
-            field("speed", self._speed)
-            parts.append(("--" + boundary).encode())
-            parts.append(
-                b'Content-Disposition: form-data; name="prompt_wav"; '
-                b'filename="ref.wav"\r\nContent-Type: audio/wav\r\n')
-            parts.append(wav_bytes)
-            parts.append(("--" + boundary + "--").encode())
-            body = b"\r\n".join(parts) + b"\r\n"
-            req = urllib.request.Request(
-                self._endpoint + "/inference_zero_shot", data=body,
-                headers={"Content-Type":
-                         "multipart/form-data; boundary=" + boundary})
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                audio = resp.read()
+            sha = hashlib.sha256(wav_bytes).hexdigest()
+            # Образец в 480 КБ по сети стоит около трёх секунд на КАЖДУЮ фразу,
+            # хотя на сервере он давно разобран и с тех пор не менялся. Поэтому
+            # шлём только сумму, а файл — лишь когда сервер отвечает, что
+            # такого отпечатка у него нет: после его перезапуска или смены
+            # образца.
+            try:
+                audio = self._request(
+                    text, b"" if self._ref_known else wav_bytes, sha)
+            except urllib.error.HTTPError as e:
+                if e.code != 409:
+                    raise
+                audio = self._request(text, wav_bytes, sha)
+            self._ref_known = True
             data, sr = sf.read(_io.BytesIO(audio), dtype="float32")
             if getattr(data, "ndim", 1) > 1:
                 data = data.mean(axis=1)
@@ -627,9 +663,10 @@ class TtsEngine:
             threading.Thread(target=self._apply_blocking, daemon=True).start()
 
     def set_cosy_config(self, endpoint=None, ref=None, prompt_text=None,
-                        speed=None) -> None:
+                        speed=None, language=None) -> None:
         self._cosy.set_config(endpoint=endpoint, ref=ref,
-                              prompt_text=prompt_text, speed=speed)
+                              prompt_text=prompt_text, speed=speed,
+                              language=language)
         self._clone_retry_at = 0.0
         if self._desired == "cosyvoice":
             threading.Thread(target=self._apply_blocking, daemon=True).start()
@@ -728,6 +765,37 @@ class TtsEngine:
         if failed is not self._piper and self._piper.available:
             return self._piper, "piper"
         return self._pyttsx3, "pyttsx3"
+
+    def render(self, text: str, path: str, voice_dir: str = "",
+               voice_id: str = "", rate: float = 1.0) -> bool:
+        """Синтезировать в ФАЙЛ, ничего не проигрывая.
+
+        Нужна там, где студия сохраняет озвучку: раньше «голос ассистента» и
+        голоса Piper только проговаривались вслух, файла после них не
+        оставалось — и кнопки «показать в папке» было нечего показывать.
+
+        Пустой voice_id — синтез текущим движком, тем самым «голосом
+        ассистента». Иначе поднимается временный движок Piper под конкретный
+        голос, как в предпросмотре: постоянные настройки при этом не меняются.
+        """
+        try:
+            if voice_id:
+                eng = PiperEngine(voice_dir, voice_id)
+                if not eng.available:
+                    return False
+                eng.load()
+            else:
+                eng = self._active
+                if eng is None:
+                    return False
+            res = eng.synthesize(text, rate, 1.0)
+            if res is None:
+                return False
+            self._store_wav(path, os.path.dirname(path), res[0], res[1])
+            return os.path.isfile(path)
+        except Exception as e:
+            _log(f"render: {e}")
+            return False
 
     def preview(self, voice_dir: str, voice_id: str, text: str,
                 rate: float = 1.0, volume: float = 1.0) -> None:

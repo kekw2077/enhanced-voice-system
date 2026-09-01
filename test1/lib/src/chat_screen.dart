@@ -15,6 +15,12 @@ class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
   final _scroll = ScrollController();
   final _inputFocus = FocusNode();
+  // Вернулись в поле ввода — значит собираемся писать, а не читать историю.
+  // Отматываем к последнему сообщению: иначе набираешь вслепую, а свежие
+  // реплики остаются выше края экрана.
+  void _onInputFocus() {
+    if (_inputFocus.hasFocus) _scrollDown();
+  }
   bool _sending = false;
   final List<String> _pendingAttachments = [];
   // id of the assistant message currently being edited inline (its bubble
@@ -37,6 +43,7 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _scFinalSub = SidecarClient.instance.finalText.listen(_onVoiceFinal);
     }
+    _inputFocus.addListener(_onInputFocus);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final app = context.read<AppState>();
@@ -140,6 +147,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_scListening) SidecarClient.instance.sttStop();
     _controller.dispose();
     _scroll.dispose();
+    _inputFocus.removeListener(_onInputFocus);
     _inputFocus.dispose();
     _editController.dispose();
     super.dispose();
@@ -303,6 +311,9 @@ class _ChatScreenState extends State<ChatScreen> {
       _sending = true;
       _pendingAttachments.clear();
     });
+    // Отматываем СРАЗУ, не дожидаясь ответа: своя реплика уже в списке, и
+    // смотреть на неё человек хочет сейчас, а не через несколько секунд.
+    _scrollDown();
     await app.sendMessage(text, attachments: attachments);
     if (!mounted) return;
     setState(() => _sending = false);
@@ -1004,7 +1015,9 @@ class _ChatScreenState extends State<ChatScreen> {
               const SizedBox(height: 20),
               // vizType picks the hero visualization; all react to the real
               // combined voice level (mic + assistant speech).
-              if (app.vizType == 'bars')
+              if (app.vizType == 'prismorb')
+                const PrismOrb(size: 190, showMic: false)
+              else if (app.vizType == 'bars')
                 const EvsBarsViz(width: 360, height: 150)
               else if (app.vizType == 'waves')
                 const EvsRingViz(size: 220)
@@ -1093,12 +1106,12 @@ class _ChatScreenState extends State<ChatScreen> {
             i == conv.messages.length - 1 &&
             m.role == 'assistant' &&
             m.content.isEmpty;
-        // Action bar (edit / regenerate / continue) under the last assistant
-        // reply when idle.
-        final showActions =
-            !busy &&
-            i == conv.messages.length - 1 &&
-            m.role == 'assistant' &&
+        // Полоса действий — под КАЖДОЙ репликой (копировать · править ·
+        // удалить; у последнего ответа ещё перегенерировать и продолжить).
+        // Раньше она была только под последним ответом, а «копировать» и
+        // «удалить» жили в длинном нажатии — жесте, которого у мыши нет.
+        final showActions = !isStreamingPlaceholder &&
+            !(busy && i == conv.messages.length - 1) &&
             m.content.isNotEmpty;
         return _bubble(
           m,
@@ -1159,6 +1172,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             ),
+          // Ход рассуждения — над ответом и свёрнутым.
+          if (m.role == 'assistant' && m.thinking.trim().isNotEmpty)
+            EvsThinkingBlock(text: m.thinking, live: m.content.isEmpty),
           if (thinking)
             const _ThinkingDots()
           else if (editing)
@@ -1171,22 +1187,31 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+    final conv = context.read<AppState>().current;
+    if (thinking || editing || conv == null) {
+      return Align(
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        child: bubble,
+      );
+    }
+    // Общая рамка реплики: правый клик и долгое нажатие открывают одно и то же
+    // меню, снизу — та же полоса действий, что в Nexus и «Ноктюрне».
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: isUser
-            ? CrossAxisAlignment.end
-            : CrossAxisAlignment.start,
-        children: [
-          thinking || editing
-              ? bubble
-              : GestureDetector(
-                  onLongPressStart: (d) =>
-                      _showMessageActions(m, d.globalPosition),
-                  child: bubble,
-                ),
-          if (showActions && !editing) _messageActionsBar(m),
-        ],
+      child: EvsMessageFrame(
+        conversation: conv,
+        message: m,
+        isLast: identical(m, conv.messages.isEmpty ? null : conv.messages.last),
+        alignEnd: isUser,
+        actions: showActions,
+        onEdit: _startEdit,
+        onCompose: (text) {
+          _controller.text = text;
+          _inputFocus.requestFocus();
+        },
+        onRegenerate: _regenerate,
+        onContinue: _continue,
+        child: bubble,
       ),
     );
   }
@@ -1236,225 +1261,10 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // Edit / regenerate / continue controls under the last assistant reply.
-  Widget _messageActionsBar(ChatMessage m) {
-    final app = context.read<AppState>();
-    Widget btn(IconData icon, String tooltip, VoidCallback onTap) {
-      return IconButton(
-        icon: Icon(icon, size: 18, color: _txt(context)),
-        tooltip: tooltip,
-        onPressed: onTap,
-        visualDensity: VisualDensity.compact,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        constraints: const BoxConstraints(),
-      );
-    }
-
-    Widget sep() => Container(
-      width: 1,
-      height: 20,
-      color: _sub(context).withValues(alpha: 0.25),
-    );
-
-    final row = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        btn(Icons.edit_outlined, app.t('msgEdit'), () => _startEdit(m)),
-        sep(),
-        btn(Icons.refresh, app.t('msgRegenerate'), _regenerate),
-        sep(),
-        btn(Icons.fast_forward, app.t('msgContinue'), _continue),
-      ],
-    );
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 6, left: 2),
-      child: _isGlass(context)
-          ? GlassSurface(borderRadius: BorderRadius.circular(18), child: row)
-          : Container(
-              decoration: BoxDecoration(
-                color: _card(context).withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: row,
-            ),
-    );
-  }
-
-  void _showMessageActions(ChatMessage m, Offset globalPosition) async {
-    final app = context.read<AppState>();
-    final conv = app.current;
-    final isPinned = conv != null && conv.pinnedMessageIds.contains(m.id);
-    final String? selected;
-    if (_isGlass(context)) {
-      selected = await showGlassMenu(
-        context,
-        position: globalPosition,
-        menuWidth: 260,
-        items: [
-          GlassMenuItem('copy', app.t('msgCopy'), icon: Icons.copy_outlined),
-          GlassMenuItem(
-            'compose',
-            app.t('msgUseInComposer'),
-            icon: Icons.edit_note_outlined,
-          ),
-          GlassMenuItem(
-            'remember',
-            app.t('msgRemember'),
-            icon: Icons.psychology_alt_outlined,
-          ),
-          GlassMenuItem(
-            'forget',
-            app.t('msgForgetMemory'),
-            icon: Icons.delete_outline,
-            color: Colors.redAccent,
-          ),
-          GlassMenuItem(
-            'pin',
-            isPinned ? app.t('msgUnpinContext') : app.t('msgPinContext'),
-            icon: isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-          ),
-        ],
-      );
-    } else {
-      selected = await showMenu<String>(
-        context: context,
-        position: RelativeRect.fromLTRB(
-          globalPosition.dx,
-          globalPosition.dy,
-          globalPosition.dx,
-          globalPosition.dy,
-        ),
-        color: _card(context),
-        items: [
-          _menuItem('copy', Icons.copy_outlined, app.t('msgCopy')),
-          _menuItem(
-            'compose',
-            Icons.edit_note_outlined,
-            app.t('msgUseInComposer'),
-          ),
-          _menuItem(
-            'remember',
-            Icons.psychology_alt_outlined,
-            app.t('msgRemember'),
-          ),
-          _menuItem(
-            'forget',
-            Icons.delete_outline,
-            app.t('msgForgetMemory'),
-            color: Colors.redAccent,
-          ),
-          _menuItem(
-            'pin',
-            isPinned ? Icons.push_pin : Icons.push_pin_outlined,
-            isPinned ? app.t('msgUnpinContext') : app.t('msgPinContext'),
-          ),
-        ],
-      );
-    }
-    if (selected == null || !mounted) return;
-    String? toast;
-    switch (selected) {
-      case 'copy':
-        await Clipboard.setData(ClipboardData(text: m.content));
-        toast = app.t('msgCopied');
-        break;
-      case 'compose':
-        _controller.text = m.content;
-        _inputFocus.requestFocus();
-        break;
-      case 'remember':
-        final effectivePersona = conv?.persona ?? app.persona;
-        if (effectivePersona.askBeforeRemembering) {
-          final confirmed = await _pickMemoryCategory(app);
-          if (confirmed != true || !mounted) break;
-        }
-        app.rememberMessageContent(m.content);
-        toast = app.t('msgRemembered');
-        break;
-      case 'forget':
-        app.forgetMessageMemory(m.content);
-        toast = app.t('msgForgotten');
-        break;
-      case 'pin':
-        if (conv != null) {
-          app.toggleMessagePin(conv, m);
-          toast = isPinned ? app.t('msgUnpinned') : app.t('msgPinned');
-        }
-        break;
-    }
-    if (toast != null && mounted) {
-      showAppSnackBar(context, toast);
-    }
-  }
-
-  Future<bool?> _pickMemoryCategory(AppState app) {
-    const categories = [
-      'memCatPreference',
-      'memCatProfile',
-      'memCatProject',
-      'memCatOther',
-    ];
-    var selected = categories.first;
-    return showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => _AppDialog(
-          backgroundColor: _card(context),
-          title: Text(
-            app.t('chooseMemoryCategory'),
-            style: TextStyle(color: _txt(context)),
-          ),
-          content: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final cat in categories)
-                ChoiceChip(
-                  label: Text(app.t(cat)),
-                  selected: selected == cat,
-                  labelStyle: TextStyle(
-                    color: selected == cat ? Colors.white : _txt(context),
-                    fontWeight: FontWeight.w500,
-                  ),
-                  selectedColor: _accent(context),
-                  backgroundColor: _bg(context).withValues(alpha: 0.4),
-                  side: BorderSide(color: _sub(context).withValues(alpha: 0.2)),
-                  onSelected: (_) => setDialogState(() => selected = cat),
-                ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(app.t('cancel')),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(app.t('save')),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  PopupMenuItem<String> _menuItem(
-    String value,
-    IconData icon,
-    String label, {
-    Color? color,
-  }) {
-    return PopupMenuItem(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: color ?? _txt(context)),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: color ?? _txt(context))),
-        ],
-      ),
-    );
-  }
+  // Полоса действий под репликой, контекстное меню и выбор категории памяти
+  // переехали в shell_common.dart (`EvsMessageActions`, `showEvsMessageMenu`,
+  // `evsPickMemoryCategory`): три оболочки должны предлагать над сообщением
+  // одно и то же, а не каждая своё.
 
   Widget _promptChips(AppState app) {
     final chips = [
@@ -1639,7 +1449,12 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Text(app.t('chatDisabledHint'),
                     style: TextStyle(color: _sub(context), fontSize: 14)),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 10),
+              // Тумблер обязателен: без него выключенный чат из этого стиля
+              // включался только через настройки, тогда как Nexus и «Ноктюрн»
+              // держали кнопку прямо здесь.
+              evsChatToggleButton(context),
+              const SizedBox(width: 8),
             ],
           ),
         ),
@@ -1705,8 +1520,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   final hasContent =
                       _controller.text.trim().isNotEmpty ||
                       _pendingAttachments.isNotEmpty;
-                  final canStop =
-                      app.isGenerating && (app.current?.rpModeEnabled ?? false);
+                  // Остановка работает для любого ответа: `cancelGeneration`
+                  // не знает про ролевую игру, а условие тут стояло со времён,
+                  // когда потоковым был только RP-режим.
+                  final canStop = app.isGenerating;
                   return Container(
                     width: 36,
                     height: 36,
@@ -1758,6 +1575,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 },
               ),
+                  // Кольцо контекста — у кнопки отправки, как и в остальных
+                  // стилях: решение «не пора ли сжать» принимается здесь.
+                  const SizedBox(width: 8),
+                  evsContextGauge(context, app),
+                  const SizedBox(width: 8),
+                  evsChatToggleButton(context),
                 ],
               ),
             ],

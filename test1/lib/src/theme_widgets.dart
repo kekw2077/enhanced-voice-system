@@ -16,9 +16,11 @@ class MiraiApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       navigatorKey: rootNavKey,
       title: 'EVS',
-      theme: _buildTheme(app.appStyle, app.themeMode),
-      darkTheme: _buildTheme(app.appStyle, app.themeMode),
-      themeMode: skinFor(app.appStyle, app.themeMode).pal.brightness ==
+      theme: _buildTheme(app.appStyle, app.themeMode, app.prismAccent),
+      darkTheme: _buildTheme(app.appStyle, app.themeMode, app.prismAccent),
+      themeMode: skinFor(app.appStyle, app.themeMode, accent: app.prismAccent)
+                  .pal
+                  .brightness ==
               Brightness.light
           ? ThemeMode.light
           : ThemeMode.dark,
@@ -47,11 +49,12 @@ class MiraiApp extends StatelessWidget {
   // by NOT forcing a bundled family (Flutter then falls back to the platform
   // default, which is SF on iOS). Apple's SF can't be bundled for other
   // platforms (proprietary), so Android/desktop/web keep the bundled Nunito.
-  String? get _appFontFamily =>
-      defaultTargetPlatform == TargetPlatform.iOS ? null : 'Nunito';
+  // «Призма» нарисована на Figtree и берёт её — но ТОЛЬКО она: три других стиля
+  // остаются на Nunito и не меняются ни на пиксель.
+  String? _appFontFamily(AppStyle style) => evsFontFamily(style);
 
-  ThemeData _buildTheme(AppStyle style, AppThemeMode mode) {
-    final p = skinFor(style, mode).pal;
+  ThemeData _buildTheme(AppStyle style, AppThemeMode mode, PrismAccent accent) {
+    final p = skinFor(style, mode, accent: accent).pal;
     final scheme = ColorScheme.fromSeed(
       seedColor: p.accent,
       brightness: p.brightness,
@@ -62,34 +65,120 @@ class MiraiApp extends StatelessWidget {
     );
     final card = p.card;
     final txtStyle = TextStyle(color: p.txt);
-    return ThemeData(
+    final prism = style == AppStyle.prism;
+    // `--stroke2` макета: контур заметнее обычного, им обведены всплывающие
+    // поверхности — они лежат НАД интерфейсом, и их край должен читаться.
+    final stroke2 = p.brightness == Brightness.dark
+        ? const Color(0x2EFFFFFF)
+        : const Color(0xFFB8C2D2);
+    final base = ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       scaffoldBackgroundColor: p.bg,
       dividerColor: p.stroke,
-      fontFamily: _appFontFamily,
+      fontFamily: _appFontFamily(style),
+      fontFamilyFallback: style == AppStyle.prism ? kPrismFontFallback : null,
       // Cover the surfaces that otherwise fall back to Material defaults so the
       // system dialogs / menus / snackbars / tooltips follow the app theme even
       // when a call site doesn't set colours explicitly (TZ3.1 §1.2).
-      dialogTheme: DialogThemeData(backgroundColor: card),
+      //
+      // «Призма» задаёт им ещё и форму: окно 22, меню 18, подсказка 12, у всех
+      // контур `--stroke2`. Правка здесь важнее, чем кажется, — через эти четыре
+      // темы проходит КАЖДЫЙ диалог, меню и всплывающая подсказка приложения, и
+      // без неё переименование чата или выбор модели открывались бы прямыми
+      // углами посреди скруглённого интерфейса.
+      dialogTheme: DialogThemeData(
+        backgroundColor: card,
+        shape: prism
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+                side: BorderSide(color: stroke2),
+              )
+            : null,
+      ),
       popupMenuTheme: PopupMenuThemeData(
         color: card,
         textStyle: txtStyle,
+        shape: prism
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+                side: BorderSide(color: stroke2),
+              )
+            : null,
+        elevation: prism ? 0 : null,
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: card,
         contentTextStyle: txtStyle,
         behavior: SnackBarBehavior.floating,
+        shape: prism
+            ? RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: stroke2),
+              )
+            : null,
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
           color: card,
-          borderRadius: const BorderRadius.all(Radius.circular(6)),
+          borderRadius: BorderRadius.all(Radius.circular(prism ? 12 : 6)),
+          border: prism ? Border.all(color: stroke2) : null,
         ),
         textStyle: txtStyle,
       ),
     );
+    if (!prism) return base;
+    // Обводка текста. Она нужна не для красоты: в «Призме» под интерфейсом
+    // живая аврора, и её светлые полосы проходят прямо под подписями. Любой
+    // ОДИН цвет текста на таком фоне где-то теряется — тёмный на светлом
+    // месте, светлый на тёмном. Ореол снимает вопрос: буква несёт свой фон с
+    // собой и читается над чем угодно. Тень тугая (2px) — это контур, а не
+    // свечение, плюс вторая пошире, чтобы буквы отделялись от пятен.
+    final halo =
+        p.brightness == Brightness.dark ? kPrismHaloDark : kPrismHaloLight;
+    return base.copyWith(
+      textTheme: _withHalo(base.textTheme, halo),
+      primaryTextTheme: _withHalo(base.primaryTextTheme, halo),
+    );
   }
+}
+
+const List<Shadow> kPrismHaloDark = [
+  Shadow(color: Color(0xE6000000), blurRadius: 2),
+  Shadow(color: Color(0x8C000000), blurRadius: 5),
+];
+const List<Shadow> kPrismHaloLight = [
+  Shadow(color: Color(0xE6FFFFFF), blurRadius: 2),
+  Shadow(color: Color(0x8CFFFFFF), blurRadius: 5),
+];
+
+/// Ореол под цвет темы — для мест, где его приходится ставить руками.
+List<Shadow> prismHalo(BuildContext c) =>
+    _pal(c).brightness == Brightness.dark ? kPrismHaloDark : kPrismHaloLight;
+
+/// Тот же ореол на всех начертаниях темы. Через `textTheme`, а не по месту:
+/// `Text` сливает свой стиль с окружающим (`inherit: true`), поэтому поле,
+/// которого нет в стиле вызова — а `shadows` не задаёт почти никто, — берётся
+/// отсюда. Одна правка вместо сотен.
+TextTheme _withHalo(TextTheme t, List<Shadow> s) {
+  TextStyle? h(TextStyle? x) => x?.copyWith(shadows: s);
+  return t.copyWith(
+    displayLarge: h(t.displayLarge),
+    displayMedium: h(t.displayMedium),
+    displaySmall: h(t.displaySmall),
+    headlineLarge: h(t.headlineLarge),
+    headlineMedium: h(t.headlineMedium),
+    headlineSmall: h(t.headlineSmall),
+    titleLarge: h(t.titleLarge),
+    titleMedium: h(t.titleMedium),
+    titleSmall: h(t.titleSmall),
+    bodyLarge: h(t.bodyLarge),
+    bodyMedium: h(t.bodyMedium),
+    bodySmall: h(t.bodySmall),
+    labelLarge: h(t.labelLarge),
+    labelMedium: h(t.labelMedium),
+    labelSmall: h(t.labelSmall),
+  );
 }
 
 // Animated startup transition: the Genesis logo (variant 01 of
@@ -483,8 +572,195 @@ EvsSkin _nocturSkin(_Palette pal, {required Color accent2, required bool glow}) 
       tabsNav: true,
     );
 
+// ---- «Призма» (handoff/design) --------------------------------------------
+// Шрифты стиля. В Figtree НЕТ кириллицы — 391 глиф, ни одной русской буквы; в
+// прототипе это не видно, потому что там `font-family: Figtree, system-ui` и
+// весь русский текст молча рисовался системным шрифтом. Поэтому Figtree идёт
+// первой (латиница и цифры — точно как в макете), а кириллица подхватывается
+// из Nunito, который уже в сборке. Одна строка на смену, если нужен единый
+// шрифт на оба алфавита.
+const String kPrismFont = 'Figtree';
+const List<String> kPrismFontFallback = ['Nunito'];
+
+/// Семейство шрифта по стилю. Вынесено из темы наружу: тот же выбор нужен окну
+/// меню трея, у которого своя тема и нет доступа к состоянию приложения.
+String? evsFontFamily(AppStyle style) {
+  if (defaultTargetPlatform == TargetPlatform.iOS) return null;
+  return style == AppStyle.prism ? kPrismFont : 'Nunito';
+}
+
+// Моноширинный — числа, метрики, горячие клавиши. Кириллицу имеет (98 глифов),
+// так что подмена не нужна.
+const String kPrismMono = 'JetBrains Mono';
+
+// Акцентная тройка a1 → a2 → a3: из неё строится КАЖДЫЙ градиент стиля. Она же
+// раздаётся в обычные слоты — a2 уходит в `pal.accent`, a3 в `skin.accent2`, —
+// поэтому сотни существующих вызовов `_accent(context)` / `_accent2(context)`
+// красятся выбранным акцентом без единой правки на местах.
+class PrismRamp {
+  final Color a1, a2, a3;
+  const PrismRamp(this.a1, this.a2, this.a3);
+
+  // linear-gradient(140deg, a1, a2 55%, a3) — кнопки, марка, аватар.
+  LinearGradient get badge => LinearGradient(
+        begin: const Alignment(-0.9, -1),
+        end: const Alignment(0.9, 1),
+        colors: [a1, a2, a3],
+        stops: const [0, 0.55, 1],
+      );
+
+  // linear-gradient(96deg, a1, a2 48%, a3) — заголовки с заливкой текста.
+  LinearGradient get sweep => LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [a1, a2, a3],
+        stops: const [0, 0.48, 1],
+      );
+}
+
+const Map<PrismAccent, PrismRamp> _kPrismRamps = {
+  PrismAccent.google:
+      PrismRamp(Color(0xFF3269CE), Color(0xFF7F5AAC), Color(0xFFBC505C)),
+  PrismAccent.aurora:
+      PrismRamp(Color(0xFF1CACC2), Color(0xFF3F63D1), Color(0xFF8A6FD4)),
+  PrismAccent.sunset:
+      PrismRamp(Color(0xFFD18A19), Color(0xFFCD5374), Color(0xFF7F5AAC)),
+  PrismAccent.mint:
+      PrismRamp(Color(0xFF1F9E7A), Color(0xFF3C8CA8), Color(0xFF6D7CC0)),
+};
+
+PrismRamp _prismRamp(PrismAccent a) => _kPrismRamps[a] ?? _kPrismRamps.values.first;
+
+// Тройка ДЛЯ ШЕЙДЕРА фона — отдельная от той, что красит оболочку, и это не
+// небрежность. Цвета интерфейса приглушены нарочно: по ним идёт белый текст.
+// Шейдер же домножает цвет на светимость (`col * lum`), которая почти везде
+// меньше единицы, — приглушённый вход выходит из него грязью, а не авророй.
+// В прототипе у фона своя палитра, вот она, число в число:
+//
+//     Индиго     0.66,0.33,0.97 · 0.39,0.40,0.95 · 0.13,0.83,0.93
+//     Аквамарин  0.16,0.52,0.78 · 0.20,0.82,0.76 · 0.42,0.40,0.92
+//     Закат      0.86,0.34,0.52 · 0.95,0.55,0.32 · 0.62,0.30,0.86
+//
+// Четвёртой в прототипе нет — «Мята» собрана в том же регистре, чтобы выбор
+// акцента не оставлял один вариант без своего неба.
+const Map<PrismAccent, PrismRamp> _kPrismAuroraPal = {
+  PrismAccent.google:
+      PrismRamp(Color(0xFFA854F7), Color(0xFF6366F2), Color(0xFF21D4ED)),
+  PrismAccent.aurora:
+      PrismRamp(Color(0xFF2985C7), Color(0xFF33D1C2), Color(0xFF6B66EB)),
+  PrismAccent.sunset:
+      PrismRamp(Color(0xFFDB5785), Color(0xFFF28C52), Color(0xFF9E4DDB)),
+  PrismAccent.mint:
+      PrismRamp(Color(0xFF1CD999), Color(0xFF3DB3CC), Color(0xFF7378E6)),
+};
+
+/// Небо авроры по выбранному акценту.
+PrismRamp _prismAuroraPal(PrismAccent a) =>
+    _kPrismAuroraPal[a] ?? _kPrismAuroraPal.values.first;
+
+PrismRamp _auroraPal(BuildContext c) =>
+    _prismAuroraPal(c.read<AppState>().prismAccent);
+
+// Активная тройка по контексту — для градиентов оболочки «Призмы».
+PrismRamp _ramp(BuildContext c) => _prismRamp(c.read<AppState>().prismAccent);
+
+// Поверхности «Призмы». ВАЖНО: `card` здесь непрозрачный (`--solid` макета), а
+// не полупрозрачное стекло `--card`. Слот `card` уходит в общие диалоги, меню,
+// подсказки и снекбары (см. _buildTheme), и полупрозрачная заливка сделала бы
+// их сквозными поверх чужих окон. Само стекло живёт в PrismPanel, который
+// читает prismGlass, — ровно там, где прототип ставит backdrop-filter.
+_Palette _prismDarkPal(PrismRamp r) => _Palette(
+      bg: const Color(0xFF07080C),
+      card: const Color(0xFF111319),
+      card2: const Color(0xFF161922),
+      txt: const Color(0xFFF2F4F8),
+      // Второстепенный текст СВЕТЛЕЕ, чем задумано в токенах макета, и это
+      // вынужденно: в макете он лежит на почти чёрной странице, а здесь под
+      // ним живая аврора, и #666C79 на её светлом месте пропадал целиком.
+      // Иерархия сохранена — подпись, пояснение и подсказка по-прежнему трёх
+      // разных тонов, просто весь ряд поднят.
+      sub: const Color(0xFFC6CBD6),
+      accent: r.a2,
+      stroke: const Color(0x17FFFFFF),
+      body: const Color(0xFFDEE2EA),
+      faint: const Color(0xFFA9AFBD),
+      success: const Color(0xFF34D399),
+      danger: const Color(0xFFFF7A7A),
+      info: r.a1,
+      warn: const Color(0xFFF5B944),
+      brightness: Brightness.dark,
+    );
+
+_Palette _prismLightPal(PrismRamp r) => _Palette(
+      bg: const Color(0xFFEEF2F8),
+      card: const Color(0xFFFFFFFF),
+      card2: const Color(0xFFF6F8FC),
+      txt: const Color(0xFF17181B),
+      sub: const Color(0xFF474C57),
+      accent: r.a2,
+      stroke: const Color(0xFFD2DAE8),
+      body: const Color(0xFF33373E),
+      faint: const Color(0xFF6B7079),
+      // Светлая тема берёт НЕ те же success/danger/warn, что тёмная: зелёный
+      // #34D399 и жёлтый #F5B944 на белом почти не читаются.
+      success: const Color(0xFF12876A),
+      danger: const Color(0xFFC64545),
+      info: r.a1,
+      warn: const Color(0xFFB8862A),
+      brightness: Brightness.light,
+    );
+
+// Тёплая тёмная: геометрия и акценты «Призмы» на угольных поверхностях Claude,
+// чтобы третья тема осталась тёплой и в этом стиле тоже.
+_Palette _prismWarmDarkPal(PrismRamp r) => _Palette(
+      bg: const Color(0xFF1A1917),
+      card: const Color(0xFF24231F),
+      card2: const Color(0xFF2C2A26),
+      txt: const Color(0xFFF2F0E9),
+      sub: const Color(0xFFCFCCC2),
+      accent: r.a2,
+      stroke: const Color(0x1FFFFFFF),
+      body: const Color(0xFFEAE7DE),
+      faint: const Color(0xFFB2AFA6),
+      success: const Color(0xFF34D399),
+      danger: const Color(0xFFE0685E),
+      info: r.a1,
+      warn: const Color(0xFFE0B24A),
+      brightness: Brightness.dark,
+    );
+
+// Геометрия «Призмы» (tokens.json): карточка 20, поле/контрол 13, рейка 232.
+// Свечение включено на тёмных темах — оно же красит точки сетки и статусы.
+EvsSkin _prismSkin(_Palette pal, PrismRamp r) => EvsSkin(
+      pal: pal,
+      accent2: r.a3,
+      radiusCard: 20,
+      radiusControl: 13,
+      // 262px — ширина рейки в макете. Меньше нельзя: в строку помещаются
+      // подпись и горячая клавиша, и на 232 они начинали толкаться.
+      railWidth: 262,
+      glow: pal.brightness == Brightness.dark,
+    );
+
 // Resolve the active (style × theme) skin. Classic wraps `_palFor` unchanged.
-EvsSkin skinFor(AppStyle style, AppThemeMode theme) {
+// `accent` действует только на «Призму» — единственный стиль, где акцент
+// выбирает пользователь; остальные три берут его из палитры темы.
+EvsSkin skinFor(
+  AppStyle style,
+  AppThemeMode theme, {
+  PrismAccent accent = PrismAccent.google,
+}) {
+  if (style == AppStyle.prism) {
+    final r = _prismRamp(accent);
+    switch (theme) {
+      case AppThemeMode.dark:
+        return _prismSkin(_prismDarkPal(r), r);
+      case AppThemeMode.claude:
+        return _prismSkin(_prismLightPal(r), r);
+      case AppThemeMode.claudeDark:
+        return _prismSkin(_prismWarmDarkPal(r), r);
+    }
+  }
   if (style == AppStyle.noctur) {
     switch (theme) {
       case AppThemeMode.dark:
@@ -548,7 +824,7 @@ EvsSkin skinFor(AppStyle style, AppThemeMode theme) {
 
 EvsSkin _skin(BuildContext c) {
   final app = c.read<AppState>();
-  return skinFor(app.appStyle, app.themeMode);
+  return skinFor(app.appStyle, app.themeMode, accent: app.prismAccent);
 }
 
 // True when the Nexus interface style is active — lets the shared evs* control
@@ -561,6 +837,11 @@ bool _isNexus(BuildContext c) => c.read<AppState>().appStyle == AppStyle.nexus;
 // the single accent (TZ §5.3 — colour marks the state, nothing else), so the
 // shared evs* helpers must be able to tell the two apart.
 bool _isNoctur(BuildContext c) => c.read<AppState>().appStyle == AppStyle.noctur;
+
+// True в «Призме». Отдельно от двух выше по той же причине: у неё своя
+// геометрия (карточка 20, контрол 13) и свой источник акцента — тройка a1/a2/a3
+// вместо одного цвета темы.
+bool _isPrism(BuildContext c) => c.read<AppState>().appStyle == AppStyle.prism;
 
 _Palette _pal(BuildContext c) => _skin(c).pal;
 
@@ -884,6 +1165,11 @@ Future<String?> showGlassMenu(
 // standard → solid rounded pill.
 void showAppSnackBar(BuildContext context, String text) {
   final messenger = ScaffoldMessenger.of(context);
+  // Прежнее сообщение убирается сразу, а не досиживает свою очередь. Иначе два
+  // одинаковых текста подряд оказываются на экране одновременно, и Flutter
+  // ругается: у снекбара Hero-метка собрана из его текста, а две одинаковые
+  // метки в одном поддереве запрещены («multiple heroes share the same tag»).
+  messenger.hideCurrentSnackBar();
   final label = Text(
     text,
     textAlign: TextAlign.center,
@@ -911,6 +1197,11 @@ void showAppSnackBar(BuildContext context, String text) {
       backgroundColor: Colors.transparent,
       elevation: 0,
       padding: EdgeInsets.zero,
+      // Форму задаём здесь, а не оставляем теме. У «Призмы» в snackBarTheme
+      // прописан контур `--stroke2` — он и рисовался вокруг сообщения второй,
+      // пустой плашкой: цвет подложки мы уже погасили, а рамка от него не
+      // зависит и оставалась висеть по краю прозрачного прямоугольника.
+      shape: const RoundedRectangleBorder(side: BorderSide.none),
       duration: const Duration(seconds: 2),
       content: Center(child: pill),
     ),
@@ -1956,6 +2247,9 @@ BoxDecoration _evsShellBg(BuildContext c) {
   // background is deliberately flat — no radial highlight, no glow spots
   // (Noctur TZ §4.1).
   if (_isNoctur(c)) return BoxDecoration(color: p.bg);
+  // «Призма» рисует свой фон отдельным слоем (пятна или шейдер), и радиальный
+  // высвет под ним дал бы два источника света в одном окне.
+  if (_isPrism(c)) return BoxDecoration(color: p.bg);
   if (p.brightness != Brightness.dark) return BoxDecoration(color: p.bg);
   return BoxDecoration(
     gradient: RadialGradient(
@@ -1967,10 +2261,78 @@ BoxDecoration _evsShellBg(BuildContext c) {
   );
 }
 
+/// Одна область студии (рейка · холст · параметры). В классике, Nexus и
+/// «Ноктюрне» это просто содержимое с разделительной линией сбоку; в «Призме» —
+/// самостоятельная стеклянная панель, потому что макет расставляет их именно
+/// так: три плитки на фоне, а не три колонки одной плоскости.
+///
+/// [divider] — с какой стороны рисовать линию в остальных стилях. В «Призме»
+/// она не рисуется вовсе: у панели уже есть свой контур.
+Widget evsStudioPane(
+  BuildContext context, {
+  required Widget child,
+  required EdgeInsets padding,
+  double? width,
+  BorderSide? left,
+  BorderSide? right,
+}) {
+  if (_isPrism(context)) {
+    final pane = PrismPanel(
+      radius: 26,
+      padding: padding,
+      shadow: true,
+      child: child,
+    );
+    return width == null ? pane : SizedBox(width: width, child: pane);
+  }
+  return Container(
+    width: width,
+    padding: padding,
+    decoration: BoxDecoration(
+      border: Border(
+        left: left ?? BorderSide.none,
+        right: right ?? BorderSide.none,
+      ),
+    ),
+    child: child,
+  );
+}
+
+/// Подложка ОКНА целиком. Три стиля обходятся заливкой из [_evsShellBg];
+/// «Призме» нужны ещё два слоя под интерфейсом — фон-аврора и сетка точек, —
+/// а декорация их дать не может. Поэтому все окна (главное, настройки, обе
+/// студии) заворачивают содержимое сюда, а не в голый Container: иначе стиль
+/// был бы только в главном окне, а настройки открывались бы плоскими.
+///
+/// Порядок слоёв тот же и обязателен: фон → сетка точек → интерфейс.
+Widget evsShellBackdrop(BuildContext context, Widget child) {
+  if (!_isPrism(context)) {
+    return Container(decoration: _evsShellBg(context), child: child);
+  }
+  return Container(
+    color: _bg(context),
+    child: Stack(
+      children: [
+        const Positioned.fill(child: _PrismBackdrop()),
+        const Positioned.fill(child: _PrismDotGrid()),
+        Positioned.fill(child: child),
+      ],
+    ),
+  );
+}
+
 // Left nav rail / sidebar background: a subtly darker vertical gradient of the
 // themed background on dark themes, a flat themed card surface on light.
 BoxDecoration _evsRailBg(BuildContext c) {
   final p = _pal(c);
+  // «Призма»: рейка прозрачная, отделена только волосяной линией — ровно как
+  // боковое меню оболочки. Заливка здесь закрыла бы фон-аврору, и окно
+  // настроек выглядело бы вырезанным из другого приложения.
+  if (_isPrism(c)) {
+    return BoxDecoration(
+      border: Border(right: BorderSide(color: p.stroke)),
+    );
+  }
   return BoxDecoration(
     border: Border(right: BorderSide(color: _stroke(c))),
     gradient: p.brightness == Brightness.dark
@@ -2010,6 +2372,27 @@ Widget evsCard(
   required String title,
   required List<Widget> rows,
 }) {
+  // «Призма»: карточка — стеклянная панель с одним заголовком в разрядку.
+  // Ни рамки под шапкой, ни цветного квадрата с иконкой: в макете карточки
+  // разделены воздухом, а не линиями, и иконка внутри карточки там не
+  // встречается ни разу. Строки при этом те же самые — evsRow сам знает, как
+  // выглядеть в этом стиле.
+  if (_isPrism(context)) {
+    return PrismPanel(
+      radius: 24,
+      padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+      shadow: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PrismSectionLabel(title, size: 10.5),
+          const SizedBox(height: 12),
+          ...rows,
+        ],
+      ),
+    );
+  }
   return Container(
     decoration: BoxDecoration(
       // Card corner radius comes from the active skin: 18 (classic) / 14 (Nexus).
@@ -2060,17 +2443,111 @@ Widget evsRow(BuildContext context, {
   String? desc,
   required Widget control,
   bool stacked = false,
+  Widget? below,
+  bool? active,
 }) {
+  final prism = _isPrism(context);
   final labelCol = Column(
     crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
     children: [
-      Text(label, style: EvsType.label.copyWith(color: _body(context))),
+      Text(
+        label,
+        style: prism
+            ? TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: _txt(context))
+            : EvsType.label.copyWith(color: _body(context)),
+      ),
       if (desc != null) ...[
-        const SizedBox(height: 2),
-        Text(desc, style: EvsType.caption.copyWith(color: _sub(context))),
+        SizedBox(height: prism ? 3 : 2),
+        Text(
+          desc,
+          style: prism
+              ? TextStyle(
+                  fontSize: 11.5, height: 1.45, color: _faint(context))
+              : EvsType.caption.copyWith(color: _sub(context)),
+        ),
       ],
     ],
   );
+  // «Призма»: строка — отдельная карточка со своей рамкой и подложкой, а не
+  // просто отступ между подписью и полем. Подпись слева, выбор справа; ярус
+  // «подпись сверху, выбор во всю ширину» здесь не используется вовсе — в
+  // макете таких строк нет, и от него страница вытягивалась вдвое.
+  //
+  // Включённая строка подсвечивается: акцентная заливка, акцентный контур и
+  // трёхточечная полоса у левого края (`inset 3px 0 0 var(--a2)` в макете).
+  // Что считать включённым, спрашиваем у самого элемента: тумблер знает своё
+  // значение, и просить его отдельным параметром на каждой из сотен строк
+  // значило бы разойтись с ним на первой же забытой.
+  if (_isPrism(context)) {
+    final on = active ?? (control is PrismToggle ? control.value : false);
+    final r = _ramp(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          gradient: on
+              ? LinearGradient(
+                  begin: const Alignment(-1, -0.35),
+                  end: const Alignment(1, 0.35),
+                  colors: [
+                    r.a2.withValues(alpha: _prismDark(context) ? 0.26 : 0.28),
+                    Colors.transparent,
+                  ],
+                  stops: const [0, 0.88],
+                )
+              : null,
+          color: on ? null : _prismField(context),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+              color: on ? r.a2.withValues(alpha: 0.42) : _stroke(context)),
+        ),
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    // Доли 54/46 — из макета, и обе ДОЛЖНЫ быть тугими.
+                    // С Flexible подпись сжималась до своей ширины, остаток
+                    // уходил в конец строки, а выбор уезжал за ней к середине
+                    // карточки — Align внутри выравнивал его по правому краю
+                    // пустоты, а не карточки.
+                    Expanded(flex: 54, child: labelCol),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 46,
+                      child: Align(
+                          alignment: Alignment.centerRight, child: control),
+                    ),
+                  ],
+                ),
+                if (below != null) ...[
+                  const SizedBox(height: 11),
+                  below,
+                ],
+              ],
+            ),
+            if (on)
+              Positioned(
+                left: -16,
+                top: -14,
+                bottom: -14,
+                child: Container(width: 3, color: r.a2),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
     decoration: BoxDecoration(
@@ -2137,6 +2614,12 @@ Widget evsSegmentedWide<T>(
   T value,
   ValueChanged<T> onChanged,
 ) {
+  // «Призма» рисует сегменты своей формой: подложка чипа, выбранный — мягкой
+  // акцентной заливкой с контуром акцента.
+  if (_isPrism(context)) {
+    return PrismSegmented<T>(
+        options: options, value: value, onChanged: onChanged);
+  }
   final nexus = _isNexus(context);
   return Container(
     padding: const EdgeInsets.all(3),
@@ -2182,6 +2665,10 @@ Widget evsSegmented<T>(
   T value,
   ValueChanged<T> onChanged,
 ) {
+  if (_isPrism(context)) {
+    return PrismSegmented<T>(
+        options: options, value: value, onChanged: onChanged, compact: true);
+  }
   final nexus = _isNexus(context);
   return Container(
     padding: const EdgeInsets.all(3),
@@ -2218,6 +2705,10 @@ Widget evsSegmented<T>(
 }
 
 Widget evsToggle(BuildContext context, bool value, ValueChanged<bool> onChanged) {
+  // «Призма»: таблетка 46x26 с белым бегунком и градиентом акцентной тройки.
+  if (_isPrism(context)) {
+    return PrismToggle(value: value, onChanged: onChanged);
+  }
   final skin = _skin(context);
   // «Ноктюрн» (§5.9): плоский тумблер 36×20 — контур accent и заливка accent
   // @ 22 % во включённом, без градиента и белой шайбы. Инструмент, не iOS.
@@ -2313,6 +2804,12 @@ Widget evsSelectButton(BuildContext context, String label, {double minWidth = 14
 }
 
 Widget evsGhostButton(BuildContext context, String label, IconData icon, {VoidCallback? onTap}) {
+  // «Призма»: таблетка с подложкой поля и контуром — второстепенное действие
+  // рядом с настоящей кнопкой не должно спорить с ней заливкой.
+  if (_isPrism(context)) {
+    return _PrismGhostButton(
+        icon: icon, label: label, onTap: onTap ?? () {});
+  }
   return GestureDetector(
     onTap: onTap,
     child: Container(
@@ -2343,6 +2840,38 @@ Widget evsSlider(BuildContext context, {
   required String label,
   required ValueChanged<double> onChanged,
 }) {
+  // «Призма»: дорожка 5px с градиентной заливкой и белым кружком. Значение
+  // моноширинным справа — как в макете.
+  if (_isPrism(context)) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 240),
+      child: Row(
+        children: [
+          Expanded(
+            child: PrismSlider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              step: divisions == null || divisions == 0
+                  ? null
+                  : (max - min) / divisions,
+              onChanged: onChanged,
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 48,
+            child: Text(label,
+                textAlign: TextAlign.right,
+                style: PrismType.numeric.copyWith(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: _txt(context))),
+          ),
+        ],
+      ),
+    );
+  }
   // Up to 210px wide, but shrinks to fit narrow cards (no fixed width that
   // would overflow inside evsRow's bounded control slot).
   return ConstrainedBox(
@@ -2561,6 +3090,254 @@ Widget evsDangerButton(BuildContext context, String label, VoidCallback onTap) {
   );
 }
 
+/// Доля одного целого: сегменты одной полосой плюс подписи с числами.
+///
+/// Стилевых цветов внутри нет — цвет каждого сегмента приходит снаружи из
+/// токенов (`_success`/`_accent`/`_warn`), поэтому полоса одинаково читается
+/// во всех оболочках и подхватит будущую пятую. Нули пропускаются: сегмент
+/// нулевой ширины рисовался бы как щель между соседями и читался бы как
+/// разделитель.
+class EvsMeterPart {
+  const EvsMeterPart(this.label, this.value, this.color);
+  final String label;
+  final num value;
+  final Color color;
+}
+
+Widget evsMeter(
+  BuildContext context,
+  List<EvsMeterPart> parts, {
+  double height = 10,
+  bool legend = true,
+  String Function(num)? format,
+}) {
+  final shown = [for (final p in parts) if (p.value > 0) p];
+  final total = shown.fold<double>(0, (sum, p) => sum + p.value);
+  final fmt = format ?? evsThousands;
+
+  final bar = ClipRRect(
+    borderRadius: BorderRadius.circular(height / 2),
+    child: SizedBox(
+      height: height,
+      child: total <= 0
+          ? ColoredBox(color: _stroke(context))
+          : Row(
+              // Обязательно stretch: у Row поперечное ограничение нежёсткое, а
+              // ColoredBox без ребёнка берёт наименьший допустимый размер —
+              // то есть нулевую высоту. Полоса была на месте и была невидима.
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final p in shown)
+                  Expanded(
+                    // flex целочисленный, поэтому доли берутся в тысячных: на
+                    // 68 000 строк округление до процентов съело бы сегмент в
+                    // несколько сотен строк целиком.
+                    flex: math.max(1, (p.value / total * 1000).round()),
+                    child: ColoredBox(color: p.color),
+                  ),
+              ],
+            ),
+    ),
+  );
+
+  if (!legend || shown.isEmpty) return bar;
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      bar,
+      const SizedBox(height: 9),
+      Wrap(
+        spacing: 14,
+        runSpacing: 6,
+        children: [
+          for (final p in shown)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: p.color,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${p.label} · ${fmt(p.value)}',
+                  style: EvsType.caption.copyWith(color: _sub(context)),
+                ),
+              ],
+            ),
+        ],
+      ),
+    ],
+  );
+}
+
+/// Ряд чисел графиком: линия с заливкой либо столбики.
+///
+/// Столбики для того, что случилось в отдельный день (их можно пересчитать
+/// глазами), линия — для величины, которая тянется во времени. Шкала снизу
+/// всегда от нуля: график перевода, начатый от 60 %, показывал бы рывок там,
+/// где на самом деле прибавили полпроцента.
+Widget evsTrend(
+  BuildContext context, {
+  required List<double> values,
+  bool bars = false,
+  Color? color,
+  double height = 64,
+  double? maxValue,
+  String? caption,
+}) {
+  final tint = color ?? _accent(context);
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(
+        height: height,
+        child: values.isEmpty
+            ? Center(
+                child: Text('—',
+                    style: EvsType.caption.copyWith(color: _faint(context))))
+            : CustomPaint(
+                painter: _EvsTrendPainter(
+                  values: values,
+                  bars: bars,
+                  color: tint,
+                  grid: _stroke(context),
+                  top: maxValue,
+                ),
+              ),
+      ),
+      if (caption != null && caption.isNotEmpty) ...[
+        const SizedBox(height: 7),
+        Text(caption,
+            style: EvsType.caption.copyWith(color: _faint(context), fontSize: 11)),
+      ],
+    ],
+  );
+}
+
+class _EvsTrendPainter extends CustomPainter {
+  _EvsTrendPainter({
+    required this.values,
+    required this.bars,
+    required this.color,
+    required this.grid,
+    this.top,
+  });
+
+  final List<double> values;
+  final bool bars;
+  final Color color;
+  final Color grid;
+  final double? top;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty || size.width <= 0) return;
+
+    var ceiling = top ?? values.reduce(math.max);
+    // Ровный ноль или один и тот же ноль во всех точках: рисуем шкалу до
+    // единицы, чтобы линия легла по низу, а не прыгала по середине от шума.
+    if (ceiling <= 0) ceiling = 1;
+
+    final line = Paint()
+      ..color = grid
+      ..strokeWidth = 1;
+    canvas.drawLine(
+        Offset(0, size.height - 0.5), Offset(size.width, size.height - 0.5), line);
+
+    double y(double v) =>
+        size.height * (1 - (v / ceiling).clamp(0.0, 1.0));
+
+    if (bars) {
+      // Зазор пропорционален столбику, но не тоньше половины пикселя: на
+      // трёх неделях столбики узкие, и фиксированный зазор съел бы их.
+      final step = size.width / values.length;
+      final gap = math.min(3.0, step * 0.3);
+      final paint = Paint()..color = color;
+      for (var i = 0; i < values.length; i++) {
+        final left = i * step + gap / 2;
+        final width = math.max(1.0, step - gap);
+        final topY = math.min(y(values[i]), size.height - 1);
+        canvas.drawRRect(
+          RRect.fromRectAndCorners(
+            Rect.fromLTRB(left, topY, left + width, size.height),
+            topLeft: const Radius.circular(2),
+            topRight: const Radius.circular(2),
+          ),
+          paint,
+        );
+      }
+      return;
+    }
+
+    final step = values.length > 1 ? size.width / (values.length - 1) : 0.0;
+    Offset at(int i) => Offset(i * step, y(values[i]));
+
+    final path = Path()..moveTo(at(0).dx, at(0).dy);
+    for (var i = 1; i < values.length; i++) {
+      path.lineTo(at(i).dx, at(i).dy);
+    }
+
+    // Единственная точка линией не рисуется — ставим засечку, иначе первый
+    // день измерений выглядел бы как «данных нет».
+    if (values.length == 1) {
+      canvas.drawCircle(Offset(size.width / 2, y(values[0])), 2.5,
+          Paint()..color = color);
+      return;
+    }
+
+    final fill = Path.from(path)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [color.withValues(alpha: 0.28), color.withValues(alpha: 0.02)],
+        ).createShader(Offset.zero & size),
+    );
+
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = color,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_EvsTrendPainter old) =>
+      old.bars != bars ||
+      old.color != color ||
+      old.top != top ||
+      !listEquals(old.values, values);
+}
+
+/// Число с разрядами через неразрывный пробел: 68 123, а не 68123.
+String evsThousands(num value) {
+  final digits = value.round().abs().toString();
+  final out = StringBuffer(value < 0 ? '-' : '');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(' ');
+    out.write(digits[i]);
+  }
+  return out.toString();
+}
+
 // App version line for the About section (real data via package_info_plus).
 class _VersionText extends StatelessWidget {
   const _VersionText();
@@ -2593,13 +3370,31 @@ class _VersionText extends StatelessWidget {
 // Custom frameless-window title bar: a draggable region + minimize / maximize
 // / close controls (the native Windows title bar is hidden via window_manager).
 class _WindowTitleBar extends StatelessWidget {
-  const _WindowTitleBar();
+  const _WindowTitleBar({this.title});
+
+  /// Заголовок страницы, открытой поверх главного экрана. Задан — слева
+  /// появляется возврат.
+  ///
+  /// Без него выйти со страницы нечем: в полосе стоят только кнопки окна, и
+  /// единственная, похожая на выход, закрывает всё приложение. Не по
+  /// `canPop()`, хотя так вышло бы само: настройки открываются тем же
+  /// способом и уже носят собственную стрелку, и вторая рядом с ней была бы
+  /// хуже, чем ни одной.
+  final String? title;
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 36,
       child: Row(
         children: [
+          if (title != null) ...[
+            _WinBtn(Icons.arrow_back, () => Navigator.of(context).maybePop(),
+                iconSize: 15),
+            Text(title!,
+                style: EvsType.label
+                    .copyWith(fontSize: 12.5, color: _sub(context))),
+          ],
           const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
           // Toggle the floating widget (separate transparent always-on-top
           // window with the voice visualization).
@@ -2680,3 +3475,572 @@ class _KeySep extends StatelessWidget {
       );
 }
 
+
+/// Кольцо заполнения контекста — рядом с кнопкой отправки.
+///
+/// Показывает не «сколько написано», а сколько осталось до того, как модель
+/// начнёт забывать начало разговора. Переполнение контекста не выглядит как
+/// ошибка: Ollama молча отрезает самое старое, и человек замечает это лишь по
+/// тому, что ассистент вдруг перестал помнить, о чём шла речь, — а иногда
+/// теряет и системную подсказку, то есть характер. Кольцо делает приближение
+/// к этому пределу видимым заранее.
+class EvsContextGauge extends StatelessWidget {
+  const EvsContextGauge({
+    super.key,
+    required this.used,
+    required this.limit,
+    this.size = 18,
+    this.hint,
+  });
+
+  final int used;
+  final int limit;
+  final double size;
+
+  /// Подсказка при наведении. Собирается снаружи, чтобы виджет не зависел от
+  /// переводов и оставался пригодным в любом стиле.
+  final String? hint;
+
+  @override
+  Widget build(BuildContext context) {
+    final fill = limit <= 0 ? 0.0 : (used / limit).clamp(0.0, 1.0);
+    // Цвет — из палитры текущего стиля, поэтому кольцо не выбивается из
+    // оформления. Ближе к пределу уходит в предупреждающий: это единственное
+    // место, где цвет несёт смысл, а не украшает.
+    final base = _accent(context);
+    final color = fill < 0.75
+        ? base
+        : Color.lerp(base, const Color(0xFFE0682F),
+            ((fill - 0.75) / 0.25).clamp(0.0, 1.0))!;
+    final ring = SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _ContextRingPainter(
+          fill: fill,
+          track: _stroke(context),
+          color: color,
+        ),
+      ),
+    );
+    if (hint == null || hint!.isEmpty) return ring;
+    return Tooltip(
+      message: hint!,
+      waitDuration: const Duration(milliseconds: 300),
+      child: ring,
+    );
+  }
+}
+
+/// Кольцо для текущего чата. Отдельная функция, чтобы три стиля интерфейса
+/// собирали его одинаково и считали заполнение один раз, а не дважды.
+Widget evsContextGauge(BuildContext context, AppState app) {
+  final (used, limit) = app.contextUsage(app.current);
+  if (app.current == null) return const SizedBox.shrink();
+  return EvsContextGauge(
+    used: used,
+    limit: limit,
+    hint: app.contextHint(app.current),
+  );
+}
+
+class _ContextRingPainter extends CustomPainter {
+  _ContextRingPainter({
+    required this.fill,
+    required this.track,
+    required this.color,
+  });
+
+  final double fill;
+  final Color track;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = size.width * 0.16;
+    final rect = Offset(stroke / 2, stroke / 2) &
+        Size(size.width - stroke, size.height - stroke);
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = track;
+    canvas.drawArc(rect, 0, math.pi * 2, false, base);
+    if (fill <= 0) return;
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    // От двенадцати часов по часовой стрелке — как читается любая шкала.
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * fill, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(_ContextRingPainter old) =>
+      old.fill != fill || old.color != color || old.track != track;
+}
+
+// Ход рассуждения модели — свёрнутым блоком над ответом.
+//
+// Свёрнут по умолчанию намеренно: рассуждение бывает длиннее самого ответа, и
+// развёрнутое оно топит собой то, за чем пришли. Показывается только когда
+// модель его действительно прислала — просто включённый режим размышлений
+// ничего не рисует, потому что не всякая модель их отдаёт отдельным полем.
+class EvsThinkingBlock extends StatefulWidget {
+  const EvsThinkingBlock({super.key, required this.text, required this.live});
+  final String text;
+  // Пока ответ ещё набирается, заголовок говорит «думает», а не «думал».
+  final bool live;
+
+  @override
+  State<EvsThinkingBlock> createState() => _EvsThinkingBlockState();
+}
+
+class _EvsThinkingBlockState extends State<EvsThinkingBlock> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    if (widget.text.trim().isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        color: _overlayFill(context, 0.04),
+        border: Border.all(color: _stroke(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(9),
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Row(children: [
+                Icon(Icons.psychology_outlined,
+                    size: 15, color: _faint(context)),
+                const SizedBox(width: 8),
+                Text(app.t(widget.live ? 'thinkingLive' : 'thinkingDone'),
+                    style: TextStyle(fontSize: 12, color: _sub(context))),
+                const Spacer(),
+                Icon(_open ? Icons.expand_less : Icons.expand_more,
+                    size: 16, color: _faint(context)),
+              ]),
+            ),
+          ),
+          if (_open)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 9),
+              child: SelectableText(
+                widget.text.trim(),
+                style: TextStyle(
+                    fontSize: 12, height: 1.45, color: _faint(context)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// Пары «слово + значок» для ожидания ответа.
+//
+// Одно и то же слово, висящее минуту, само становится частью неподвижной
+// картинки: глаз перестаёт его читать и снова не может отличить работу от
+// зависания. Поэтому слов несколько, и каждое приходит со своим значком —
+// меняется вся метка целиком, а не текст под неподвижной звёздочкой.
+class EvsWaitPhrase {
+  const EvsWaitPhrase(this.key, this.icon);
+
+  /// Ключ перевода, а не готовая строка: слова живут в `i18n.dart` рядом с
+  /// остальными и переводятся там же, а не прячутся в коде виджета.
+  final String key;
+  final IconData icon;
+}
+
+const List<EvsWaitPhrase> kEvsWaitPhrases = <EvsWaitPhrase>[
+  EvsWaitPhrase('nxWaiting', Icons.auto_awesome),
+  EvsWaitPhrase('nxWaitThink', Icons.psychology_alt),
+  EvsWaitPhrase('nxWaitWeigh', Icons.balance),
+  EvsWaitPhrase('nxWaitGather', Icons.bubble_chart),
+  EvsWaitPhrase('nxWaitWords', Icons.edit_note),
+  EvsWaitPhrase('nxWaitDig', Icons.manage_search),
+  EvsWaitPhrase('nxWaitSort', Icons.segment),
+  EvsWaitPhrase('nxWaitGears', Icons.autorenew),
+];
+
+// Надпись «думает», по которой пробегает блик, — вместо трёх точек.
+//
+// Смысл не в украшении: пока ответ ещё не начал набираться, единственный
+// признак жизни — это движение. Три статичные точки от зависшего окна не
+// отличить, а бегущий блик отличить можно.
+//
+// Контроллер обязательно через `AmbientMotion` — правило проекта: вечный
+// `repeat()` останавливается, когда окно не видно, иначе он крутит кадры в
+// фоне и греет карту впустую.
+class EvsShimmerLabel extends StatefulWidget {
+  const EvsShimmerLabel({
+    super.key,
+    this.phrases = kEvsWaitPhrases,
+    this.period = const Duration(milliseconds: 3400),
+  });
+
+  /// Пул фраз. Одна фраза в списке — метка просто не меняется.
+  final List<EvsWaitPhrase> phrases;
+
+  /// Как часто меняется слово. Три с половиной секунды — примерно столько
+  /// нужно, чтобы фразу прочитали и не успели устать; смена раз в секунду
+  /// мельтешит и отвлекает от того, чего ждут.
+  final Duration period;
+
+  @override
+  State<EvsShimmerLabel> createState() => _EvsShimmerLabelState();
+}
+
+class _EvsShimmerLabelState extends State<EvsShimmerLabel>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1500));
+  late final AmbientMotion _motion =
+      AmbientMotion(_c, gate: MotionGate.foreground);
+  final math.Random _rnd = math.Random();
+  Timer? _turn;
+  int _i = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _motion; // подписка на гейт
+    // Начинаем со случайной фразы, а не всегда с первой: иначе каждый ответ
+    // начинался бы одним и тем же словом, и пул был бы виден только тем, кто
+    // ждёт дольше трёх секунд.
+    if (widget.phrases.isNotEmpty) _i = _rnd.nextInt(widget.phrases.length);
+    _turn = Timer.periodic(widget.period, (_) => _next());
+  }
+
+  void _next() {
+    final n = widget.phrases.length;
+    if (!mounted || n < 2) return;
+    // Пока окно не на экране, слова не меняем: смена, которую никто не видит,
+    // всё равно перерисовывает кадр — тот же довод, что и у гейта движения.
+    if (!MotionPolicy.foreground.value) return;
+    var j = _rnd.nextInt(n - 1);
+    if (j >= _i) j++; // любое, кроме текущего: повтор читается как заминка
+    setState(() => _i = j);
+  }
+
+  @override
+  void dispose() {
+    _turn?.cancel();
+    _motion.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.phrases.isEmpty) return const SizedBox.shrink();
+    final base = _faint(context);
+    final lit = _accent(context);
+    final p = widget.phrases[_i.clamp(0, widget.phrases.length - 1)];
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      _icon(p, lit),
+      const SizedBox(width: 8),
+      AnimatedSize(
+        duration: const Duration(milliseconds: 380),
+        curve: Curves.easeOut,
+        alignment: Alignment.centerLeft,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 380),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          // Слова разной длины: выравниваем по левому краю, иначе на время
+          // пересменки обе фразы стоят по центру и надпись дёргается вбок.
+          layoutBuilder: (cur, prev) => Stack(
+            alignment: Alignment.centerLeft,
+            children: [...prev, if (cur != null) cur],
+          ),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                      begin: const Offset(0, 0.4), end: Offset.zero)
+                  .animate(anim),
+              child: child,
+            ),
+          ),
+          child: _sweep(context.read<AppState>().t(p.key), base, lit),
+        ),
+      ),
+    ]);
+  }
+
+  // Значок дышит в такт блику — один и тот же контроллер на полтора оборота в
+  // секунду, поэтому метка читается как одно живое целое, а не как две
+  // независимые анимации, случайно оказавшиеся рядом.
+  Widget _icon(EvsWaitPhrase p, Color lit) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, child) {
+        final b = math.sin(_c.value * 2 * math.pi); // −1…1
+        return Transform.scale(
+          scale: 1 + 0.10 * b,
+          child: Transform.rotate(
+            angle: 0.12 * b,
+            child: Opacity(opacity: 0.72 + 0.28 * ((b + 1) / 2), child: child),
+          ),
+        );
+      },
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeIn,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: ScaleTransition(
+            scale: anim,
+            child: RotationTransition(
+              turns: Tween<double>(begin: -0.3, end: 0).animate(anim),
+              child: child,
+            ),
+          ),
+        ),
+        child: Icon(p.icon,
+            key: ValueKey<String>(p.key),
+            size: 14,
+            color: lit.withValues(alpha: 0.9)),
+      ),
+    );
+  }
+
+  Widget _sweep(String text, Color base, Color lit) {
+    return AnimatedBuilder(
+      key: ValueKey<String>(text),
+      animation: _c,
+      builder: (_, __) {
+        // Блик шириной в треть надписи проходит слева направо и уходит за
+        // край: остановки в конце нет, поэтому движение читается как
+        // непрерывное, а не как дёрганый цикл.
+        final t = _c.value * 1.6 - 0.3;
+        return ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (r) => LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [base, lit, base],
+            stops: [
+              (t - 0.18).clamp(0.0, 1.0),
+              t.clamp(0.0, 1.0),
+              (t + 0.18).clamp(0.0, 1.0),
+            ],
+          ).createShader(r),
+          // Без ореола: под маской srcIn он превратился бы в размытое пятно
+          // того же градиента вокруг букв. Надпись лежит на панели, где фон
+          // ровный, и обводка ей не нужна.
+          child: Text(text,
+              style: EvsType.body.copyWith(
+                  fontSize: 13,
+                  color: base,
+                  letterSpacing: 0.2,
+                  shadows: const [])),
+        );
+      },
+    );
+  }
+}
+
+// Ответ, появляющийся на глазах: пришедшее сразу занимает своё место, но
+// проступает, а не выскакивает.
+//
+// Первая попытка выдавала ответ ровным потоком знаков — и это оказалось хуже
+// рывков, из-за которых затевалось. Со знаком меняется перенос строк:
+// недописанное слово перескакивает на следующую строку и обратно, за ним
+// дёргается весь абзац, и на глаз это мерцание, а не набор. Придерживать текст
+// вообще нельзя, пока он течёт в готовый абзац.
+//
+// Поэтому текст больше не задерживается ни на кадр: пришедший кусок сразу
+// занимает своё окончательное место — но прозрачным, и проступает за треть
+// секунды. Переносы посчитаны сразу и дальше не меняются, двигается только
+// прозрачность, а плавность даёт она, а не темп выдачи.
+class EvsTypingText extends StatefulWidget {
+  const EvsTypingText(this.text,
+      {super.key,
+      this.style,
+      this.selectable = false,
+      this.fade = const Duration(milliseconds: 320)});
+
+  final String text;
+  final TextStyle? style;
+  final bool selectable;
+
+  /// За сколько проступает пришедший кусок.
+  final Duration fade;
+
+  @override
+  State<EvsTypingText> createState() => _EvsTypingTextState();
+}
+
+/// Кусок, который ещё проступает: текст до [end] и сколько ему осталось.
+///
+/// Время считается остатком, а не отметкой о рождении: у тикера отсчёт
+/// начинается заново после каждой остановки, и абсолютные отметки, взятые до
+/// неё, после превращались бы в чепуху.
+class _EvsFadeRun {
+  _EvsFadeRun(this.end, this.left);
+  final int end;
+  double left;
+}
+
+class _EvsTypingTextState extends State<EvsTypingText>
+    with SingleTickerProviderStateMixin {
+  // Тикер заводится ТОЛЬКО когда есть чему проступать, и никак не лениво: у
+  // готовых сообщений (а их в переписке подавляющее большинство) первым
+  // обращением к ленивому полю оказывался бы `dispose`, а `createTicker` на
+  // разбираемом узле лезет за `TickerMode` вверх по дереву и падает.
+  Ticker? _tick;
+  bool _fresh = false; // первый кадр после запуска — только точка отсчёта
+  Duration _last = Duration.zero;
+
+  /// До какого места текст уже проступил полностью.
+  int _settled = 0;
+  final List<_EvsFadeRun> _runs = <_EvsFadeRun>[];
+
+  @override
+  void initState() {
+    super.initState();
+    // То, что уже есть при рождении виджета, показываем как есть: проявлять
+    // ответ, который человек читал минуту назад (прокрутка, смена темы), —
+    // это сбой, а не анимация.
+    _settled = widget.text.length;
+  }
+
+  void _run() {
+    final t = _tick ??= createTicker(_frame);
+    if (t.isActive) return;
+    _last = Duration.zero;
+    _fresh = true;
+    t.start();
+  }
+
+  @override
+  void didUpdateWidget(EvsTypingText old) {
+    super.didUpdateWidget(old);
+    if (widget.text == old.text) return;
+    final grew = widget.text.length > old.text.length &&
+        widget.text.startsWith(old.text);
+    if (!grew) {
+      // Текст сменился не дописыванием, а целиком — список сдвинулся, открыли
+      // другой диалог, ответ причесали после конца. Показываем сразу.
+      _runs.clear();
+      _settled = widget.text.length;
+      _tick?.stop();
+      return;
+    }
+    _runs.add(_EvsFadeRun(
+        widget.text.length, widget.fade.inMicroseconds / 1e6));
+    // Куски приходят чаще, чем проступают, и их набирается с десяток — это
+    // нормально и даёт мягкий хвост. Но если модель сыплет мелко и часто,
+    // счёт кускам знать меру должен код, а не удача.
+    while (_runs.length > 24) {
+      _settled = _runs.removeAt(0).end;
+    }
+    _run();
+  }
+
+  @override
+  void dispose() {
+    // Сначала остановить, потом убрать: живой тикер на разборе — это не утечка,
+    // а падение отладочной сборки (assert(!isActive) во фреймворке). Ответ,
+    // который ещё проступает, закрыть окном можно в любой момент.
+    _tick
+      ?..stop()
+      ..dispose();
+    super.dispose();
+  }
+
+  void _frame(Duration now) {
+    if (_fresh) {
+      _fresh = false;
+      _last = now;
+      return;
+    }
+    var dt = (now - _last).inMicroseconds / 1e6;
+    _last = now;
+    if (dt <= 0) return;
+    if (dt > 0.5) dt = 0.5; // вернулись из паузы: простой не засчитываем
+    // Окно спрятали — досказываем сразу: проявлять в невидимом окне незачем.
+    if (!MotionPolicy.foreground.value) dt = 1e9;
+    for (final r in _runs) {
+      r.left -= dt;
+    }
+    while (_runs.isNotEmpty && _runs.first.left <= 0) {
+      _settled = _runs.removeAt(0).end;
+    }
+    if (_runs.isEmpty) _tick?.stop();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = widget.style ?? EvsType.body;
+    final n = widget.text.length;
+    final settled = _settled.clamp(0, n);
+    // Пустая строка между абзацами — своим размером, а не размером текста.
+    final thin = TextStyle(fontSize: (style.fontSize ?? 14) * 0.45, height: 1);
+    final spans = <TextSpan>[];
+    if (_runs.isEmpty || settled >= n) {
+      _write(spans, widget.text, null, thin);
+    } else {
+      final base = style.color ?? _txt(context);
+      final total = widget.fade.inMicroseconds / 1e6;
+      _write(spans, widget.text.substring(0, settled), null, thin);
+      var from = settled;
+      for (final r in _runs) {
+        final to = r.end.clamp(from, n);
+        if (to <= from) continue;
+        // Плавно к концу, а не рывком в начале: линейное проявление заметно
+        // «включается», и в потоке кусков это читается как мигание.
+        final k =
+            Curves.easeOut.transform((1 - (r.left / total)).clamp(0.0, 1.0));
+        _write(spans, widget.text.substring(from, to),
+            TextStyle(color: base.withValues(alpha: k)), thin);
+        from = to;
+      }
+      if (from < n) _write(spans, widget.text.substring(from), null, thin);
+    }
+    final rich = TextSpan(style: style, children: spans);
+    return widget.selectable ? SelectableText.rich(rich) : Text.rich(rich);
+  }
+
+  static final RegExp _gapRe = RegExp(r'\n{2,}');
+
+  // Абзацы модель разделяет двумя переводами строки, и пустая строка получает
+  // высоту обычной строки текста. В ответе из трёх коротких фраз воздуха от
+  // этого выходит больше, чем самих фраз.
+  //
+  // Убрать перевод нельзя — абзацы слипнутся в кашу. Поэтому пустой строке
+  // даётся собственный размер: она остаётся пустой строкой (перенос, отступ,
+  // структура — всё на месте), но занимает не полторы высоты текста, а треть.
+  // Заодно сходятся к одному просвету и три перевода подряд, и пять: модели
+  // ставят их как придётся, а на экране разницы быть не должно.
+  void _write(
+      List<TextSpan> out, String text, TextStyle? style, TextStyle thin) {
+    if (text.isEmpty) return;
+    var i = 0;
+    for (final m in _gapRe.allMatches(text)) {
+      if (m.start > i) {
+        out.add(TextSpan(text: text.substring(i, m.start), style: style));
+      }
+      out.add(TextSpan(text: '\n', style: style)); // конец абзаца
+      out.add(TextSpan(
+          text: '\n',
+          style: style == null ? thin : thin.merge(style))); // сам просвет
+      i = m.end;
+    }
+    if (i < text.length) {
+      out.add(TextSpan(text: text.substring(i), style: style));
+    }
+  }
+}

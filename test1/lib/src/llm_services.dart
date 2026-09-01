@@ -22,7 +22,10 @@ abstract class ILLMService {
 
   /// Same contract as [generateResponse], but emits the cumulative reply
   /// text so far on every update instead of waiting for the final string.
-  Stream<String> generateStream(Conversation conv, List<ChatMessage> history);
+  /// [onThinking] получает накопленный ход рассуждения, если модель его
+  /// отдаёт отдельным полем. Необязателен: локальному движку его взять негде.
+  Stream<String> generateStream(Conversation conv, List<ChatMessage> history,
+      {void Function(String)? onThinking});
 
   /// Best-effort interrupt for whichever generateResponse/generateStream
   /// call is currently in flight on this instance. Safe to call when
@@ -81,18 +84,32 @@ class VoiceInterpreter {
 // "громкость на {N}" (new-features Ф2 §2.3, §2.7). Range is not enforced here;
 // the caller clamps. Returns null when the phrase has no number.
 class NumberWords {
+  // Падежные формы нужны не для красоты: вслух говорят «поставь громкость на
+  // тридцать», но и «до тридцати», «процентов сорока». Именительным падежом
+  // список не обходится, а распознавание отдаёт ровно то, что прозвучало.
   static const Map<String, int> _units = {
-    'ноль': 0, 'один': 1, 'одна': 1, 'одну': 1, 'два': 2, 'две': 2, 'три': 3,
-    'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7, 'восемь': 8, 'девять': 9,
-    'десять': 10, 'одиннадцать': 11, 'двенадцать': 12, 'тринадцать': 13,
-    'четырнадцать': 14, 'пятнадцать': 15, 'шестнадцать': 16, 'семнадцать': 17,
-    'восемнадцать': 18, 'девятнадцать': 19,
+    'ноль': 0, 'один': 1, 'одна': 1, 'одну': 1, 'два': 2, 'две': 2, 'двух': 2,
+    'три': 3, 'трёх': 3, 'трех': 3, 'четыре': 4, 'четырёх': 4, 'четырех': 4,
+    'пять': 5, 'пяти': 5, 'шесть': 6, 'шести': 6, 'семь': 7, 'семи': 7,
+    'восемь': 8, 'восьми': 8, 'девять': 9, 'девяти': 9,
+    'десять': 10, 'десяти': 10, 'одиннадцать': 11, 'одиннадцати': 11,
+    'двенадцать': 12, 'двенадцати': 12, 'тринадцать': 13, 'тринадцати': 13,
+    'четырнадцать': 14, 'четырнадцати': 14, 'пятнадцать': 15, 'пятнадцати': 15,
+    'шестнадцать': 16, 'шестнадцати': 16, 'семнадцать': 17, 'семнадцати': 17,
+    'восемнадцать': 18, 'восемнадцати': 18, 'девятнадцать': 19,
+    'девятнадцати': 19,
   };
   static const Map<String, int> _tens = {
-    'двадцать': 20, 'тридцать': 30, 'сорок': 40, 'пятьдесят': 50,
-    'шестьдесят': 60, 'семьдесят': 70, 'восемьдесят': 80, 'девяносто': 90,
-    'сто': 100,
+    'двадцать': 20, 'двадцати': 20, 'тридцать': 30, 'тридцати': 30,
+    'сорок': 40, 'сорока': 40, 'пятьдесят': 50, 'пятидесяти': 50,
+    'шестьдесят': 60, 'шестидесяти': 60, 'семьдесят': 70, 'семидесяти': 70,
+    'восемьдесят': 80, 'восьмидесяти': 80, 'девяносто': 90, 'девяноста': 90,
+    'сто': 100, 'ста': 100,
   };
+  // Слова, которые могут стоять ВНУТРИ числительного и не должны обрывать
+  // счёт: «сорок пять процентов», «на пятьдесят процентов».
+  static const Set<String> _skip = {'процент', 'процента', 'процентов', 'на',
+    'до', 'в'};
 
   static int? extract(String text) {
     final lower = text.toLowerCase();
@@ -107,8 +124,10 @@ class NumberWords {
         acc = (acc ?? 0) + t;
       } else if (u != null) {
         acc = (acc ?? 0) + u;
+      } else if (_skip.contains(w)) {
+        continue; // служебное слово внутри числительного — счёт не обрываем
       } else if (acc != null) {
-        break; // the numeral run ended
+        break; // числительное кончилось
       }
     }
     return acc;
@@ -169,7 +188,9 @@ class LocalLLMService implements ILLMService {
             : (spec.tier == LocalModelTier.light
                       ? effectivePersona.buildLocalSystemPrompt()
                       : effectivePersona.buildSystemPrompt()) +
-                  conv.pinnedContextBlock()) +
+                  conv.summaryBlock() +
+                  conv.pinnedContextBlock() +
+                  evsNowBlock()) +
         app.pendingWebContext; // live web results for this turn (may be empty)
     final effectiveHistory = rpActive
         ? RPMemoryManager.trimForContext(
@@ -276,7 +297,8 @@ class LocalLLMService implements ILLMService {
   }
 
   @override
-  Stream<String> generateStream(Conversation conv, List<ChatMessage> history) {
+  Stream<String> generateStream(Conversation conv, List<ChatMessage> history,
+      {void Function(String)? onThinking}) {
     final controller = StreamController<String>();
     () async {
       final prepared = await _prepare(conv, history);
@@ -397,7 +419,11 @@ class RemoteLLMService implements ILLMService {
     final systemPrompt = (rpActive
             ? RPMemoryManager.buildSystemPrompt(conv)
             : (conv.persona ?? app.persona).buildSystemPrompt() +
-                  conv.pinnedContextBlock()) +
+                  conv.summaryBlock() +
+                  conv.pinnedContextBlock() +
+                  // Часы компьютера. В ролевой игре их нет намеренно: там своё
+                  // время и место, и настоящая дата ломает игру.
+                  evsNowBlock()) +
         app.pendingWebContext; // live web results for this turn (may be empty)
     final effectiveHistory = rpActive
         ? RPMemoryManager.trimForContext(
@@ -506,7 +532,8 @@ class RemoteLLMService implements ILLMService {
   }
 
   @override
-  Stream<String> generateStream(Conversation conv, List<ChatMessage> history) {
+  Stream<String> generateStream(Conversation conv, List<ChatMessage> history,
+      {void Function(String)? onThinking}) {
     final controller = StreamController<String>();
     () async {
       final headers = {'Content-Type': 'application/json'};
@@ -516,6 +543,7 @@ class RemoteLLMService implements ILLMService {
       final client = http.Client();
       _activeClient = client;
       final buffer = StringBuffer();
+      final thoughts = StringBuffer();
       try {
         final request = http.Request('POST', Uri.parse('${app.baseUrl}/api/chat'))
           ..headers.addAll(headers)
@@ -538,6 +566,15 @@ class RemoteLLMService implements ILLMService {
               try {
                 final data = jsonDecode(line);
                 if (data is Map<String, dynamic>) {
+                  // Ход рассуждения приходит ОТДЕЛЬНЫМ полем, а не внутри
+                  // ответа: `thinking` у Ollama, `reasoning_content` у
+                  // OpenAI-совместимых. Если смешать его с ответом, в чате
+                  // окажется черновик вместо ответа.
+                  final think = app._extractThinking(data);
+                  if (think != null && think.isNotEmpty) {
+                    thoughts.write(think);
+                    onThinking?.call(thoughts.toString());
+                  }
                   final delta = app._extractContent(data);
                   if (delta != null && delta.isNotEmpty) {
                     buffer.write(delta);

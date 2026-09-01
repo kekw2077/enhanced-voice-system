@@ -56,9 +56,6 @@ class SidecarClient {
   // (requested, active, fellBack) from stt.device.
   final ValueNotifier<(String, String, bool)?> deviceStatus =
       ValueNotifier(null);
-  // Game mode (TZ2 block 7): (active, reason) from gamemode.status.
-  final ValueNotifier<(bool active, String reason)> gameModeStatus =
-      ValueNotifier((false, ''));
   // Backend readiness state machine (TZ3.4): starting | loading_models | ready
   // | error. The sidecar loads STT models greedily on connect and warms them
   // up, so the first real command doesn't pay the init cost; the UI reflects
@@ -75,11 +72,32 @@ class SidecarClient {
   final _partial = StreamController<String>.broadcast();
   final _finalText = StreamController<String>.broadcast();
   final _vad = StreamController<bool>.broadcast();
+  // Ответ кнопки «Проверить» — СОБЫТИЕ, а не состояние.
+  //
+  // Раньше его ждали, слушая `engineStatus`. Это ValueNotifier, а внутри —
+  // запись `(engine, state, message)`; у записей структурное равенство, и
+  // присвоение того же самого триплета уведомления НЕ рассылает. Удачная
+  // проверка всегда даёт ровно `('remote', 'ready', null)`, поэтому со второго
+  // раза (а на деле — с первого же, если движок успел отчитаться сам) кнопка
+  // не получала ничего, ждала пятнадцать секунд и врала «спросить некого» про
+  // живой сервер.
+  final _sttProbe =
+      StreamController<(String state, String? message)>.broadcast();
   Stream<String> get partial => _partial.stream;
   Stream<String> get finalText => _finalText.stream;
   Stream<bool> get vad => _vad.stream;
+  Stream<(String state, String? message)> get sttProbe => _sttProbe.stream;
 
   io.Process? _proc;
+
+  // Порт живого движка и признак того, что процесс ещё дышит. Нужны для
+  // восстановления связи: движок и соединение — разные вещи, и рвётся обычно
+  // второе. Пока этого не было, оборванный сокет означал молчаливую потерю
+  // распознавания и озвучки до перезапуска программы, хотя движок всё это
+  // время стоял рядом и слушал порт.
+  int? _port;
+  bool _procAlive = false;
+  bool _stopping = false;
   io.WebSocket? _ws;
   bool _starting = false;
 
@@ -164,7 +182,10 @@ class SidecarClient {
           unawaited(appendLog('sidecar', line.trim()));
         }
       });
+      _procAlive = true;
+      _stopping = false;
       _proc!.exitCode.then((_) {
+        _procAlive = false;
         if (status.value != SidecarStatus.connected) {
           status.value = SidecarStatus.stopped;
         }
@@ -226,6 +247,7 @@ class SidecarClient {
 
   Future<void> _connect(int port) async {
     _ws = await io.WebSocket.connect('ws://127.0.0.1:$port');
+    _port = port;
     status.value = SidecarStatus.connected;
     // Tell the sidecar which Whisper model to use (it lazy-loads on first
     // transcription / model change).
@@ -289,6 +311,12 @@ class SidecarClient {
             final eng = m['engine'] as String? ?? '';
             final state = m['state'] as String? ?? '';
             engineStatus.value = (eng, state, m['message'] as String?);
+            // Ответ на «Проверить» уходит отдельным событием: у ValueNotifier
+            // повторное присвоение того же значения молчит, а проверка связи
+            // должна отвечать каждый раз (см. `_sttProbe`).
+            if (m['probe'] == true) {
+              _sttProbe.add((state, m['message'] as String?));
+            }
             // «ready» приходит от движка, который реально распознаёт, — кроме
             // ответа кнопки «Проверить»: связь с сервером есть, но распознаёт
             // по-прежнему тот же движок, что и до нажатия.
@@ -357,6 +385,13 @@ class SidecarClient {
             }
             _volumeWaiters.clear();
             break;
+          case 'tts.render.result':
+            final id = m['id']?.toString() ?? '';
+            final c = _renderWaiters.remove(id);
+            if (c != null && !c.isCompleted) {
+              c.complete(m['ok'] == true ? (m['path'] as String? ?? '') : '');
+            }
+            break;
           case 'stt.transcribe.result':
             // One-shot network-voice recognition (§14). Keyed by request id so
             // overlapping phone commands don't cross wires.
@@ -381,16 +416,33 @@ class SidecarClient {
               m['fell_back'] == true,
             );
             break;
-          case 'gamemode.status':
-            gameModeStatus.value = (
-              m['active'] == true,
-              m['reason'] as String? ?? '',
-            );
-            break;
         }
       } catch (_) {}
-    }, onDone: () => status.value = SidecarStatus.stopped,
-        onError: (_) => status.value = SidecarStatus.stopped);
+    }, onDone: _dropped, onError: (_) => _dropped());
+  }
+
+  /// Соединение оборвалось. Если движок жив, поднимаем связь заново, а не
+  /// объявляем его остановленным: он слушает тот же порт, и всё, что через
+  /// него шло, вернётся вместе с сокетом.
+  void _dropped() {
+    status.value = SidecarStatus.stopped;
+    unawaited(_reconnect());
+  }
+
+  Future<void> _reconnect() async {
+    final port = _port;
+    if (_stopping || !_procAlive || port == null) return;
+    for (var i = 1; i <= 5; i++) {
+      await Future<void>.delayed(Duration(milliseconds: 250 * i));
+      if (_stopping || !_procAlive) return;
+      if (status.value == SidecarStatus.connected) return;
+      try {
+        await _connect(port);
+        await appendLog('sidecar', 'связь с движком восстановлена');
+        return;
+      } catch (_) {}
+    }
+    await appendLog('sidecar', 'связь с движком восстановить не удалось');
   }
 
   void _send(Map<String, dynamic> m) {
@@ -541,6 +593,7 @@ class SidecarClient {
   String _cosyRef = '';
   String _cosyPrompt = '';
   double _cosySpeed = 1.0;
+  String _cosyLanguage = 'Russian';
   String _cloneRef = '';
   String _cloneLang = 'ru';
   List<String> _clonePhrases = const [];
@@ -617,12 +670,14 @@ class SidecarClient {
     String ref = '',
     String promptText = '',
     double speed = 1.0,
+    String language = 'Russian',
   }) async {
     _cosyEnabled = enabled && endpoint.isNotEmpty && ref.isNotEmpty;
     _cosyEndpoint = endpoint;
     _cosyRef = ref;
     _cosyPrompt = promptText;
     _cosySpeed = speed;
+    _cosyLanguage = language;
     await _pushCosy();
   }
 
@@ -640,6 +695,9 @@ class SidecarClient {
           'ref': _cosyRef,
           'prompt': _cosyPrompt,
           'speed': _cosySpeed,
+          // Qwen3-TTS берёт язык отдельным полем: по тексту она его угадывает
+          // и на коротких фразах ошибается.
+          'language': _cosyLanguage,
         },
         'engine': 'cosyvoice',
       });
@@ -684,30 +742,11 @@ class SidecarClient {
     _send({'type': 'stt.config', 'device': _sttDevice});
   }
 
-  // Push the game-mode config (triggers, thresholds, exclusions, localized
-  // notification phrases) to the sidecar — TZ2 block 7.
-  void configureGameMode({
-    required bool fullscreen,
-    required bool vram,
-    required double vramEnter,
-    required double vramExit,
-    required bool notify,
-    required List<String> exclusions,
-    required Map<String, String> texts,
-  }) {
-    _send({
-      'type': 'gamemode.config',
-      'fullscreen_enabled': fullscreen,
-      'vram_enabled': vram,
-      'vram_enter': vramEnter,
-      'vram_exit': vramExit,
-      'notify_enabled': notify,
-      'exclusions': exclusions,
-      'texts': texts,
-    });
-  }
-
   // <userdata>/models/<modelId> — where a Piper voice bundle is downloaded.
+  /// Папка с файлами голоса Piper. Нужна снаружи — студия синтезирует
+  /// конкретным голосом в файл, а движку нужен путь к его модели.
+  Future<String> voiceDirFor(String modelId) => _voiceDirFor(modelId);
+
   Future<String> _voiceDirFor(String modelId) async {
     if (modelId.isEmpty) return '';
     try {
@@ -763,6 +802,34 @@ class SidecarClient {
   // Recognition can be slow (cold model, long clip), so several may be in
   // flight; the map matches each reply to its caller.
   final Map<String, Completer<String>> _transcribeWaiters = {};
+
+  /// Синтезировать текст в файл и вернуть путь. Пустая строка — не вышло.
+  ///
+  /// [voiceId] пустой — говорит текущий голос ассистента; иначе поднимается
+  /// временный движок Piper под конкретный голос, не меняя настроек.
+  Future<String> renderTtsToFile(String text, String path,
+      {String voiceId = '', String voiceDir = '', double rate = 1.0}) async {
+    final id = '${++_renderSeq}';
+    final c = Completer<String>();
+    _renderWaiters[id] = c;
+    _send({
+      'type': 'tts.render',
+      'id': id,
+      'text': text,
+      'path': path,
+      'voice': voiceId,
+      'voice_dir': voiceDir,
+      'rate': rate,
+    });
+    return c.future.timeout(const Duration(seconds: 120), onTimeout: () {
+      _renderWaiters.remove(id);
+      return '';
+    });
+  }
+
+  // Ожидания синтеза в файл: студия сохраняет озвучку любым голосом.
+  final Map<String, Completer<String>> _renderWaiters = {};
+  int _renderSeq = 0;
   int _transcribeSeq = 0;
 
   // Active per-app audio sessions (for the command-config picker). Empty on
@@ -839,6 +906,8 @@ class SidecarClient {
       });
 
   Future<void> stop() async {
+    // Останавливаем МЫ — восстанавливать связь после этого не надо.
+    _stopping = true;
     try {
       await _ws?.close();
     } catch (_) {}
@@ -1312,6 +1381,13 @@ class VoiceAssistant {
     // 2) Everything else is normal speech → a regular (visible) chat turn.
     _toast('${app.t('vaThinking')} $command');
     if (app.voiceResponses) {
+      // Просим сервер клон-голоса поднять модель ПРЯМО СЕЙЧАС, не дожидаясь
+      // первого предложения. Модель отдаёт видеопамять по простою, и первая
+      // реплика после паузы иначе стоит пятнадцать секунд загрузки. А здесь
+      // впереди ещё целый ответ языковой модели — прогрев прячется за ним
+      // целиком. Не ждём: сорвавшийся прогрев ничего не ломает, синтез
+      // загрузит модель сам, как и раньше.
+      unawaited(warmCloneServer(app));
       // Queued sidecar TTS: stream the reply and speak each sentence as soon as
       // it arrives — first audio starts almost immediately instead of after the
       // whole reply. A voice "stop" interrupts stream + TTS queue.
@@ -1320,6 +1396,22 @@ class VoiceAssistant {
       });
     } else {
       await app.sendMessage(command);
+    }
+  }
+
+  /// Попросить сервер клон-голоса поднять модель заранее. Пусто — тихо выходим:
+  /// сервер не настроен, прогревать нечего.
+  Future<void> warmCloneServer(AppState app) async {
+    if (app.ttsEngineChoice != 'cosyvoice') return;
+    final base = app.cosyvoiceEndpoint.trim();
+    if (base.isEmpty) return;
+    final url = base.replaceAll(RegExp(r'/+$'), '');
+    try {
+      await http
+          .post(Uri.parse('$url/load'))
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // Сервер молчит или не умеет прогрев — не беда, синтез справится сам.
     }
   }
 
@@ -1341,9 +1433,7 @@ class VoiceAssistant {
       return null;
     }
     await _runCommand(app, match, utterance: text);
-    return match.speakPhrase.trim().isNotEmpty
-        ? match.speakPhrase.trim()
-        : app.t('vaDone');
+    return app.speakFor(match);
   }
 
   // Execute a catalog/interpreted command with the usual safety policies.
@@ -1377,9 +1467,8 @@ class VoiceAssistant {
         (cmd.value == 'chat on' || cmd.value == 'chat off')) {
       final on = cmd.value == 'chat on';
       app.setChatEnabled(on);
-      final say = cmd.speakPhrase.trim().isNotEmpty
-          ? cmd.speakPhrase.trim()
-          : app.t(on ? 'chatTurnedOn' : 'chatTurnedOff');
+      final say = app.speakFor(cmd,
+          fallbackKey: on ? 'chatTurnedOn' : 'chatTurnedOff');
       VizOverlayServer.instance.note(say, kind: 'ok');
       if (app.voiceResponses) _speak(app, say);
       unawaited(appendLog('commands', '${cmd.phrase} -> [chat] ${cmd.value}'));
@@ -1403,9 +1492,7 @@ class VoiceAssistant {
     if (app.voiceResponses) {
       // A command with its own spoken phrase announces itself (e.g. "Открываю
       // Яндекс Музыку"); otherwise fall back to the generic done/failed line.
-      final say = (ok && cmd.speakPhrase.trim().isNotEmpty)
-          ? cmd.speakPhrase.trim()
-          : (ok ? app.t('vaDone') : app.t('vaFailed'));
+      final say = ok ? app.speakFor(cmd) : app.speakGeneric('vaFailed');
       _speak(app, say);
     }
     final micVia = SidecarClient.instance.lastSttDevice;
@@ -1424,6 +1511,9 @@ class VoiceAssistant {
     VoiceCommand? best;
     double bestScore = 0;
     for (final c in app.voiceCommands) {
+      // Выключенная команда не участвует в разборе вовсе: иначе тумблер в
+      // каталоге ничего бы не значил, а фраза продолжала бы срабатывать.
+      if (!c.enabled) continue;
       final phrase = _norm(c.phrase);
       if (phrase.isEmpty) continue;
       double s;

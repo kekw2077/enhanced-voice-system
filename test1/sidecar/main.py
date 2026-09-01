@@ -16,14 +16,13 @@ Protocol (JSON text frames)
                            "denoise": "off"|"light"|"strong", "denoise_dir": "...",
                            "device": "cpu"|"cuda"}
     {"type": "stt.remote_check"}                     # probe the remote STT server
-    {"type": "gamemode.config", "fullscreen_enabled": bool, "vram_enabled": bool,
-                           "vram_enter": 85, "vram_exit": 65, "notify_enabled": bool,
-                           "exclusions": ["vlc.exe"], "texts": {"fullscreen": ..., "vram": ..., "exit": ...}}
     {"type": "tts.speak", "text": "..."}
     {"type": "tts.stop"}
     {"type": "tts.config", "engine": "piper"|"pyttsx3",
                            "voice": "ru_RU-irina-medium", "voice_dir": "..."}
     {"type": "tts.preview", "voice": "...", "voice_dir": "...", "text": "..."}
+    {"type": "tts.render", "id": str, "text": "...", "path": "...",
+                          "voice"?: "...", "voice_dir"?: "..."}  # синтез в файл
     {"type": "intent.parse", "text": "...", "commands": [{"phrase": "..."}], "threshold": 0.5}
     {"type": "audio.sessions"}                       # list active per-app audio sessions
     {"type": "app.volume", "process": "Yandex Music.exe",
@@ -41,7 +40,6 @@ Protocol (JSON text frames)
     {"type": "stt.state", "state": "starting"|"loading_models"|"ready"|"error", "message"?: str}
     {"type": "stt.engine_status", "engine": str, "state": "loading"|"ready"|"error", "message"?: str}
     {"type": "stt.device", "engine": str, "requested": "cpu"|"cuda", "active": "cpu"|"cuda", "fell_back": bool}
-    {"type": "gamemode.status", "active": bool, "reason": "fullscreen"|"vram"|""}
     {"type": "stt.denoise_status", "mode": str, "state": "ready"|"error", "message"?: str}
     {"type": "tts.done"}
     {"type": "tts.status", "engine": str, "voice": str, "state": "loading"|"ready"|"error", "message"?: str}
@@ -62,12 +60,12 @@ import base64
 import io
 import json
 import sys
+import traceback
 import wave
 
 import websockets
 
 import gpu
-from gamemode import GameModeMonitor
 from intent import match
 from stt_engine import SAMPLE_RATE, SttEngine, log_stage
 from tts_engine import TtsEngine
@@ -113,8 +111,7 @@ def _decode_to_pcm16k_mono(np, raw: bytes, fmt: str = "wav") -> bytes:
     return np.clip(samples, -32768.0, 32767.0).astype("<i2").tobytes()
 
 
-async def _handle(ws, stt: SttEngine, tts: TtsEngine,
-                  game: GameModeMonitor) -> None:
+async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
     loop = asyncio.get_running_loop()
     out: "asyncio.Queue[dict]" = asyncio.Queue()
 
@@ -144,198 +141,194 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine,
     stt.bind(emit)
     tts.bind(emit)
 
-    # Game mode (TZ2 block 7): one offload layer driven by both triggers.
-    def _game_change(active: bool, reason: str) -> None:
-        stt.force_cpu(active)  # only Whisper has a CUDA path here
-        emit({"type": "gamemode.status", "active": active, "reason": reason})
-
-    def _game_notify(kind: str) -> None:
-        txt = game.texts.get(kind)
-        if txt:
-            tts.speak(str(txt))
-
-    game.bind(_game_change, _game_notify)
-    game.start()
-
     try:
         async for raw in ws:
             try:
                 data = json.loads(raw)
             except Exception:
                 continue
-            t = data.get("type")
-            if t == "stt.start":
-                stt.start(data.get("language", "ru"), emit,
-                          device=data.get("device"),
-                          prompt=data.get("prompt"),
-                          devices=data.get("devices"))
-            elif t == "stt.stop":
-                stt.stop()
-            elif t == "stt.config":
-                model = data.get("model")
-                if model:
-                    stt.set_model(str(model))
-                if "prompt" in data:
-                    stt.set_prompt(data.get("prompt"))
-                gdir = data.get("gigaam_dir")
-                if gdir:
-                    stt.update_gigaam_dir(str(gdir))
-                # Адрес сервера ставится ДО выбора движка: иначе переключение
-                # на "remote" случилось бы с ещё пустым адресом и сразу упало
-                # бы в «адрес не задан».
-                if any(k in data for k in
-                       ("remote_url", "remote_model", "remote_key")):
-                    stt.set_remote(url=data.get("remote_url"),
-                                   model=data.get("remote_model"),
-                                   key=data.get("remote_key"))
-                # Тоже ДО выбора движка: если переключение на сервер сразу
-                # сорвётся, откатываться надо уже на нужный локальный.
-                if data.get("local_engine"):
-                    stt.set_local_engine(str(data.get("local_engine")))
-                engine = data.get("engine")
-                if engine:
-                    stt.set_engine(str(engine), str(gdir) if gdir else None)
-                ddir = data.get("denoise_dir")
-                if ddir:
-                    stt.update_denoise_dir(str(ddir))
-                if "denoise" in data:
-                    stt.set_denoise(str(data.get("denoise")))
-                if "device" in data:
-                    # A manual device change lifts any game-mode offload layer
-                    # (it re-engages next poll if conditions still hold).
-                    game.release()
-                    stt.set_device(str(data.get("device")))
-                if "vad" in data:
-                    stt.set_vad_aggressiveness(data.get("vad"))
-                if "gain" in data:
-                    stt.set_mic_gain(data.get("gain"))
-            elif t == "stt.remote_check":
-                # Кнопка «Проверить» в настройках: жив ли сервер распознавания
-                # и какие у него модели. Ответ — тем же stt.engine_status, что
-                # и обычные состояния движка, чтобы карточка читала один сигнал.
-                # `probe` отличает ответ кнопки от настоящей смены движка:
-                # проверка связи НЕ означает, что распознаём мы теперь сервером.
-                try:
-                    models = stt.probe_remote()
-                    emit({"type": "stt.engine_status", "engine": "remote",
-                          "state": "ready", "probe": True,
-                          "models": models})
-                except Exception as e:
-                    emit({"type": "stt.engine_status", "engine": "remote",
-                          "state": "error", "probe": True, "message": str(e)})
-            elif t == "tts.speak":
-                tts.speak(str(data.get("text", "")),
-                          rate=float(data.get("rate", 1.0)),
-                          volume=float(data.get("volume", 1.0)),
-                          on_done=lambda: emit({"type": "tts.done"}),
-                          on_level=lambda v: emit(
-                              {"type": "tts.level", "level": v}),
-                          # Preview of a prepared phrase: play the rendered
-                          # file itself, whatever engine is selected.
-                          cached=bool(data.get("cached", False)))
-            elif t == "tts.stop":
-                tts.stop()
-            elif t == "tts.config":
-                vdir = data.get("voice_dir")
-                voice = data.get("voice")
-                if vdir is not None or voice is not None:
-                    tts.set_voice(str(vdir) if vdir else "",
-                                  str(voice) if voice else "")
-                # Cloning config (set BEFORE engine so a switch to xtts/cosyvoice
-                # loads with the sample/exe already in place). Cache is shared.
-                if ("cache_dir" in data or "voice_fp" in data
-                        or "cache_engine" in data):
-                    tts.set_cache(cache_dir=data.get("cache_dir"),
-                                  voice_fp=data.get("voice_fp"),
-                                  engine=data.get("cache_engine"))
-                clone = data.get("clone")
-                if isinstance(clone, dict):
-                    tts.set_clone_config(exe=clone.get("exe"),
-                                         ref=clone.get("ref"),
-                                         lang=clone.get("lang"))
-                cosy = data.get("cosy")
-                if isinstance(cosy, dict):
-                    tts.set_cosy_config(endpoint=cosy.get("endpoint"),
-                                        ref=cosy.get("ref"),
-                                        prompt_text=cosy.get("prompt"),
-                                        speed=cosy.get("speed"))
-                eng = data.get("engine")
-                if eng:
-                    tts.set_engine(str(eng))
-                if "fx" in data:
-                    tts.set_fx(data.get("fx"))
-            elif t == "tts.prerender":
-                # Pre-render a batch of fixed phrases into the clone cache so
-                # they later play instantly (system notifications, command
-                # speak-phrases, the acknowledgement library).
-                tts.prerender(list(data.get("phrases", [])))
-            elif t == "tts.preview":
-                tts.preview(str(data.get("voice_dir", "")),
-                            str(data.get("voice", "")),
-                            str(data.get("text", "")),
-                            rate=float(data.get("rate", 1.0)),
-                            volume=float(data.get("volume", 1.0)))
-            elif t == "gamemode.config":
-                if isinstance(data.get("texts"), dict):
-                    game.texts = {str(k): str(v)
-                                  for k, v in data["texts"].items()}
-                game.configure(
-                    fullscreen_enabled=data.get("fullscreen_enabled"),
-                    vram_enabled=data.get("vram_enabled"),
-                    vram_enter=data.get("vram_enter"),
-                    vram_exit=data.get("vram_exit"),
-                    notify_enabled=data.get("notify_enabled"),
-                    exclusions=data.get("exclusions"),
-                )
-            elif t == "intent.parse":
-                res = match(
-                    str(data.get("text", "")),
-                    list(data.get("commands", [])),
-                    float(data.get("threshold", 0.5)),
-                )
-                emit({"type": "intent.result", "match": res})
-            elif t == "audio.sessions":
-                # COM/pycaw is blocking — run it off the event loop.
-                import app_audio
-                sess = await asyncio.get_event_loop().run_in_executor(
-                    None, app_audio.list_sessions)
-                emit({"type": "audio.sessions.result", "sessions": sess})
-            elif t == "app.volume":
-                import app_audio
-                _v = data.get("value")
-                _proc = str(data.get("process", ""))
-                _act = str(data.get("action", "set"))
-                r = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: app_audio.apply(
-                        _proc, _act,
-                        float(_v) if _v is not None else None))
-                emit({"type": "app.volume.result", **r})
-            elif t == "stt.transcribe":
-                # One-shot offline recognition for a network voice command
-                # (settings-TZ §14). `audio` is base64; `format` is "wav"
-                # (default) or "pcm16" (raw 16 kHz mono int16). Decode +
-                # recognize off the event loop; reply is keyed by `id` so the
-                # Dart side can match it even if several arrive at once.
-                rid = data.get("id")
-                b64 = str(data.get("audio", ""))
-                fmt = str(data.get("format", "wav"))
+            try:
+                t = data.get("type")
+                if t == "stt.start":
+                    stt.start(data.get("language", "ru"), emit,
+                              device=data.get("device"),
+                              prompt=data.get("prompt"),
+                              devices=data.get("devices"))
+                elif t == "stt.stop":
+                    stt.stop()
+                elif t == "stt.config":
+                    model = data.get("model")
+                    if model:
+                        stt.set_model(str(model))
+                    if "prompt" in data:
+                        stt.set_prompt(data.get("prompt"))
+                    gdir = data.get("gigaam_dir")
+                    if gdir:
+                        stt.update_gigaam_dir(str(gdir))
+                    # Адрес сервера ставится ДО выбора движка: иначе переключение
+                    # на "remote" случилось бы с ещё пустым адресом и сразу упало
+                    # бы в «адрес не задан».
+                    if any(k in data for k in
+                           ("remote_url", "remote_model", "remote_key")):
+                        stt.set_remote(url=data.get("remote_url"),
+                                       model=data.get("remote_model"),
+                                       key=data.get("remote_key"))
+                    # Тоже ДО выбора движка: если переключение на сервер сразу
+                    # сорвётся, откатываться надо уже на нужный локальный.
+                    if data.get("local_engine"):
+                        stt.set_local_engine(str(data.get("local_engine")))
+                    engine = data.get("engine")
+                    if engine:
+                        stt.set_engine(str(engine), str(gdir) if gdir else None)
+                    ddir = data.get("denoise_dir")
+                    if ddir:
+                        stt.update_denoise_dir(str(ddir))
+                    if "denoise" in data:
+                        stt.set_denoise(str(data.get("denoise")))
+                    if "device" in data:
+                        stt.set_device(str(data.get("device")))
+                    if "vad" in data:
+                        stt.set_vad_aggressiveness(data.get("vad"))
+                    if "gain" in data:
+                        stt.set_mic_gain(data.get("gain"))
+                elif t == "stt.remote_check":
+                    # Кнопка «Проверить» в настройках: жив ли сервер распознавания
+                    # и какие у него модели. Ответ — тем же stt.engine_status, что
+                    # и обычные состояния движка, чтобы карточка читала один сигнал.
+                    # `probe` отличает ответ кнопки от настоящей смены движка:
+                    # проверка связи НЕ означает, что распознаём мы теперь сервером.
+                    try:
+                        models = stt.probe_remote()
+                        emit({"type": "stt.engine_status", "engine": "remote",
+                              "state": "ready", "probe": True,
+                              "models": models})
+                    except Exception as e:
+                        emit({"type": "stt.engine_status", "engine": "remote",
+                              "state": "error", "probe": True, "message": str(e)})
+                elif t == "tts.speak":
+                    tts.speak(str(data.get("text", "")),
+                              rate=float(data.get("rate", 1.0)),
+                              volume=float(data.get("volume", 1.0)),
+                              on_done=lambda: emit({"type": "tts.done"}),
+                              on_level=lambda v: emit(
+                                  {"type": "tts.level", "level": v}),
+                              # Preview of a prepared phrase: play the rendered
+                              # file itself, whatever engine is selected.
+                              cached=bool(data.get("cached", False)))
+                elif t == "tts.stop":
+                    tts.stop()
+                elif t == "tts.config":
+                    vdir = data.get("voice_dir")
+                    voice = data.get("voice")
+                    if vdir is not None or voice is not None:
+                        tts.set_voice(str(vdir) if vdir else "",
+                                      str(voice) if voice else "")
+                    # Cloning config (set BEFORE engine so a switch to xtts/cosyvoice
+                    # loads with the sample/exe already in place). Cache is shared.
+                    if ("cache_dir" in data or "voice_fp" in data
+                            or "cache_engine" in data):
+                        tts.set_cache(cache_dir=data.get("cache_dir"),
+                                      voice_fp=data.get("voice_fp"),
+                                      engine=data.get("cache_engine"))
+                    clone = data.get("clone")
+                    if isinstance(clone, dict):
+                        tts.set_clone_config(exe=clone.get("exe"),
+                                             ref=clone.get("ref"),
+                                             lang=clone.get("lang"))
+                    cosy = data.get("cosy")
+                    if isinstance(cosy, dict):
+                        tts.set_cosy_config(endpoint=cosy.get("endpoint"),
+                                            ref=cosy.get("ref"),
+                                            prompt_text=cosy.get("prompt"),
+                                            speed=cosy.get("speed"),
+                                            language=cosy.get("language"))
+                    eng = data.get("engine")
+                    if eng:
+                        tts.set_engine(str(eng))
+                    if "fx" in data:
+                        tts.set_fx(data.get("fx"))
+                elif t == "tts.prerender":
+                    # Pre-render a batch of fixed phrases into the clone cache so
+                    # they later play instantly (system notifications, command
+                    # speak-phrases, the acknowledgement library).
+                    tts.prerender(list(data.get("phrases", [])))
+                elif t == "tts.render":
+                    # Синтез в файл: студия сохраняет озвучку любым голосом, а не
+                    # только клоном. Отвечаем по id, чтобы два запроса подряд не
+                    # перепутались.
+                    rid = str(data.get("id", ""))
+                    dst = str(data.get("path", ""))
+                    ok = tts.render(str(data.get("text", "")), dst,
+                                    voice_dir=str(data.get("voice_dir", "")),
+                                    voice_id=str(data.get("voice", "")),
+                                    rate=float(data.get("rate", 1.0)))
+                    emit({"type": "tts.render.result", "id": rid,
+                          "ok": bool(ok), "path": dst if ok else ""})
+                elif t == "tts.preview":
+                    tts.preview(str(data.get("voice_dir", "")),
+                                str(data.get("voice", "")),
+                                str(data.get("text", "")),
+                                rate=float(data.get("rate", 1.0)),
+                                volume=float(data.get("volume", 1.0)))
+                elif t == "intent.parse":
+                    res = match(
+                        str(data.get("text", "")),
+                        list(data.get("commands", [])),
+                        float(data.get("threshold", 0.5)),
+                    )
+                    emit({"type": "intent.result", "match": res})
+                elif t == "audio.sessions":
+                    # COM/pycaw is blocking — run it off the event loop.
+                    import app_audio
+                    sess = await asyncio.get_event_loop().run_in_executor(
+                        None, app_audio.list_sessions)
+                    emit({"type": "audio.sessions.result", "sessions": sess})
+                elif t == "app.volume":
+                    import app_audio
+                    _v = data.get("value")
+                    _proc = str(data.get("process", ""))
+                    _act = str(data.get("action", "set"))
+                    r = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: app_audio.apply(
+                            _proc, _act,
+                            float(_v) if _v is not None else None))
+                    emit({"type": "app.volume.result", **r})
+                elif t == "stt.transcribe":
+                    # One-shot offline recognition for a network voice command
+                    # (settings-TZ §14). `audio` is base64; `format` is "wav"
+                    # (default) or "pcm16" (raw 16 kHz mono int16). Decode +
+                    # recognize off the event loop; reply is keyed by `id` so the
+                    # Dart side can match it even if several arrive at once.
+                    rid = data.get("id")
+                    b64 = str(data.get("audio", ""))
+                    fmt = str(data.get("format", "wav"))
 
-                def _run_transcribe(b64=b64, fmt=fmt):
-                    import numpy as np
-                    pcm = _decode_to_pcm16k_mono(np, base64.b64decode(b64), fmt)
-                    return stt.transcribe_pcm(np, pcm)
+                    def _run_transcribe(b64=b64, fmt=fmt):
+                        import numpy as np
+                        pcm = _decode_to_pcm16k_mono(np, base64.b64decode(b64), fmt)
+                        return stt.transcribe_pcm(np, pcm)
 
-                try:
-                    text = await asyncio.get_event_loop().run_in_executor(
-                        None, _run_transcribe)
-                    emit({"type": "stt.transcribe.result",
-                          "id": rid, "text": text})
-                except Exception as e:  # bad audio / decode failure
-                    emit({"type": "stt.transcribe.result",
-                          "id": rid, "text": "", "error": str(e)})
-            elif t == "ping":
-                emit({"type": "pong"})
+                    try:
+                        text = await asyncio.get_event_loop().run_in_executor(
+                            None, _run_transcribe)
+                        emit({"type": "stt.transcribe.result",
+                              "id": rid, "text": text})
+                    except Exception as e:  # bad audio / decode failure
+                        emit({"type": "stt.transcribe.result",
+                              "id": rid, "text": "", "error": str(e)})
+                elif t == "ping":
+                    emit({"type": "pong"})
+            except Exception:
+                # Одно негодное сообщение не должно рвать СОЕДИНЕНИЕ.
+                # Раньше рвало: разбор шёл без охраны, и любая ошибка
+                # внутри — хоть обращение к тому, чего уже нет, — гасила
+                # обработчик websockets целиком. Программа при этом
+                # продолжала работать: чат идёт по HTTP на станцию и
+                # ничего не замечает, а распознавание и озвучка живут
+                # ровно этим соединением и молча пропадали.
+                traceback.print_exc()
+                log_stage(f"message {data.get('type')!r} failed; connection kept")
     except websockets.ConnectionClosed:
         pass
     finally:
@@ -353,10 +346,8 @@ async def _main(args) -> None:
                     local_engine=args.stt_local_engine)
     tts = TtsEngine(engine=args.tts_engine, voice=args.tts_voice,
                     voice_dir=args.tts_voice_dir)
-    game = GameModeMonitor()
-
     async def handler(ws):
-        await _handle(ws, stt, tts, game)
+        await _handle(ws, stt, tts)
 
     log_stage("intent matcher ready; ws server starting")
     async with websockets.serve(handler, args.host, args.port) as server:

@@ -38,6 +38,95 @@ def log(msg: str) -> None:
     print(f"[cosy] {msg}", flush=True)
 
 
+def patch_torchaudio_load() -> None:
+    """Вернуть torchaudio умение читать файлы.
+
+    В torchaudio 2.9 чтение вынесено во внешний TorchCodec, а он в этом образе
+    не поднимается: собран под другую версию FFmpeg («Could not load this
+    library: libtorchcodec_image.so»). CosyVoice читает образец голоса через
+    torchaudio.load у себя внутри, так что обойти это снаружи нельзя — синтез
+    падал уже в недрах библиотеки.
+
+    Подменяем ровно одну функцию — чтение — на libsndfile, который в образе
+    есть и с WAV справляется. Всё остальное в torchaudio (пересчёт частоты,
+    фильтры) считает сам torch и работает как прежде.
+    """
+    import numpy as np
+    import soundfile as sf
+    import torch
+    import torchaudio
+
+    def _load(uri, frame_offset=0, num_frames=-1, normalize=True,
+              channels_first=True, **kw):
+        data, sr = sf.read(uri, dtype="float32", always_2d=True,
+                           start=frame_offset,
+                           frames=num_frames if num_frames and num_frames > 0
+                           else -1)
+        arr = data.T if channels_first else data
+        return torch.from_numpy(np.ascontiguousarray(arr)), sr
+
+    torchaudio.load = _load
+    log("чтение аудио переведено на libsndfile")
+
+
+def pin_attention_backend() -> None:
+    """Закрепить проверенный способ считать внимание.
+
+    На новой карте torch сам сообщает: «Mem Efficient attention on Current AMD
+    GPU is still experimental». Экспериментальный путь здесь не просто медленнее
+    — он считает неверно: модель порождала два кадра вместо речи (ошибка
+    «Kernel size can't be greater than actual input size») либо выдавала звук,
+    в котором ни русское распознавание, ни Whisper не находили ни слова. То же
+    самое повторялось на эталонном образце самих авторов CosyVoice, так что
+    дело не в образце.
+
+    Математический путь медленнее ускоренных, но он единственный, который на
+    этой карте даёт правильный результат. Медленно и верно лучше, чем быстро и
+    впустую.
+    """
+    import torch
+    if not torch.cuda.is_available():
+        return
+    try:
+        torch.backends.cuda.enable_flash_sdp(False)
+        torch.backends.cuda.enable_mem_efficient_sdp(False)
+        torch.backends.cuda.enable_math_sdp(True)
+        log("внимание считается проверенным путём (math)")
+    except Exception as e:
+        log(f"не удалось закрепить путь внимания: {e}")
+
+
+def unify_llm_dtype(model) -> None:
+    """Привести языковую часть модели к одной точности.
+
+    В CosyVoice2 внутри лежит Qwen2, и приезжает он в bfloat16 — так записано в
+    его собственной настройке. А слои, которые CosyVoice надстраивает сверху
+    (эмбеддинги речи и выходной слой), создаются в обычном float32. Из 294
+    весов языковой части 290 оказываются bfloat16 и четыре — float32.
+
+    Встречаясь в одном умножении, они дают
+    «mat1 and mat2 must have the same dtype, but got Float and BFloat16».
+    Коварство в том, что CosyVoice эту ошибку глотает: генератор просто не
+    отдаёт ни одного кадра, и наружу выходит совсем другое сообщение — «Kernel
+    size can't be greater than actual input size» от вокодера, которому нечего
+    озвучивать. А при fp16 несовпадение маскируется приведением на лету, и тогда
+    звук получается, но бессмысленный: ни распознавание, ни Whisper не находят
+    в нём слов.
+
+    Поэтому — одна точность на всю языковую часть, прежде чем что-то считать.
+    """
+    import torch
+    llm = getattr(getattr(model, "model", None), "llm", None)
+    if llm is None:
+        return
+    kinds = {p.dtype for p in llm.parameters()}
+    if len(kinds) <= 1:
+        return
+    было = ", ".join(sorted(str(k).replace("torch.", "") for k in kinds))
+    llm.float()
+    log(f"языковая часть приведена к float32 (было: {было})")
+
+
 def load_model():
     """Загрузить модель. Под замком: первый же параллельный запрос иначе
     начнёт грузить вторую копию в ту же видеопамять."""
@@ -46,6 +135,8 @@ def load_model():
         if _model is not None:
             return _model
         import torch
+        pin_attention_backend()
+        patch_torchaudio_load()
         sys.path.insert(0, "/opt/CosyVoice")
         sys.path.insert(0, "/opt/CosyVoice/third_party/Matcha-TTS")
         from cosyvoice.cli.cosyvoice import CosyVoice2
@@ -55,6 +146,7 @@ def load_model():
         # fp16 только на видеокарте: на процессоре он медленнее обычного fp32.
         _model = CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False,
                             fp16=torch.cuda.is_available())
+        unify_llm_dtype(_model)
         log(f"модель загружена за {time.time() - t0:.1f} с")
         return _model
 
@@ -168,9 +260,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/config":
                 self._json(self._status())
                 return
-            if path != "/inference_zero_shot":
+            # Два режима клонирования, как в официальном сервере CosyVoice:
+            #   zero_shot     — образец плюс его расшифровка;
+            #   cross_lingual — образец без расшифровки, для текста на другом
+            #                   языке, чем говорит образец.
+            # Второй нужен именно там, где первый начинает частить: голос
+            # английский, а говорить надо по-русски.
+            if path not in ("/inference_zero_shot", "/inference_cross_lingual"):
                 self._json({"error": "not_found"}, 404)
                 return
+            cross = path == "/inference_cross_lingual"
 
             ctype = self.headers.get("Content-Type", "")
             if "boundary=" not in ctype:
@@ -189,22 +288,46 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "tts_text and prompt_wav required"}, 400)
                 return
 
-            import torchaudio
-            wav, sr = torchaudio.load(io.BytesIO(ref))
-            if wav.shape[0] > 1:
-                wav = wav.mean(dim=0, keepdim=True)
-            # CosyVoice ждёт образец на 16 кГц.
-            if sr != 16000:
-                wav = torchaudio.transforms.Resample(sr, 16000)(wav)
-
-            model = load_model()
-            global _last_use
-            _last_use = time.time()
-            chunks = []
-            for out in model.inference_zero_shot(text, prompt, wav,
-                                                 stream=False, speed=speed):
-                chunks.append(out["tts_speech"].reshape(-1).cpu().numpy())
+            # Образец отдаём ФАЙЛОМ, а не готовым звуком. В этой версии
+            # CosyVoice inference_zero_shot ждёт путь и открывает его сам —
+            # причём дважды, на 16 и на 24 кГц. Тензор здесь давал «Invalid
+            # file», а объект в памяти не годится: после первого чтения он
+            # остаётся прочитанным до конца.
             import numpy as np
+            import soundfile as sf
+            data, sr = sf.read(io.BytesIO(ref), dtype="float32", always_2d=True)
+            if sr < 16000:
+                # load_wav внутри библиотеки отказывается повышать частоту, а
+                # ниже 16 кГц образцы приходят от старых микрофонов.
+                import torch
+                import torchaudio
+                t = torch.from_numpy(np.ascontiguousarray(data.T))
+                t = torchaudio.transforms.Resample(sr, 16000)(t)
+                data, sr = t.numpy().T, 16000
+
+            import tempfile
+            fd, ref_path = tempfile.mkstemp(suffix=".wav", dir="/tmp")
+            os.close(fd)
+            try:
+                sf.write(ref_path, data, sr, subtype="PCM_16")
+                model = load_model()
+                global _last_use
+                _last_use = time.time()
+                chunks = []
+                if cross:
+                    gen = model.inference_cross_lingual(text, ref_path,
+                                                        stream=False,
+                                                        speed=speed)
+                else:
+                    gen = model.inference_zero_shot(text, prompt, ref_path,
+                                                    stream=False, speed=speed)
+                for out in gen:
+                    chunks.append(out["tts_speech"].reshape(-1).cpu().numpy())
+            finally:
+                try:
+                    os.unlink(ref_path)
+                except OSError:
+                    pass
             audio = np.concatenate(chunks) if chunks else np.zeros(1, "float32")
             data = to_wav(audio, model.sample_rate)
             self.send_response(200)
