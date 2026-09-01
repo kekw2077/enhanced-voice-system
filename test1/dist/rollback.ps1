@@ -15,7 +15,8 @@
 param(
   [string]$Version,
   [string]$BaseUrl = "http://100.79.130.7:8099",
-  [string]$Dir
+  [string]$Dir,
+  [switch]$All          # показать и те версии, установщиков которых уже нет
 )
 $ErrorActionPreference = "Stop"
 
@@ -48,11 +49,33 @@ $versions = [regex]::Matches($xml, 'sparkle:version="([^"]+)"') |
   Select-Object -Unique |
   Sort-Object { [version]($_.Split([char]43)[0]) } -Descending
 
+# Канал помнит всю историю, а станция хранит файлы лишь с некоторого места:
+# старые записи в нём указывают на установщики, которых там уже нет. Список
+# файлов берётся из индекса каталога, одним запросом, чтобы не выяснять это
+#404-й посреди отката.
+$onStation = @()
+try {
+  $index = (Invoke-WebRequest "$BaseUrl/" -UseBasicParsing -TimeoutSec 20).Content
+  $onStation = [regex]::Matches($index, "EVS-Setup-([0-9.]+)[.]exe") |
+    ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique
+} catch {
+  Say "индекс станции не читается — проверю наличие файла при скачивании"
+}
+
 if (-not $Version) {
+  # По умолчанию только то, что реально можно поставить. Канал помнит сотню
+  # версий, но это инструмент на плохой день — длинный список в нём мешает.
   Say "доступно (сверху новое):"
+  $gone = 0
   foreach ($v in $versions) {
+    $here = ($onStation.Count -eq 0) -or ($onStation -contains $v)
     if ($v -eq $installed) { Write-Host "    $v   <- стоит сейчас" -ForegroundColor Yellow }
-    else { Write-Host "    $v" }
+    elseif ($here) { Write-Host "    $v" }
+    elseif ($All) { Write-Host "    $v   (файла на станции нет)" -ForegroundColor DarkGray }
+    else { $gone++ }
+  }
+  if ($gone -gt 0) {
+    Write-Host "    ... и ещё $gone в канале, но их установщиков на станции нет (-All покажет)" -ForegroundColor DarkGray
   }
   Write-Host ""
   Write-Host "Запустите снова с -Version <номер>." -ForegroundColor Cyan
@@ -60,11 +83,18 @@ if (-not $Version) {
 }
 if ($versions -notcontains $Version) { Die "В канале нет версии $Version" }
 if ($Version -eq $installed) { Die "Версия $Version уже установлена" }
+if ($onStation.Count -gt 0 -and $onStation -notcontains $Version) {
+  Die "Версия $Version есть в канале, но её установщика нет на станции"
+}
 
 # --- забрать и проверить ----------------------------------------------------
 $setup = Join-Path $env:TEMP "EVS-Setup-$Version.exe"
 Say "качаю установщик $Version"
-Invoke-WebRequest "$BaseUrl/EVS-Setup-$Version.exe" -OutFile $setup -UseBasicParsing -TimeoutSec 900
+try {
+  Invoke-WebRequest "$BaseUrl/EVS-Setup-$Version.exe" -OutFile $setup -UseBasicParsing -TimeoutSec 900
+} catch {
+  Die "Не скачался EVS-Setup-$Version.exe: $($_.Exception.Message)"
+}
 
 # Хеш берётся из той же записи канала. Идти назад — не повод доверять файлу
 # меньше, чем при обновлении.
