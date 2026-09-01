@@ -748,6 +748,26 @@ class AppUpdater {
   static const String _kUpdateSplashDir = 'update-splash';
   static const String _kUpdateSplashExe = 'evs_updating.exe';
 
+  // Process names the update script has to account for. It carries BOTH the
+  // current names and the ones the rename introduces, because the script is
+  // written by the OLD build and installs the NEW one: a build that knew only
+  // its own names would leave the incoming version's processes holding the
+  // files open, then relaunch an exe that is no longer there. Extra names cost
+  // nothing at runtime — tasklist and taskkill simply do not find them.
+  static const List<String> _kWaitExeNames = <String>[
+    'evs.exe', 'evs_widget.exe', 'evs_menu.exe',
+    'anima.exe', 'anima_widget.exe', 'anima_menu.exe',
+  ];
+  // The sidecar is killed but never waited for: it dies with its parent's Job
+  // Object anyway, and waiting on it could hold the loop forever.
+  static const List<String> _kKillExeNames = <String>[
+    ..._kWaitExeNames, 'evs_sidecar.exe', 'anima_sidecar.exe',
+  ];
+  // Relaunch target after a rename install, checked BEFORE the running path:
+  // Inno leaves the old exe sitting in the folder, so resolvedExecutable would
+  // still find it and start the version we just replaced.
+  static const String _kSuccessorExe = 'anima.exe';
+
   // Single source of truth for "where is the update right now", shared between
   // the three parties that each only know their own piece: this app while it
   // downloads, the update script while it waits/installs/relaunches, and the
@@ -879,6 +899,12 @@ class AppUpdater {
     final splashKill = splashExe == null
         ? ''
         : 'taskkill /F /IM $_kUpdateSplashExe >nul 2>&1\n';
+    final waitChecks = _kWaitExeNames
+        .map((n) =>
+            'tasklist /FI "IMAGENAME eq $n" 2>nul | find /I "$n" >nul '
+            '&& set "RUNNING=1"')
+        .join('\n');
+    final killList = _kKillExeNames.map((n) => '/IM $n').join(' ');
     final script = '''@echo off
 setlocal enableextensions
 set "RLOG=$runnerLog"
@@ -887,22 +913,24 @@ echo [%date% %time%] updater started > "%RLOG%"
 ${splashStart}echo wait> "%USTAT%"
 :waitloop
 set "RUNNING="
-tasklist /FI "IMAGENAME eq evs.exe" 2>nul | find /I "evs.exe" >nul && set "RUNNING=1"
-tasklist /FI "IMAGENAME eq evs_widget.exe" 2>nul | find /I "evs_widget.exe" >nul && set "RUNNING=1"
-tasklist /FI "IMAGENAME eq evs_menu.exe" 2>nul | find /I "evs_menu.exe" >nul && set "RUNNING=1"
+$waitChecks
 if defined RUNNING (
   timeout /t 1 /nobreak >nul
   goto waitloop
 )
 echo [%date% %time%] evs closed, killing leftovers >> "%RLOG%"
-taskkill /F /IM evs.exe /IM evs_widget.exe /IM evs_menu.exe /IM evs_sidecar.exe >nul 2>&1
+taskkill /F $killList >nul 2>&1
 timeout /t 1 /nobreak >nul
 echo [%date% %time%] launching installer >> "%RLOG%"
 echo install> "%USTAT%"
 "$path" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="$runDir" /LOG="$installLog"
 echo [%date% %time%] installer exit %errorlevel%, relaunching >> "%RLOG%"
 echo relaunch> "%USTAT%"
-start "" "$exePath"
+if exist "$runDir\\$_kSuccessorExe" (
+  start "" "$runDir\\$_kSuccessorExe"
+) else (
+  start "" "$exePath"
+)
 timeout /t 2 /nobreak >nul
 echo done> "%USTAT%"
 ${splashKill}echo [%date% %time%] done >> "%RLOG%"
@@ -1046,6 +1074,11 @@ del "%~f0" >nul 2>&1
       final len = int.tryParse(
               RegExp(r'length="(\d+)"').firstMatch(block)?.group(1) ?? '') ??
           0;
+      // The "evs:" prefix is frozen and outlives the rename. Every build
+      // already installed parses the feed with this exact literal, so renaming
+      // the namespace in appcast.xml would leave all of them unable to find a
+      // hash — and the update that teaches them the new name is precisely the
+      // one that would stop arriving.
       final sha = RegExp(r'evs:sha256="([0-9a-fA-F]{64})"')
               .firstMatch(block)
               ?.group(1) ??

@@ -18,7 +18,10 @@
 #define MyAppExeName "evs.exe"
 #define MyAppPublisher "EVS"
 ; Stable upgrade GUID — keep constant across versions so installs upgrade
-; in place instead of stacking side by side.
+; in place instead of stacking side by side. It has to survive the rename too:
+; this GUID is what ties a Nexus Anima install to the EVS one it replaces.
+; Change it and the new name arrives as a separate product, leaving the old
+; install — and the userdata folder beside it — stranded.
 #define MyAppId "{{0DFA2B71-CBB9-43E0-B602-9F6DDC25D839}"
 
 [Setup]
@@ -60,8 +63,10 @@ PrivilegesRequiredOverridesAllowed=dialog commandline
 ; Restart Manager instead of failing (the app normally exits itself first).
 CloseApplications=force
 RestartApplications=no
-; Named mutex the running app holds (CreateMutexW in main.dart) so Setup can
-; reliably detect a live instance during a silent in-app update.
+; Named mutex the running app holds (_claimAppMutex in lib/src/bootstrap.dart)
+; so Setup can reliably detect a live instance during a silent in-app update.
+; The two spellings must move together; note the app holds a second lock as
+; well, the loopback port in that same file.
 AppMutex=EVS-SingleInstance-Mutex
 
 [Code]

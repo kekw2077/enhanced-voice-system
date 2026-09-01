@@ -9,6 +9,10 @@ const _minSplashDuration = Duration(milliseconds: 300);
 // launch fails to bind, signals the running instance to surface its window, and
 // exits — so the desktop shortcut focuses the running app instead of spawning a
 // duplicate. Kept alive for the process lifetime so it isn't garbage-collected.
+// This is one of TWO single-instance locks; the other is the named mutex in
+// _claimAppMutex below, which dist/installer.iss keys on as well. A rename has
+// to move both or neither — moving one still lets an old and a new build take
+// each other for a duplicate.
 const int _kSingleInstancePort = 47653;
 io.ServerSocket? _singleInstanceLock;
 
@@ -35,6 +39,9 @@ void _claimAppMutex() {
     final k32 = DynamicLibrary.open('kernel32.dll');
     final createMutex = k32
         .lookupFunction<_CreateMutexNative, _CreateMutexDart>('CreateMutexW');
+    // Must stay in step with AppMutex in dist/installer.iss: Setup detects a
+    // live instance by this exact name, and a name that drifts from it means
+    // silent updates stop noticing the app they are replacing.
     final name = 'EVS-SingleInstance-Mutex'.toNativeUtf16();
     createMutex(nullptr, 0, name);
     malloc.free(name); // the kernel copies the name
