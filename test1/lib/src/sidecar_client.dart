@@ -282,6 +282,10 @@ class SidecarClient {
                   'протокол движка $sidecarProtocol, приложение ждёт '
                   '$kSidecarProtocol — компонент стоит обновить'));
             }
+            // Only a sidecar that announced a protocol knows this message.
+            // An older one would ignore it harmlessly, but there is no reason
+            // to send into the dark.
+            if (sidecarProtocol >= 1) unawaited(_pushJournal());
             final c = m['capabilities'] as Map?;
             sttAvailable = c?['stt'] == true;
             ttsAvailable = c?['tts'] == true;
@@ -503,6 +507,19 @@ class SidecarClient {
   void setSttModel(String model) {
     _sttModel = model;
     _send({'type': 'stt.config', 'model': model});
+  }
+
+  /// Tell the sidecar where to keep the event journal.
+  ///
+  /// The path is decided here rather than in the sidecar because this side is
+  /// the only one that knows the app's data root — which lives beside the
+  /// program and is not necessarily on the system drive.
+  Future<void> _pushJournal() async {
+    try {
+      final root = await appDataRoot();
+      final sep = io.Platform.pathSeparator;
+      _send({'type': 'journal.config', 'path': '$root${sep}events.db'});
+    } catch (_) {}
   }
 
   Future<void> _ensureGigaamDir() async {

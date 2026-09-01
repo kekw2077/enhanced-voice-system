@@ -31,6 +31,7 @@ Protocol (JSON text frames)
                            "value": 0.30}             # 0..1 for set/increase/decrease
     {"type": "stt.transcribe", "id": str, "audio": "<base64>",
                                "format": "wav"|"pcm16"}  # one-shot network voice cmd
+    {"type": "journal.config", "path": "<data root>/events.db"}  # включить журнал
     {"type": "ping"}
   server -> client:
     {"type": "ready", "protocol": int,
@@ -75,6 +76,8 @@ import wave
 import websockets
 
 import gpu
+from gamemode import GameModeMonitor
+from journal import Journal, new_event
 from intent import match
 from stt_engine import SAMPLE_RATE, SttEngine, log_stage
 from tts_engine import TtsEngine
@@ -89,6 +92,46 @@ from tts_engine import TtsEngine
 # other side never sent simply read as absent, and the trouble surfaced later,
 # somewhere unrelated. The number does not fix a mismatch — it makes it sayable.
 PROTOCOL_VERSION = 1
+
+# Journal and its one source live for the whole process, not per connection:
+# a dropped WebSocket should not lose the fact that a game is running.
+_journal = None
+_game = None
+
+
+def _start_journal(path: str) -> None:
+    """Open the event journal and let the game-mode detector feed it.
+
+    Only the DETECTOR half of gamemode is used here. It reports that a
+    fullscreen app has held the foreground, or that video memory crossed a
+    threshold, and stops at saying so; the GPU offload it once drove is not
+    reconnected. That is the point of journalling before filtering — for now
+    nothing in the system acts on these rows, they only accumulate until there
+    is enough real traffic to tune a filter against.
+    """
+    global _journal, _game
+    if _journal is not None:
+        return
+    _journal = Journal(path)
+    _journal.write(new_event("journal", "journal.opened",
+                             payload={"path": path}))
+
+    def on_change(active: bool, reason: str) -> None:
+        # This detector is what decides the spec's `gaming` session mode.
+        # Both of its triggers already carry hysteresis — a five second hold
+        # on fullscreen, two-sided thresholds on VRAM — so what reaches the
+        # journal is a settled fact and not a flapping boundary.
+        try:
+            _journal.write(new_event(
+                "system.window",
+                "session.gaming.entered" if active else "session.gaming.exited",
+                payload={"reason": reason} if reason else {}))
+        except Exception:
+            pass
+
+    _game = GameModeMonitor(on_change=on_change)
+    _game.start()
+    log_stage("event journal at " + path)
 
 
 def _decode_to_pcm16k_mono(np, raw: bytes, fmt: str = "wav") -> bytes:
@@ -338,6 +381,18 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                     except Exception as e:  # bad audio / decode failure
                         emit({"type": "stt.transcribe.result",
                               "id": rid, "text": "", "error": str(e)})
+                elif t == "journal.config":
+                    # The app decides where this lives: it is the only side
+                    # that knows its own data root, which is not always on the
+                    # system drive. An older sidecar simply falls through this
+                    # chain and ignores the message, which is the right
+                    # outcome — the journal is not load-bearing.
+                    jp = str(data.get("path", "")).strip()
+                    if jp:
+                        try:
+                            _start_journal(jp)
+                        except Exception as e:
+                            log_stage("journal failed: " + str(e))
                 elif t == "ping":
                     emit({"type": "pong"})
             except Exception:
