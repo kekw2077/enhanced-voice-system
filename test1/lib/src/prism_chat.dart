@@ -589,21 +589,32 @@ class _PrismMessageState extends State<_PrismMessage> {
                             : () => unawaited(
                                 app.regenerateLastReply(widget.conv)),
                       ),
-                    PrismRoundIcon(
-                      icon: Icons.more_horiz_rounded,
-                      tooltip: app.t('animaMore'),
-                      size: 28,
-                      onTap: () {
-                        final box =
-                            context.findRenderObject() as RenderBox?;
-                        final at = box == null
-                            ? Offset.zero
-                            : box.localToGlobal(
-                                box.size.bottomLeft(Offset.zero));
-                        unawaited(showEvsMessageMenu(
-                            context, widget.conv, m, at));
-                      },
-                    ),
+                    // Builder нужен, чтобы взять прямоугольник САМОЙ кнопки.
+                    // Без него context — это контекст всего ряда сообщения, а
+                    // ряд растянут на ширину ленты: его левый нижний угол лежит
+                    // у левого края окна, и меню уезжало туда, даже когда
+                    // сообщение прижато к правому краю.
+                    Builder(builder: (btnContext) {
+                      return PrismRoundIcon(
+                        icon: Icons.more_horiz_rounded,
+                        tooltip: app.t('animaMore'),
+                        size: 28,
+                        onTap: () {
+                          final box =
+                              btnContext.findRenderObject() as RenderBox?;
+                          // Низ по центру кнопки: showMenu разворачивает список
+                          // влево, если точка в правой половине экрана, и вправо
+                          // иначе — то есть одна точка верна для сообщений с
+                          // обеих сторон, и подбирать угол под сторону не нужно.
+                          final at = box == null
+                              ? Offset.zero
+                              : box.localToGlobal(
+                                  box.size.bottomCenter(Offset.zero));
+                          unawaited(showEvsMessageMenu(
+                              btnContext, widget.conv, m, at));
+                        },
+                      );
+                    }),
                   ],
                 ),
               ),
