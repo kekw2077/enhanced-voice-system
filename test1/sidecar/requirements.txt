@@ -23,3 +23,7 @@ setuptools<81
 # Per-application volume via Windows Core Audio sessions (new-features Ф2:
 # "громкость на 30"). Pure-Python over comtypes (already pulled in by pyttsx3).
 pycaw>=20240210
+
+# Правила шины событий читаются из rules.yaml — файла, который правят руками,
+# а не генерируют. JSON здесь был бы хуже: ни комментариев, ни переносов.
+pyyaml>=6.0

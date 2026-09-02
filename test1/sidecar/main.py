@@ -31,7 +31,9 @@ Protocol (JSON text frames)
                            "value": 0.30}             # 0..1 for set/increase/decrease
     {"type": "stt.transcribe", "id": str, "audio": "<base64>",
                                "format": "wav"|"pcm16"}  # one-shot network voice cmd
-    {"type": "journal.config", "path": "<data root>/events.db"}  # включить журнал
+    {"type": "journal.config", "path": "<data root>/events.db",
+                               "confirm": "always"|"dangerous"|"never",
+                               "settings": {...}}   # журнал, правила, потолок
     {"type": "ping"}
   server -> client:
     {"type": "ready", "protocol": int,
@@ -76,8 +78,9 @@ import wave
 import websockets
 
 import gpu
+import bus_filter
 from gamemode import GameModeMonitor
-from journal import Journal, new_event
+from journal import Journal
 from intent import match
 from stt_engine import SAMPLE_RATE, SttEngine, log_stage
 from tts_engine import TtsEngine
@@ -93,10 +96,30 @@ from tts_engine import TtsEngine
 # somewhere unrelated. The number does not fix a mismatch — it makes it sayable.
 PROTOCOL_VERSION = 1
 
-# Journal and its one source live for the whole process, not per connection:
-# a dropped WebSocket should not lose the fact that a game is running.
+# Journal, filter and their sources live for the whole process, not per
+# connection: a dropped WebSocket should not lose the fact that a game is
+# running.
 _journal = None
+_filter = None
 _game = None
+
+
+def _ensure_rules(path: str) -> str:
+    """Правила лежат в userdata, а не в сборке: их правят руками.
+
+    В пакете едет только образец. Он копируется один раз и больше не трогается
+    — иначе обновление движка затирало бы правила, которые человек под себя
+    и настраивал.
+    """
+    import os
+    import shutil
+    if not os.path.exists(path):
+        seed = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "rules.yaml")
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        shutil.copyfile(seed, path)
+        log_stage("rules seeded at " + path)
+    return path
 
 
 def _start_journal(path: str) -> None:
@@ -109,20 +132,33 @@ def _start_journal(path: str) -> None:
     nothing in the system acts on these rows, they only accumulate until there
     is enough real traffic to tune a filter against.
     """
-    global _journal, _game
+    global _journal, _filter, _game
     if _journal is not None:
         return
+    import os
     _journal = Journal(path)
-    _journal.write(new_event("journal", "journal.opened",
-                             payload={"path": path}))
+    rules_path = _ensure_rules(
+        os.path.join(os.path.dirname(os.path.abspath(path)), "rules.yaml"))
+    try:
+        rules = bus_filter.load_rules(rules_path)
+    except Exception as e:
+        # Сломанный YAML не должен ронять движок: без правил шина превращается
+        # обратно в журнал, и это ровно то состояние, из которого она выросла.
+        log_stage("rules failed, journal only: " + str(e))
+        rules = []
+    _filter = bus_filter.Filter(_journal, rules, bus_filter.default_tools())
+    _filter.feed(bus_filter.make_event("journal", "journal.opened",
+                                       payload={"path": path,
+                                                "rules": len(rules)}))
 
     def on_change(active: bool, reason: str) -> None:
-        # This detector is what decides the spec's `gaming` session mode.
-        # Both of its triggers already carry hysteresis — a five second hold
-        # on fullscreen, two-sided thresholds on VRAM — so what reaches the
-        # journal is a settled fact and not a flapping boundary.
+        # Этот детектор и определяет режим сессии `gaming` из спецификации. Оба
+        # его триггера уже несут гистерезис — пять секунд выдержки на
+        # полноэкранном окне, двусторонние пороги на видеопамяти, — поэтому в
+        # фильтр приходит устоявшийся факт, а не дребезг границы.
         try:
-            _journal.write(new_event(
+            _filter.session = "gaming" if active else "idle"
+            _filter.feed(bus_filter.make_event(
                 "system.window",
                 "session.gaming.entered" if active else "session.gaming.exited",
                 payload={"reason": reason} if reason else {}))
@@ -131,7 +167,7 @@ def _start_journal(path: str) -> None:
 
     _game = GameModeMonitor(on_change=on_change)
     _game.start()
-    log_stage("event journal at " + path)
+    log_stage("event journal at %s, rules: %d" % (path, len(rules)))
 
 
 def _decode_to_pcm16k_mono(np, raw: bytes, fmt: str = "wav") -> bytes:
@@ -393,6 +429,16 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                             _start_journal(jp)
                         except Exception as e:
                             log_stage("journal failed: " + str(e))
+                    # Потолок подтверждений и списки из настроек приложения.
+                    # Правило может спрашивать чаще, чем требует настройка, но
+                    # никогда реже — проверка живёт в шаге 2 фильтра.
+                    if _filter is not None:
+                        c = bus_filter.normalize_confirm(data.get("confirm"))
+                        if c:
+                            _filter.confirm = c
+                        st = data.get("settings")
+                        if isinstance(st, dict):
+                            _filter.settings = st
                 elif t == "ping":
                     emit({"type": "pong"})
             except Exception:

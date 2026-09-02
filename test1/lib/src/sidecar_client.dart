@@ -530,8 +530,27 @@ class SidecarClient {
     try {
       final root = await appDataRoot();
       final sep = io.Platform.pathSeparator;
-      _send({'type': 'journal.config', 'path': '$root${sep}events.db'});
+      _send({
+        'type': 'journal.config',
+        'path': '$root${sep}events.db',
+        // Потолок подтверждений живёт в настройках приложения, а решение
+        // принимает фильтр в движке — значит его надо туда донести. Правило
+        // может спрашивать чаще, чем требует эта настройка, но никогда реже.
+        'confirm': _confirm,
+      });
     } catch (_) {}
+  }
+
+  String _confirm = 'risky';
+
+  /// Сообщить движку новый потолок подтверждений.
+  ///
+  /// Значение запоминается и при переподключении уходит заново: связь рвётся,
+  /// а настройка при этом не меняется, и без повторной отправки фильтр остался
+  /// бы на умолчании — то есть спрашивал бы реже, чем человек попросил.
+  void setConfirmPolicy(String value) {
+    _confirm = value;
+    if (sidecarProtocol >= 1) unawaited(_pushJournal());
   }
 
   Future<void> _ensureGigaamDir() async {

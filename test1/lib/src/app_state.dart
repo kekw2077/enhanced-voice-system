@@ -2812,6 +2812,7 @@ class AppState extends ChangeNotifier {
 
   void setCmdConfirm(String v) {
     cmdConfirm = v;
+    SidecarClient.instance.setConfirmPolicy(v);
     _save();
     notifyListeners();
   }
