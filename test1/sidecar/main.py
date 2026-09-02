@@ -38,6 +38,10 @@ Protocol (JSON text frames)
     {"type": "bus.recent", "limit": 50}      # последние события с исходами
     {"type": "bus.reload"}                   # перечитать rules.yaml с диска
     {"type": "bus.config", "enabled": bool}  # выключатель шины
+    {"type": "bus.answer", "id": str, "yes": bool}  # ответ на заданный вопрос
+    {"type": "audio.devices"}                # выходы звука: список и текущий
+    {"type": "audio.set_default", "device": "<id>"}   # переключить выход
+    {"type": "proc.windowed"}                # программы с окном — для выбора
     {"type": "ping"}
   server -> client:
     {"type": "ready", "protocol": int,
@@ -50,6 +54,12 @@ Protocol (JSON text frames)
                                   "rules_path": "<путь>", "rules_error": str,
                                   "rules": [{"id": str, "action": str,
                                              "match": str, "tools": [str]}]}
+    {"type": "bus.ask", "id": str, "rule": str, "text": "<что спросить>"}
+    {"type": "audio.devices.result", "devices": [{"id": str, "name": str,
+                                     "state": "active"|"unplugged"|..,
+                                     "default": bool}]}
+    {"type": "audio.set_default.result", "ok": bool, "reason"?: str}
+    {"type": "proc.windowed.result", "apps": [{"exe": str, "title": str}]}
     {"type": "bus.recent.result", "events": [{"ts": str, "source": str,
                                               "type": str, "severity": str,
                                               "subject": {}, "payload": {},
@@ -93,6 +103,7 @@ import websockets
 
 import gpu
 import bus_filter
+import procwatch
 from gamemode import GameModeMonitor
 from journal import Journal
 from intent import match
@@ -121,6 +132,17 @@ _game = None
 _journal_path = ""
 _rules_path = ""
 _rules_error = ""
+_procwatch = None
+# Настройки приложения: списки игр, проигрыватель музыки, устройства вывода.
+# Живут здесь, а не в правилах, потому что их называет человек в интерфейсе, а
+# правила на них только ссылаются (in:settings.…).
+_settings: dict = {}
+# Заданные и ещё не отвеченные вопросы: id -> id правила.
+_asks: dict = {}
+_ask_seq = 0
+# emit текущего подключения. Вопрос рождается в потоке сторожа процессов, а
+# уходить должен в приложение — значит нужна ссылка снаружи обработчика.
+_emit = None
 
 
 def _ensure_rules(path: str) -> str:
@@ -152,6 +174,7 @@ def _start_journal(path: str) -> None:
     is enough real traffic to tune a filter against.
     """
     global _journal, _filter, _game, _journal_path, _rules_path, _rules_error
+    global _procwatch
     if _journal is not None:
         return
     import os
@@ -169,7 +192,9 @@ def _start_journal(path: str) -> None:
         log_stage("rules failed, journal only: " + str(e))
         _rules_error = str(e)
         rules = []
-    _filter = bus_filter.Filter(_journal, rules, bus_filter.default_tools())
+    _filter = bus_filter.Filter(_journal, rules,
+                                bus_filter.default_tools(lambda: _settings),
+                                ask=_ask)
     _filter.feed(bus_filter.make_event("journal", "journal.opened",
                                        payload={"path": path,
                                                 "rules": len(rules)}))
@@ -190,7 +215,111 @@ def _start_journal(path: str) -> None:
 
     _game = GameModeMonitor(on_change=on_change)
     _game.start()
+
+    def on_proc(name: str, started: bool) -> None:
+        # Событие — факт, а не команда: что появилось и что в этот момент со
+        # звуком. Решение («переключить», «спросить», «не трогать») принимают
+        # правила по спискам из настроек, а не источник. Поэтому здесь нет ни
+        # слова про наушники — только про то, куда звук идёт сейчас.
+        try:
+            _filter.feed(bus_filter.make_event(
+                "procwatch",
+                "app.started" if started else "app.stopped",
+                subject={"app": name},
+                payload={"output": _where_sound_goes(),
+                         "music": _music_is_playing()}))
+        except Exception:
+            pass
+
+    _procwatch = procwatch.ProcWatch(on_proc)
+    _procwatch.start()
+    # Настройки могли прийти раньше журнала: приложение шлёт их одним
+    # сообщением с путём, а сторожа до этой строки просто не было.
+    _apply_settings(_settings)
     log_stage("event journal at %s, rules: %d" % (path, len(rules)))
+
+
+def _dig_set(path: str):
+    cur = _settings
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def _where_sound_goes() -> str:
+    """Куда сейчас идёт звук — в терминах человека, а не идентификаторов.
+
+    Правило спрашивает «звук на колонках?», а не «устройство по умолчанию равно
+    {0.0.0…}». Названия наушников и колонок знает только человек, поэтому факт
+    собирается здесь, из его же настроек, и кладётся в событие.
+    """
+    try:
+        import audio_out
+        cur = audio_out.default_id()
+        if not cur:
+            return "unknown"
+        if cur == _dig_set("devices.headphones"):
+            return "headphones"
+        if cur == _dig_set("devices.speakers"):
+            return "speakers"
+        return "other"
+    except Exception:
+        return "unknown"
+
+
+def _music_is_playing() -> bool:
+    """Есть ли у проигрывателя живая звуковая сессия.
+
+    Сессия существует, пока программа что-то выводит, — этого достаточно, чтобы
+    не приглушать тишину. Точнее Windows и не отвечает: «играет ли музыка» она
+    не знает, знает только «идёт ли звук».
+    """
+    app = _dig_set("music.app")
+    if not app:
+        return False
+    try:
+        import app_audio
+        want = str(app).lower()
+        for s in app_audio.list_sessions():
+            if str(s.get("process", "")).lower() == want:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _apply_settings(st: dict) -> None:
+    """Принять настройки приложения и раздать их тем, кто их ждёт."""
+    global _settings
+    if not isinstance(st, dict):
+        return
+    _settings = st
+    if _filter is not None:
+        _filter.settings = st
+    if _procwatch is not None:
+        # Наблюдаем за играми и за проигрывателем: закрытая музыка — тоже
+        # событие, по которому кто-то однажды захочет правило.
+        names = list(_dig_set("games.list") or [])
+        music = _dig_set("music.app")
+        if music:
+            names.append(music)
+        _procwatch.set_watch(names)
+
+
+def _ask(rule, event) -> None:
+    """Задать вопрос приложению. Ответ придёт отдельным сообщением."""
+    global _ask_seq
+    if _emit is None:
+        raise RuntimeError("no client")
+    text = (rule.say or "").strip()
+    if not text:
+        raise RuntimeError("rule has nothing to say")
+    _ask_seq += 1
+    aid = "a%d" % _ask_seq
+    _asks[aid] = rule.id
+    _emit({"type": "bus.ask", "id": aid, "rule": rule.id, "text": text})
 
 
 def _bus_status() -> dict:
@@ -271,6 +400,12 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
     def emit(msg: dict) -> None:
         # Called from worker threads (STT/TTS) — hop back onto the loop.
         loop.call_soon_threadsafe(out.put_nowait, msg)
+
+    # Шине нужно уметь спрашивать, а вопрос рождается в потоке сторожа
+    # процессов, снаружи этого обработчика. Подключение всегда одно: приложение
+    # держит единственный экземпляр, так что ссылка на emit тоже одна.
+    global _emit
+    _emit = emit
 
     async def sender() -> None:
         while True:
@@ -490,15 +625,15 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                         c = bus_filter.normalize_confirm(data.get("confirm"))
                         if c:
                             _filter.confirm = c
-                        st = data.get("settings")
-                        if isinstance(st, dict):
-                            _filter.settings = st
                         # Выключатель приезжает тем же сообщением, что и путь:
                         # связь рвётся, настройка при этом не меняется, и без
                         # повторной отправки шина после переподключения снова
                         # заработала бы у того, кто её выключил.
                         if "enabled" in data:
                             _filter.enabled = bool(data.get("enabled"))
+                    # Вне проверки на фильтр: настройки нужны и до того, как
+                    # журнал открыт, — из них берётся список наблюдаемых имён.
+                    _apply_settings(data.get("settings"))
                 elif t == "bus.status":
                     emit(_bus_status())
                 elif t == "bus.recent":
@@ -531,6 +666,58 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                     if _filter is not None and "enabled" in data:
                         _filter.enabled = bool(data.get("enabled"))
                     emit(_bus_status())
+                elif t == "audio.devices":
+                    try:
+                        import audio_out
+                        devs = await asyncio.get_event_loop().run_in_executor(
+                            None, audio_out.devices)
+                    except Exception as e:
+                        log_stage("audio devices failed: " + str(e))
+                        devs = []
+                    emit({"type": "audio.devices.result", "devices": devs})
+                elif t == "audio.set_default":
+                    # Ручное переключение из настроек — кнопкой «Проверить».
+                    # Названия устройств у Windows такие, что выбрать наушники
+                    # с первого раза нельзя: проверить надо ухом, а не глазом.
+                    try:
+                        import audio_out
+                        res = await asyncio.get_event_loop().run_in_executor(
+                            None, audio_out.set_default,
+                            str(data.get("device", "")))
+                    except Exception as e:
+                        res = {"ok": False, "reason": "failed", "error": str(e)}
+                    res = dict(res)
+                    res["type"] = "audio.set_default.result"
+                    emit(res)
+                elif t == "proc.windowed":
+                    apps = await asyncio.get_event_loop().run_in_executor(
+                        None, procwatch.windowed_apps)
+                    emit({"type": "proc.windowed.result", "apps": apps})
+                elif t == "bus.answer":
+                    aid = str(data.get("id", ""))
+                    rid = _asks.pop(aid, "")
+                    yes = bool(data.get("yes"))
+                    outcome = "answer_stale"
+                    if rid and _filter is not None:
+                        rule = _filter.rule_by_id(rid)
+                        if rule is None:
+                            outcome = "answer_no_rule:" + rid
+                        elif not yes:
+                            outcome = "declined:" + rid
+                        else:
+                            ok = await asyncio.get_event_loop().run_in_executor(
+                                None, _filter.run_rule_tools, rule)
+                            outcome = ("acted:" if ok else "act_failed:") + rid
+                    # Ответ — тоже событие: по журналу должно быть видно не
+                    # только что спросили, но и что услышали. Отказ — такой же
+                    # исход, как согласие, и терять его нельзя.
+                    if _journal is not None:
+                        try:
+                            _journal.write(bus_filter.make_event(
+                                "bus", "bus.answered",
+                                payload={"rule": rid, "yes": yes}), outcome)
+                        except Exception:
+                            pass
                 elif t == "ping":
                     emit({"type": "pong"})
             except Exception:
@@ -548,6 +735,17 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
     finally:
         send_task.cancel()
         stt.stop()
+        # Связь оборвалась — спрашивать некому. Заданные и неотвеченные
+        # вопросы снимаются: ответ на вопрос, заданный полчаса назад в другой
+        # сессии, применять уже нельзя.
+        #
+        # Сравнение с СОБСТВЕННЫМ emit обязательно. Переподключения
+        # перекрываются: новое успевает встать раньше, чем закроется старое, и
+        # безусловная очистка обнулила бы ссылку живого подключения — шина
+        # замолчала бы навсегда, ничем этого не показав.
+        if globals().get("_emit") is emit:
+            globals()["_emit"] = None
+            _asks.clear()
 
 
 async def _main(args) -> None:

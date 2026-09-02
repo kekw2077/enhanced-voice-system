@@ -53,6 +53,8 @@ def make_filter(rules_yaml=None, tools=None):
                           tools if tools is not None else {
                               "audio.duck_music": tool_ok,
                               "audio.unduck_music": tool_ok,
+                              "audio.to_headphones": tool_ok,
+                              "audio.to_speakers": tool_ok,
                           })
     return f, calls, journal
 
@@ -63,27 +65,63 @@ def ev(etype, **kw):
 
 print("правила из поставки")
 f, calls, journal = make_filter()
-check("правила загрузились", len(f.rules) >= 4, True)
-check("игра пошла — приглушили",
-      f.feed(ev("session.gaming.entered")), "acted:game-audio-duck")
-check("инструмент получил список приложений", "apps" in calls[0], True)
-check("уровень приглушения из правила", calls[0].get("level"), 20)
-check("игра кончилась — вернули",
-      f.feed(ev("session.gaming.exited")), "acted:game-audio-restore")
+f.settings = {
+    "games": {
+        "list": ["valorant.exe", "lol.exe", "genshin.exe"],
+        "switch": ["valorant.exe"],
+        "ask": ["lol.exe"],
+        "duck": ["valorant.exe", "lol.exe"],
+    },
+    "music": {"app": "Y.Music.exe", "duck": 20},
+}
+
+
+def started(app, output="speakers", music=True):
+    return ev("app.started", subject={"app": app},
+              payload={"output": output, "music": music})
+
+
+check("правила загрузились", len(f.rules), 4)
+check("игра из списка «переключать»: звук ушёл и музыка приглушена",
+      f.feed(started("valorant.exe")),
+      "acted:game-audio-switch;acted:music-duck")
+check("звук уже в наушниках — не переключаем ещё раз",
+      f.feed(started("valorant.exe", output="headphones")),
+      "acted:music-duck")
+check("музыка не играет — приглушать нечего",
+      f.feed(started("valorant.exe", output="headphones", music=False)),
+      "unmatched")
+check("игра закрылась — громкость вернули",
+      f.feed(ev("app.stopped", subject={"app": "valorant.exe"},
+                payload={"music": True})),
+      "acted:music-restore")
+check("проигрыватель уже закрыт — возвращать нечего, и это не неудача",
+      f.feed(ev("app.stopped", subject={"app": "valorant.exe"},
+                payload={"music": False})),
+      "unmatched")
+check("незарегистрированная игра шину не трогает",
+      f.feed(started("solitaire.exe")), "unmatched")
 
 print()
-print("порядок правил: частное выше общего")
-check("горячая карта не съедена глушилкой",
-      f.feed(ev("metrics.gpu.hot", payload={"temp_c": 91})),
-      "raise_undelivered:gpu-hot")
-check("тёплая карта проваливается в глушилку",
-      f.feed(ev("metrics.gpu.hot", payload={"temp_c": 70})),
-      "dropped:metrics-noise")
-check("прочие метрики — в глушилку",
-      f.feed(ev("metrics.cpu.high", payload={"pct": 99})),
-      "dropped:metrics-noise")
-check("незнакомое событие никуда не подходит",
-      f.feed(ev("nc.log.error")), "unmatched")
+print("вопрос и ответ")
+# Игра из списка «спрашивать»: молча не переключаем, а спрашиваем — и без
+# канала вопроса это должно быть ВИДНО в журнале, а не выглядеть как тишина.
+f.settings["games"]["duck"] = []          # чтобы остался один исход
+check("без канала вопрос не теряется, а записывается",
+      f.feed(started("lol.exe")), "ask_undelivered:game-audio-ask")
+
+asked = []
+f2, calls2, _ = make_filter()
+f2.settings = f.settings
+f2.ask = lambda rule, event: asked.append(rule.id)
+check("с каналом вопрос уходит", f2.feed(started("lol.exe")),
+      "asked:game-audio-ask")
+check("спросили именно про переключение", asked, ["game-audio-ask"])
+check("до ответа инструмент не трогали", calls2, [])
+rule = f2.rule_by_id("game-audio-ask")
+check("правило находится по имени", rule is not None, True)
+check("ответ «да» запускает инструмент", f2.run_rule_tools(rule), True)
+check("и только теперь", len(calls2), 1)
 
 print()
 print("шаг 0: протухшее и повторы")
@@ -162,10 +200,10 @@ print()
 print("журнал")
 rows = journal.recent(20)
 check("исходы попали в журнал", len(rows) >= 5, True)
-check("у отброшенного записан шаг, на котором он умер",
-      any(r["outcome"].startswith("dropped:") for r in rows), True)
+check("у необработанного записано, что он никуда не подошёл",
+      any(r["outcome"] == "unmatched" for r in rows), True)
 check("у сработавшего записано правило",
-      any(r["outcome"] == "acted:game-audio-duck" for r in rows), True)
+      any("acted:music-restore" in r["outcome"] for r in rows), True)
 
 print()
 if _fails:

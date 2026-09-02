@@ -169,10 +169,13 @@ class Filter:
     детерминированы; источники при этом живут каждый в своём.
     """
 
-    def __init__(self, journal, rules: list, tools: dict) -> None:
+    def __init__(self, journal, rules: list, tools: dict, ask=None) -> None:
         self.journal = journal
         self.rules = rules
         self.tools = tools
+        # Чем задать вопрос. None — спрашивать некому, и ASK останется записью
+        # в журнале: сделать необратимое без ответа хуже, чем не сделать.
+        self.ask = ask
         self.settings: dict = {}
         self.session = "idle"
         self.confirm = CONFIRM_DANGEROUS
@@ -252,6 +255,17 @@ class Filter:
                 ok = False
         return ok
 
+    def rule_by_id(self, rule_id: str):
+        for r in self.rules:
+            if r.id == rule_id:
+                return r
+        return None
+
+    def run_rule_tools(self, rule: Rule) -> bool:
+        """Выполнить инструменты правила. Зовут снаружи, когда пришёл ответ на
+        заданный вопрос: сам фильтр к тому времени уже отпустил событие."""
+        return self._run_tools(rule)
+
     def feed(self, event: dict) -> str:
         """Прогнать событие и вернуть исход.
 
@@ -287,39 +301,72 @@ class Filter:
                 ok = self._run_tools(rule)
                 outcomes.append(("acted:" if ok else "act_failed:") + rule.id)
             elif action == ASK:
-                # Спросить пока некого: канала «вопрос -> ответ» между шиной и
-                # интерфейсом ещё нет. Ничего не делаем и говорим об этом в
-                # журнале: сделать необратимое без ответа хуже, чем не сделать.
-                outcomes.append("ask_undelivered:" + rule.id)
+                if self.ask is None:
+                    outcomes.append("ask_undelivered:" + rule.id)
+                else:
+                    # Вопрос уходит и на этом шаг кончается: ответа ждут не
+                    # здесь. Инструменты запустит тот, кто ответ принесёт, —
+                    # держать поток фильтра на время разговора значило бы
+                    # остановить разбор всех прочих событий.
+                    try:
+                        self.ask(rule, event)
+                        outcomes.append("asked:" + rule.id)
+                    except Exception:
+                        outcomes.append("ask_failed:" + rule.id)
             else:
                 outcomes.append("raise_undelivered:" + rule.id)
         return ";".join(outcomes)
 
 
-def default_tools() -> dict:
+def default_tools(settings=None) -> dict:
     """Белый список инструментов.
 
-    Здесь только то, что уже работает и что обратимо. Переключения устройства
-    вывода в нём нет намеренно: публичного API для этого в Windows не
-    существует, а без проверки, что наушники реально подключены, звук уедет в
-    отсутствующее устройство — то есть пропадёт совсем.
-    """
+    Здесь только обратимое. Переключение устройства вывода теперь есть, но с
+    оговоркой: публичного API для смены устройства по умолчанию в Windows не
+    существует, это недокументированный IPolicyConfig (см. audio_out). Зато
+    проверка «воткнуто ли» — документированная, и без неё инструмент не
+    работает: звук, отправленный в отсутствующее устройство, пропадает совсем.
 
-    def _set_level(args, default_pct):
-        import app_audio
+    [settings] — как достать настройки приложения. Инструменты берут оттуда
+    приложение с музыкой и уровень приглушения, чтобы в правиле их можно было
+    не повторять: человек называет свой проигрыватель один раз в настройках, а
+    не в каждом правиле заново.
+    """
+    get = settings or (lambda: {})
+
+    def _music_apps(args):
         apps = args.get("apps") or []
+        if apps:
+            return [str(a) for a in apps]
+        one = _dig(get(), "music.app")
+        return [str(one)] if one else []
+
+    def _set_level(args, key, fallback):
+        import app_audio
         pct = _as_number(args.get("level"))
-        pct = default_pct if pct is None else pct
+        if pct is None:
+            pct = _as_number(_dig(get(), key))
+        if pct is None:
+            pct = fallback
         level = max(0.0, min(1.0, pct / 100.0))
         done = False
-        for app in apps:
+        for app in _music_apps(args):
             if app_audio.apply(str(app), "set", level).get("ok"):
                 done = True
         return done
 
+    def _switch(which):
+        import audio_out
+        did = _dig(get(), "devices." + which)
+        if not did:
+            return False
+        return bool(audio_out.set_default(str(did)).get("ok"))
+
     return {
-        "audio.duck_music": lambda args: _set_level(args, 20.0),
-        "audio.unduck_music": lambda args: _set_level(args, 100.0),
+        "audio.duck_music": lambda args: _set_level(args, "music.duck", 20.0),
+        "audio.unduck_music": lambda args: _set_level(args, "music.level", 100.0),
+        "audio.to_headphones": lambda args: _switch("headphones"),
+        "audio.to_speakers": lambda args: _switch("speakers"),
     }
 
 
