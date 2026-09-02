@@ -1637,7 +1637,7 @@ class VoiceAssistant {
   // if below threshold) AND the best score reached — the score is logged when
   // routing to chat so we can diagnose "exact command went to chat" reports.
   (VoiceCommand?, double) _matchCommand(AppState app, String text) {
-    final t = _norm(text);
+    final t = NumberWords.canonical(_norm(text));
     final tTokens = t.split(' ').where((e) => e.isNotEmpty).toSet();
     VoiceCommand? best;
     double bestScore = 0;
@@ -1645,17 +1645,25 @@ class VoiceAssistant {
       // Выключенная команда не участвует в разборе вовсе: иначе тумблер в
       // каталоге ничего бы не значил, а фраза продолжала бы срабатывать.
       if (!c.enabled) continue;
-      final phrase = _norm(c.phrase);
+      final hasSlot = _slotRe.hasMatch(c.phrase);
+      final phrase = NumberWords.canonical(_norm(c.phrase));
       if (phrase.isEmpty) continue;
       double s;
-      if (phrase.contains('{n}')) {
+      // Шаблон опознаётся по ИСХОДНОЙ фразе, а не по нормализованной: _norm
+      // оставляет только буквы, цифры и пробел — вместе со скобками, — поэтому
+      // проверка «{n}» на её выходе не срабатывала ни разу, и ветка ниже,
+      // написанная ровно ради этого случая, не выполнялась никогда. Вместо неё
+      // работало нечёткое сравнение, а в шаблоне оставалась голая буква «n»,
+      // которой в сказанном взяться неоткуда.
+      if (hasSlot) {
         // Parametric template ("громкость на {N}"): {N} is a NUMBER slot, not a
         // literal token — "громкость на 30" must match it. Score on the literal
         // words only; the value itself is read from the utterance when the
         // command runs (NumberWords.extract, falling back to defaultValue).
         // Without this the "{n}" token was never present in what the user said,
         // the token-subset test failed and the command was "not found".
-        final literal = _norm(phrase.replaceAll('{n}', ' '));
+        final literal =
+            NumberWords.canonical(_norm(c.phrase.replaceAll(_slotRe, ' ')));
         final pTokens = literal.split(' ').where((e) => e.isNotEmpty).toSet();
         if (pTokens.isNotEmpty && pTokens.every(tTokens.contains)) {
           // A spoken number makes it a definite match; without one the command
@@ -1721,11 +1729,20 @@ class VoiceAssistant {
     return res ?? false;
   }
 
+  // Место для числа в фразе команды: «громкость на {N}». Регистр не важен —
+  // мастер команд подставляет прописную, а руками пишут как придётся.
+  static final RegExp _slotRe = RegExp(r'\{n\}', caseSensitive: false);
+
+  // Обрезка идёт ПОСЛЕ вычистки знаков, а не до неё. Распознавание любит
+  // начинать реплику с тире («— громкость на 30»), тире выбрасывается, а
+  // пробел за ним остаётся — и строка получает пустой первый токен, который
+  // ломает точное сравнение. В журнале команд это видно прямо: там записано
+  // « громкость на 30» с ведущим пробелом.
   String _norm(String s) => s
       .toLowerCase()
-      .trim()
       .replaceAll(RegExp(r'[^0-9a-zа-яё ]'), '') // drop punctuation
-      .replaceAll(RegExp(r'\s+'), ' ');
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   // Normalized similarity 0..1 from Levenshtein distance.
   double _ratio(String a, String b) {
