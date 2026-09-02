@@ -368,20 +368,7 @@ class _GenesisMarkPainter extends CustomPainter {
     required this.t,
     required this.refPx,
     this.stage = _genStage,
-    this.backdrop = true,
   });
-
-  /// Рисовать ли фон под знаком — подложку сцены и туманность.
-  ///
-  /// Выключается только для иконки: на панели задач знак стоит рядом с чужими
-  /// значками, и тёмная плитка под ним делает его не заметнее, а меньше — она
-  /// съедает поля, которые у соседей отданы самому рисунку.
-  ///
-  /// Для живого знака выключать нельзя: полосы глитча идут в режиме overlay,
-  /// который на прозрачном слое пропускает источник целиком и светился бы
-  /// поперёк всего круга. В кадре покоя, из которого рисуется иконка, эти
-  /// полосы молчат — потому там фон и снимается безнаказанно.
-  final bool backdrop;
 
   /// Секунды с начала анимации.
   final double t;
@@ -430,10 +417,8 @@ class _GenesisMarkPainter extends CustomPainter {
       Paint()..color = Colors.white.withValues(alpha: flick.clamp(0.0, 1.0)),
     );
 
-    if (backdrop) {
-      _stagePlate(canvas);
-      _nebula(canvas);
-    }
+    _stagePlate(canvas);
+    _nebula(canvas);
     _swooshes(canvas);
     _orbits(canvas);
     _ring(canvas);
@@ -1326,10 +1311,8 @@ class _GenesisLogoState extends State<GenesisLogo>
 /// Рисует ОДИН кадр знака в момент [t] (сек от старта) — точка входа для
 /// отрисовки логотипа без виджетов и тикера: офлайн-сверка кадров с
 /// html-образцом, экспорт статичного кадра в картинку.
-void paintGenesisMark(Canvas canvas, Size size, double t,
-        {double refPx = 300, bool backdrop = true}) =>
-    _GenesisMarkPainter(t: t, refPx: refPx, backdrop: backdrop)
-        .paint(canvas, size);
+void paintGenesisMark(Canvas canvas, Size size, double t, {double refPx = 300}) =>
+    _GenesisMarkPainter(t: t, refPx: refPx).paint(canvas, size);
 
 /// То же для подписи под знаком (вариант 01). [size] — габарит
 /// блока подписи, см. [genesisSignatureSize].
