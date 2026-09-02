@@ -34,12 +34,26 @@ Protocol (JSON text frames)
     {"type": "journal.config", "path": "<data root>/events.db",
                                "confirm": "always"|"dangerous"|"never",
                                "settings": {...}}   # журнал, правила, потолок
+    {"type": "bus.status"}                   # состояние шины: правила, пути
+    {"type": "bus.recent", "limit": 50}      # последние события с исходами
+    {"type": "bus.reload"}                   # перечитать rules.yaml с диска
+    {"type": "bus.config", "enabled": bool}  # выключатель шины
     {"type": "ping"}
   server -> client:
     {"type": "ready", "protocol": int,
                       "capabilities": {"stt": bool, "tts": bool,
                                        "engines": {"whisper": bool, "gigaam": bool},
                                        "tts_engines": {...}, "gpu": {...}}}
+    {"type": "bus.status.result", "running": bool, "enabled": bool,
+                                  "session": "gaming"|"work"|"idle",
+                                  "confirm": str, "journal": "<путь>",
+                                  "rules_path": "<путь>", "rules_error": str,
+                                  "rules": [{"id": str, "action": str,
+                                             "match": str, "tools": [str]}]}
+    {"type": "bus.recent.result", "events": [{"ts": str, "source": str,
+                                              "type": str, "severity": str,
+                                              "subject": {}, "payload": {},
+                                              "outcome": str}]}
     {"type": "vad", "speaking": bool}
     {"type": "stt.partial", "text": "..."}
     {"type": "stt.final", "text": "...", "latency_ms": int, "device"?: str}
@@ -102,6 +116,11 @@ PROTOCOL_VERSION = 1
 _journal = None
 _filter = None
 _game = None
+# Пути запоминаются на месте открытия: интерфейс показывает их и предлагает
+# открыть файл правил, а перечитать правила без пути невозможно.
+_journal_path = ""
+_rules_path = ""
+_rules_error = ""
 
 
 def _ensure_rules(path: str) -> str:
@@ -132,19 +151,23 @@ def _start_journal(path: str) -> None:
     nothing in the system acts on these rows, they only accumulate until there
     is enough real traffic to tune a filter against.
     """
-    global _journal, _filter, _game
+    global _journal, _filter, _game, _journal_path, _rules_path, _rules_error
     if _journal is not None:
         return
     import os
     _journal = Journal(path)
+    _journal_path = path
     rules_path = _ensure_rules(
         os.path.join(os.path.dirname(os.path.abspath(path)), "rules.yaml"))
+    _rules_path = rules_path
     try:
         rules = bus_filter.load_rules(rules_path)
+        _rules_error = ""
     except Exception as e:
         # Сломанный YAML не должен ронять движок: без правил шина превращается
         # обратно в журнал, и это ровно то состояние, из которого она выросла.
         log_stage("rules failed, journal only: " + str(e))
+        _rules_error = str(e)
         rules = []
     _filter = bus_filter.Filter(_journal, rules, bus_filter.default_tools())
     _filter.feed(bus_filter.make_event("journal", "journal.opened",
@@ -168,6 +191,37 @@ def _start_journal(path: str) -> None:
     _game = GameModeMonitor(on_change=on_change)
     _game.start()
     log_stage("event journal at %s, rules: %d" % (path, len(rules)))
+
+
+def _bus_status() -> dict:
+    """Состояние шины одним снимком — ровно то, что показывает экран настроек.
+
+    Правила отдаются списком, а не числом: «загружено 4» не отвечает на
+    единственный вопрос, который возникает у экрана, — какие именно и в каком
+    порядке. Порядок здесь тот же, что и при разборе: побеждает первое
+    совпавшее, и видеть это надо глазами, а не выяснять опытом.
+    """
+    rules = []
+    if _filter is not None:
+        for r in _filter.rules:
+            rules.append({
+                "id": r.id,
+                "action": r.action,
+                "match": ", ".join("%s: %s" % (k, v) for k, v in r.match.items()),
+                "tools": list(r.tools),
+                "cooldown_s": r.cooldown_s,
+            })
+    return {
+        "type": "bus.status.result",
+        "running": _journal is not None,
+        "enabled": bool(_filter.enabled) if _filter is not None else False,
+        "session": _filter.session if _filter is not None else "",
+        "confirm": _filter.confirm if _filter is not None else "",
+        "journal": _journal_path,
+        "rules_path": _rules_path,
+        "rules_error": _rules_error,
+        "rules": rules,
+    }
 
 
 def _decode_to_pcm16k_mono(np, raw: bytes, fmt: str = "wav") -> bytes:
@@ -439,6 +493,44 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                         st = data.get("settings")
                         if isinstance(st, dict):
                             _filter.settings = st
+                        # Выключатель приезжает тем же сообщением, что и путь:
+                        # связь рвётся, настройка при этом не меняется, и без
+                        # повторной отправки шина после переподключения снова
+                        # заработала бы у того, кто её выключил.
+                        if "enabled" in data:
+                            _filter.enabled = bool(data.get("enabled"))
+                elif t == "bus.status":
+                    emit(_bus_status())
+                elif t == "bus.recent":
+                    # Хвост журнала для экрана настроек. Пустой список — это
+                    # не ошибка: шина могла ещё ничего не увидеть.
+                    rows = []
+                    if _journal is not None:
+                        try:
+                            lim = int(data.get("limit") or 50)
+                            rows = _journal.recent(max(1, min(500, lim)))
+                        except Exception as e:
+                            log_stage("journal read failed: " + str(e))
+                    emit({"type": "bus.recent.result", "events": rows})
+                elif t == "bus.reload":
+                    # Правила правят руками в файле, поэтому перечитать их надо
+                    # без перезапуска движка. Разбор идёт во временный список:
+                    # сломанный YAML не должен отобрать уже работающие правила.
+                    global _rules_error
+                    if _filter is not None and _rules_path:
+                        try:
+                            fresh = bus_filter.load_rules(_rules_path)
+                            _filter.rules = fresh
+                            _rules_error = ""
+                            log_stage("rules reloaded: %d" % len(fresh))
+                        except Exception as e:
+                            _rules_error = str(e)
+                            log_stage("rules reload failed: " + str(e))
+                    emit(_bus_status())
+                elif t == "bus.config":
+                    if _filter is not None and "enabled" in data:
+                        _filter.enabled = bool(data.get("enabled"))
+                    emit(_bus_status())
                 elif t == "ping":
                     emit({"type": "pong"})
             except Exception:

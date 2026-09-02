@@ -395,6 +395,9 @@ class AppState extends ChangeNotifier {
 
   double cmdThreshold = 0.65; // 0..1 fuzzy phrase-match threshold
   String cmdConfirm = 'risky'; // 'always' | 'risky' | 'never'
+  // Разбор фоновых событий. Включён: без него шина есть, но её не видно и не
+  // слышно, а весь смысл в том, что она замечает происходящее сама.
+  bool busEnabled = true;
   bool cmdEnabled = false; // allow command execution (off by default for safety)
   // Chat on/off. When false, EVS is a pure command assistant: voice that
   // doesn't match a command says "command not found" (never falls back to a
@@ -836,6 +839,7 @@ class AppState extends ChangeNotifier {
         : sw;
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
+    busEnabled = prefs.getBool('busEnabled') ?? true;
     cmdEnabled = prefs.getBool('cmdEnabled') ?? false;
     chatEnabled = prefs.getBool('chatEnabled') ?? true;
     vizType = prefs.getString('vizType') ?? 'sphere';
@@ -995,7 +999,8 @@ class AppState extends ChangeNotifier {
         sttSidecarEngine, sttRemoteUrl, sttRemoteModel, sttRemoteKey,
         sttLocalEngine,
         denoiseMode, sttDevice, cmdMode, wakeWord, stopWords.join(','),
-        cmdThreshold, cmdConfirm, cmdEnabled, chatEnabled, vizType, showVizBg,
+        cmdThreshold, cmdConfirm, busEnabled, cmdEnabled, chatEnabled, vizType,
+        showVizBg,
         showPartial, overlayMode, startupShowWindow, overlaySize, vizAccent,
         orbSize, orbSpeed,
         barCount, autoUpdateCheck, webSearchEnabled, tavilyKey, braveKey,
@@ -1140,6 +1145,7 @@ class AppState extends ChangeNotifier {
     await prefs.setStringList('stopWords', stopWords);
     await prefs.setDouble('cmdThreshold', cmdThreshold);
     await prefs.setString('cmdConfirm', cmdConfirm);
+    await prefs.setBool('busEnabled', busEnabled);
     await prefs.setBool('cmdEnabled', cmdEnabled);
     await prefs.setBool('chatEnabled', chatEnabled);
     await prefs.setString('vizType', vizType);
@@ -1309,6 +1315,11 @@ class AppState extends ChangeNotifier {
     try {
       await DesktopIntegration.instance.applyAutostart(autostart);
     } catch (_) {}
+    try {
+      // Отмена настроек должна доезжать и до движка: выключатель живёт там, а
+      // в приложении хранится только его последнее сохранённое значение.
+      SidecarClient.instance.setBusEnabled(busEnabled);
+    } catch (_) {}
   }
 
   // Re-read the settings fields from prefs (which hold the last-saved values,
@@ -1421,6 +1432,7 @@ class AppState extends ChangeNotifier {
         : sw;
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
+    busEnabled = prefs.getBool('busEnabled') ?? true;
     cmdEnabled = prefs.getBool('cmdEnabled') ?? false;
     chatEnabled = prefs.getBool('chatEnabled') ?? true;
     vizType = prefs.getString('vizType') ?? 'sphere';
@@ -2826,6 +2838,13 @@ class AppState extends ChangeNotifier {
   void setCmdConfirm(String v) {
     cmdConfirm = v;
     SidecarClient.instance.setConfirmPolicy(v);
+    _save();
+    notifyListeners();
+  }
+
+  void setBusEnabled(bool v) {
+    busEnabled = v;
+    SidecarClient.instance.setBusEnabled(v);
     _save();
     notifyListeners();
   }

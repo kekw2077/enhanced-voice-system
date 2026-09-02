@@ -438,6 +438,22 @@ class SidecarClient {
               c.complete((m['text'] as String? ?? '').trim());
             }
             break;
+          case 'bus.status.result':
+            for (final c in _busStatusWaiters) {
+              if (!c.isCompleted) c.complete(m.cast<String, dynamic>());
+            }
+            _busStatusWaiters.clear();
+            break;
+          case 'bus.recent.result':
+            final rows = ((m['events'] as List?) ?? const [])
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList();
+            for (final c in _busRecentWaiters) {
+              if (!c.isCompleted) c.complete(rows);
+            }
+            _busRecentWaiters.clear();
+            break;
           case 'tts.status':
             ttsStatus.value = (
               m['engine'] as String? ?? '',
@@ -537,11 +553,13 @@ class SidecarClient {
         // принимает фильтр в движке — значит его надо туда донести. Правило
         // может спрашивать чаще, чем требует эта настройка, но никогда реже.
         'confirm': _confirm,
+        'enabled': _busEnabled,
       });
     } catch (_) {}
   }
 
   String _confirm = 'risky';
+  bool _busEnabled = true;
 
   /// Сообщить движку новый потолок подтверждений.
   ///
@@ -551,6 +569,50 @@ class SidecarClient {
   void setConfirmPolicy(String value) {
     _confirm = value;
     if (sidecarProtocol >= 1) unawaited(_pushJournal());
+  }
+
+  /// Включить или выключить разбор фоновых событий.
+  ///
+  /// Уходит и отдельным сообщением, и вместе с путём журнала при следующем
+  /// подключении — по той же причине, что и потолок подтверждений.
+  void setBusEnabled(bool on) {
+    _busEnabled = on;
+    if (sidecarProtocol >= 1) _send({'type': 'bus.config', 'enabled': on});
+  }
+
+  // Ожидания ответов шины. Список, а не одиночка: экран настроек может
+  // спросить состояние и хвост журнала подряд, не дожидаясь первого ответа.
+  final List<Completer<Map<String, dynamic>>> _busStatusWaiters = [];
+  final List<Completer<List<Map<String, dynamic>>>> _busRecentWaiters = [];
+
+  /// Состояние шины: правила, пути, режим сессии. `running: false` — движок
+  /// старый (сообщения не знает) или журнал ещё не открыт.
+  Future<Map<String, dynamic>> busStatus() {
+    final c = Completer<Map<String, dynamic>>();
+    _busStatusWaiters.add(c);
+    _send({'type': 'bus.status'});
+    return c.future.timeout(const Duration(seconds: 4),
+        onTimeout: () => <String, dynamic>{'running': false});
+  }
+
+  /// Хвост журнала событий. Пустой список — не ошибка: шина могла ещё ничего
+  /// не увидеть, а могла и не дожить до этой сборки движка.
+  Future<List<Map<String, dynamic>>> busRecent({int limit = 60}) {
+    final c = Completer<List<Map<String, dynamic>>>();
+    _busRecentWaiters.add(c);
+    _send({'type': 'bus.recent', 'limit': limit});
+    return c.future.timeout(const Duration(seconds: 4),
+        onTimeout: () => <Map<String, dynamic>>[]);
+  }
+
+  /// Перечитать rules.yaml с диска — файл правят руками, и перезапускать ради
+  /// этого движок не нужно.
+  Future<Map<String, dynamic>> reloadBusRules() {
+    final c = Completer<Map<String, dynamic>>();
+    _busStatusWaiters.add(c);
+    _send({'type': 'bus.reload'});
+    return c.future.timeout(const Duration(seconds: 6),
+        onTimeout: () => <String, dynamic>{'running': false});
   }
 
   Future<void> _ensureGigaamDir() async {

@@ -1448,6 +1448,374 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
 // Журнал работы приложения (страница _Pages.appLog). Читает те же файлы и тем
 // же кодом, что вкладка «Журнал» в «Ноктюрне» — AnimaLogFeed; отличается только
 // подача: здесь она карточная, как остальные настройки.
+// Страница «События и реакции»: состояние шины, её правила и хвост журнала.
+//
+// Данные берутся у движка по запросу — при открытии и по кнопке. Таймера здесь
+// нет намеренно: ни одна страница настроек в программе не опрашивает движок
+// сама, а фоновый опрос ради экрана, который открывают раз в неделю, — это
+// работа, которую никто не просил. Журнал при этом пишется независимо от того,
+// открыт экран или нет: он и есть источник, а экран — только окно в него.
+class _EventBusPanel extends StatefulWidget {
+  const _EventBusPanel();
+  @override
+  State<_EventBusPanel> createState() => _EventBusPanelState();
+}
+
+class _EventBusPanelState extends State<_EventBusPanel> {
+  Map<String, dynamic> _status = const {};
+  List<Map<String, dynamic>> _events = const [];
+  bool _loading = true;
+  bool _noEngine = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final sc = SidecarClient.instance;
+    setState(() => _loading = true);
+    // Быстрый отказ вместо четырёх секунд ожидания: при выключенном движке
+    // запрос всё равно уходит в никуда, и разница только в том, сколько экран
+    // будет притворяться, что чего-то ждёт.
+    if (sc.status.value != SidecarStatus.connected) {
+      if (!mounted) return;
+      setState(() {
+        _noEngine = true;
+        _loading = false;
+        _status = const {};
+        _events = const [];
+      });
+      return;
+    }
+    final st = await sc.busStatus();
+    final ev = await sc.busRecent(limit: 80);
+    if (!mounted) return;
+    setState(() {
+      _noEngine = false;
+      _status = st;
+      _events = ev;
+      _loading = false;
+    });
+  }
+
+  Future<void> _reloadRules() async {
+    final app = context.read<AppState>();
+    final st = await SidecarClient.instance.reloadBusRules();
+    if (!mounted) return;
+    setState(() => _status = st);
+    final err = (st['rules_error'] as String? ?? '').trim();
+    showAppSnackBar(
+        context,
+        err.isEmpty
+            ? app.t('busRulesReloaded').replaceAll('{n}', '${_rules.length}')
+            : app.t('busRulesBroken'));
+  }
+
+  List<Map<String, dynamic>> get _rules => ((_status['rules'] as List?) ?? const [])
+      .whereType<Map>()
+      .map((e) => e.cast<String, dynamic>())
+      .toList();
+
+  Future<void> _reveal(String path) async {
+    if (path.trim().isEmpty) return;
+    try {
+      final p = path.replaceAll('/', io.Platform.pathSeparator);
+      await io.Process.run('explorer', ['/select,$p']);
+    } catch (_) {}
+  }
+
+  Future<void> _openFolder(String path) async {
+    if (path.trim().isEmpty) return;
+    try {
+      final dir = io.File(path.replaceAll('/', io.Platform.pathSeparator)).parent;
+      if (await dir.exists()) await io.Process.run('explorer', [dir.path]);
+    } catch (_) {}
+  }
+
+  // Время события — только часы, минуты и секунды: дата в хвосте на восемьдесят
+  // строк повторялась бы восемьдесят раз и ничего не добавляла.
+  String _hhmmss(String ts) {
+    final i = ts.indexOf('T');
+    if (i < 0 || ts.length < i + 9) return ts;
+    return ts.substring(i + 1, i + 9);
+  }
+
+  // Цвет исхода. Отброшенное намеренно приглушено: молчание для шины —
+  // нормальный исход, и красить его тревожно значило бы врать про её работу.
+  Color _outcomeColor(String o) {
+    if (o.startsWith('acted:')) return _success(context);
+    if (o.startsWith('act_failed:')) return _danger(context);
+    if (o.startsWith('ask_') || o.startsWith('raise_')) return _warn(context);
+    return _faint(context);
+  }
+
+  Widget _chip(String label, String value, Color c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          color: c.withValues(alpha: 0.10),
+          border: Border.all(color: c.withValues(alpha: 0.32)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('$label: ',
+              style: TextStyle(fontSize: 11.5, color: _sub(context))),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                  color: _txt(context))),
+        ]),
+      );
+
+  Widget _hint(String text) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        child: Row(children: [
+          Icon(Icons.info_outline, size: 15, color: _faint(context)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(fontSize: 12.5, color: _sub(context))),
+          ),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    if (_loading) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: _accent(context)),
+          ),
+        ),
+      );
+    }
+    if (_noEngine) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _hint(app.t('busNoEngine')),
+          animaGhostButton(context, app.t('ncRefresh'), Icons.refresh,
+              onTap: () => unawaited(_load())),
+        ]),
+      );
+    }
+    // Движок отвечает, но шины в нём нет — это сборка старее той, где она
+    // появилась. Отдельная формулировка, потому что «пусто» и «не умеет» —
+    // это разные вещи, и лечатся они по-разному.
+    if (_status['running'] != true) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _hint(app.t('busOldEngine')),
+          animaGhostButton(context, app.t('ncRefresh'), Icons.refresh,
+              onTap: () => unawaited(_load())),
+        ]),
+      );
+    }
+
+    final rules = _rules;
+    final rulesError = (_status['rules_error'] as String? ?? '').trim();
+    final session = _status['session'] as String? ?? '';
+    final journal = _status['journal'] as String? ?? '';
+    final rulesPath = _status['rules_path'] as String? ?? '';
+    final enabled = _status['enabled'] == true;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          _chip(app.t('busChipState'),
+              app.t(enabled ? 'busChipOn' : 'busChipOff'),
+              enabled ? _success(context) : _faint(context)),
+          _chip(app.t('busChipSession'),
+              app.t('busSession_${session.isEmpty ? 'idle' : session}'),
+              _info(context)),
+          _chip(app.t('busChipSeen'), '${_events.length}', _info(context)),
+        ]),
+        const SizedBox(height: 16),
+
+        // ---- правила -------------------------------------------------------
+        Row(children: [
+          Text(app.t('busRules'),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _txt(context))),
+          const SizedBox(width: 8),
+          Text('${rules.length}',
+              style: TextStyle(fontSize: 12.5, color: _faint(context))),
+          const Spacer(),
+          animaGhostButton(context, app.t('busRulesFile'), Icons.description_outlined,
+              onTap: () => unawaited(_reveal(rulesPath))),
+          const SizedBox(width: 8),
+          animaGhostButton(context, app.t('busRulesReload'), Icons.refresh,
+              onTap: () => unawaited(_reloadRules())),
+        ]),
+        const SizedBox(height: 8),
+        if (rulesError.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text('${app.t('busRulesBroken')} $rulesError',
+                style: TextStyle(fontSize: 12, color: _danger(context))),
+          ),
+        if (rules.isEmpty)
+          _hint(app.t('busNoRules'))
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: _card2(context),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _stroke(context)),
+            ),
+            child: Column(children: [
+              for (var i = 0; i < rules.length; i++)
+                _ruleRow(rules[i], i == rules.length - 1),
+            ]),
+          ),
+        const SizedBox(height: 8),
+        Text(app.t('busRulesOrder'),
+            style: TextStyle(fontSize: 11.5, color: _faint(context))),
+        const SizedBox(height: 18),
+
+        // ---- журнал --------------------------------------------------------
+        Row(children: [
+          Text(app.t('busJournal'),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _txt(context))),
+          const Spacer(),
+          animaGhostButton(context, app.t('ncLogFolder'), Icons.folder_open_outlined,
+              onTap: () => unawaited(_openFolder(journal))),
+          const SizedBox(width: 8),
+          animaGhostButton(context, app.t('ncRefresh'), Icons.refresh,
+              onTap: () => unawaited(_load())),
+        ]),
+        const SizedBox(height: 8),
+        Container(
+          height: 300,
+          decoration: BoxDecoration(
+            color: _card2(context),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _stroke(context)),
+          ),
+          child: _events.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Text(app.t('busNoEvents'),
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12.5, color: _faint(context))),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  itemCount: _events.length,
+                  itemBuilder: (_, i) => _eventRow(_events[i]),
+                ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _ruleRow(Map<String, dynamic> r, bool last) {
+    final action = (r['action'] as String? ?? '').toUpperCase();
+    final tools = ((r['tools'] as List?) ?? const []).join(', ');
+    final color = action == 'ACT'
+        ? _success(context)
+        : action == 'DROP'
+            ? _faint(context)
+            : _warn(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(bottom: BorderSide(color: _stroke(context))),
+      ),
+      child: Row(children: [
+        Container(
+          width: 58,
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            color: color.withValues(alpha: 0.12),
+          ),
+          child: Text(action,
+              style: TextStyle(
+                  fontSize: 10.5, fontWeight: FontWeight.w800, color: color)),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 150,
+          child: Text(r['id'] as String? ?? '',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: _txt(context))),
+        ),
+        Expanded(
+          child: Text(r['match'] as String? ?? '',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 11.5,
+                  color: _sub(context))),
+        ),
+        if (tools.isNotEmpty) ...[
+          const SizedBox(width: 10),
+          Text(tools,
+              style: TextStyle(fontSize: 11.5, color: _faint(context))),
+        ],
+      ]),
+    );
+  }
+
+  Widget _eventRow(Map<String, dynamic> e) {
+    final outcome = e['outcome'] as String? ?? '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(_hhmmss(e['ts'] as String? ?? ''),
+            style: TextStyle(
+                fontFamily: 'JetBrains Mono',
+                fontSize: 11.5,
+                color: _faint(context))),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(e['type'] as String? ?? '',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 11.5,
+                  color: _body(context))),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 190,
+          child: Text(outcome,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 11.5,
+                  color: _outcomeColor(outcome))),
+        ),
+      ]),
+    );
+  }
+}
+
 class _AppLogCard extends StatefulWidget {
   const _AppLogCard();
   @override
@@ -2045,6 +2413,7 @@ class _Pages {
   static const personaMemory = 'persona.memory';
   static const privAccess = 'privacy.access';
   static const privData = 'privacy.data';
+  static const eventBus = 'bus.events';
   static const appLog = 'log';
   static const about = 'about.info';
   static const changelog = 'about.changelog';
@@ -2098,6 +2467,13 @@ const List<_NavGroup> _kNav = [
     _NavPage(_Pages.cmdExec, 'pgCmdExec'),
     _NavPage(_Pages.cmdCatalog, 'pgCmdCatalog'),
     _NavPage(_Pages.cmdSecurity, 'pgCmdSecurity'),
+  ]),
+  // То, что происходит само. Пара к «Голосовым командам»: там — что просят,
+  // здесь — что программа заметила без просьбы. Своя группа, а не карточка в
+  // чужой странице: у шины есть выключатель, правила и журнал, и вместе они
+  // страницу и составляют.
+  _NavGroup(Icons.sensors, PrismIcons.modules, 'navBus', 'navBusSub', [
+    _NavPage(_Pages.eventBus, 'navBus'),
   ]),
   _NavGroup(Icons.phone_iphone, PrismIcons.phone, 'navRemote', 'navRemoteSub', [
     _NavPage(_Pages.remote, 'navRemote'),
@@ -3312,6 +3688,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'minimizeToTray': _Pages.startup,
     'closeToTray': _Pages.startup,
     'globalHotkey': _Pages.startup,
+    'busEnabled': _Pages.eventBus,
+    'busRules': _Pages.eventBus,
+    'busJournal': _Pages.eventBus,
     'cardInputDevice': _Pages.micDevice,
     'extraMics': _Pages.micDevice,
     'micSensitivity': _Pages.sttSensitivity,
@@ -3627,6 +4006,8 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         return _privacyDataCards(app);
       case _Pages.about:
         return [..._aboutInfoCards(app), ..._aboutUpdateCards(app)];
+      case _Pages.eventBus:
+        return _eventBusCards(app);
       case _Pages.appLog:
         return _appLogCards(app);
       case _Pages.changelog:
@@ -5320,6 +5701,40 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // AnimaLogFeed. Отсюда его берут классический стиль и Nexus (кнопка «Журнал» в
   // рейле раньше открывала список изменений — то есть журнал патчей вместо
   // журнала работы).
+  // =================== СОБЫТИЯ И РЕАКЦИИ ===================
+  List<_CardSpec> _eventBusCards(AppState app) {
+    return [
+      _CardSpec(
+        animaCard(context,
+            icon: Icons.sensors,
+            title: app.t('cardBusState'),
+            rows: [
+              animaRow(context,
+                  label: app.t('busEnabled'),
+                  desc: app.t('busEnabledDesc'),
+                  control: animaToggle(
+                      context, app.busEnabled, (v) => app.setBusEnabled(v))),
+              // Потолок подтверждений у шины общий с голосовыми командами —
+              // это одна и та же осторожность, и разводить её на две настройки
+              // значило бы дать им однажды разойтись. Отсюда только ссылка.
+              animaRow(context,
+                  label: app.t('busConfirm'),
+                  desc: app.t('busConfirmDesc'),
+                  control: animaGhostButton(
+                      context, app.t('busConfirmOpen'), Icons.north_east,
+                      onTap: () => setState(() => _page = _Pages.cmdSecurity))),
+            ]),
+      ),
+      _CardSpec(
+        animaCard(context,
+            icon: Icons.list_alt_outlined,
+            title: app.t('cardBusJournal'),
+            rows: [const _EventBusPanel()]),
+        full: true,
+      ),
+    ];
+  }
+
   List<_CardSpec> _appLogCards(AppState app) {
     return [
       _CardSpec(
