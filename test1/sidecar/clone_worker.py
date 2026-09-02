@@ -55,7 +55,8 @@ class XttsWorker:
     def _model_dir(self):
         # Prefer an explicit dir (dev), then the model bundled next to the frozen
         # exe (production: _internal/xtts_model), else None -> network fallback.
-        d = os.environ.get("EVS_XTTS_DIR", "").strip()
+        d = (os.environ.get("ANIMA_XTTS_DIR", "").strip()
+             or os.environ.get("EVS_XTTS_DIR", "").strip())
         if d and os.path.isfile(os.path.join(d, "config.json")):
             return d
         base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))

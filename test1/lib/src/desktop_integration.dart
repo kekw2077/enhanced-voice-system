@@ -1676,12 +1676,19 @@ class CloneServer {
         return;
       }
       final port = portOf(app.cosyvoiceEndpoint);
-      // Веса (~4 ГБ) кладём в общий кэш EVS на диске установки, а не в профиль
-      // пользователя на C: — сервер уважает EVS_QWEN_CACHE.
+      // Веса (~4 ГБ) кладём в общий кэш на диске установки, а не в профиль
+      // пользователя на C: — сервер уважает ANIMA_QWEN_CACHE.
+      //
+      // Имя переменной задаётся под обоими написаниями: сервер приезжает
+      // отдельным компонентом, и тот, что уже стоит у человека, читает пока
+      // только старое. Промах здесь означал бы четыре гигабайта весов,
+      // скачанных на системный диск, — ровно то, чего это место избегает.
       final env = <String, String>{};
       try {
-        env['EVS_QWEN_CACHE'] =
+        final cache =
             '${await componentsDirPath()}${io.Platform.pathSeparator}hf-cache';
+        env['ANIMA_QWEN_CACHE'] = cache;
+        env['EVS_QWEN_CACHE'] = cache;
       } catch (_) {}
       _proc = await io.Process.start(
         py,

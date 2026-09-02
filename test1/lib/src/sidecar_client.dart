@@ -185,7 +185,12 @@ class SidecarClient {
           .transform(const Utf8Decoder(allowMalformed: true))
           .transform(const LineSplitter())
           .listen((line) {
-        if (line.startsWith('EVS_SIDECAR_READY')) {
+        // Both markers. The engine is a downloaded component on its own
+        // cadence, so the one already on a machine still announces itself
+        // under the old name — and this line is how the port is learned at
+        // all. Not recognising it would mean no voice whatsoever.
+        if (line.startsWith('ANIMA_SIDECAR_READY') ||
+            line.startsWith('EVS_SIDECAR_READY')) {
           final p = int.tryParse(line.split(' ').last.trim());
           if (p != null && !ready.isCompleted) ready.complete(p);
         } else if (line.trim().isNotEmpty) {

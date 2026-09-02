@@ -67,10 +67,13 @@ def resolve_cache_dir(explicit: str = "") -> str:
       4. a detected EVS install next to this script's drive
       5. <this script's folder>\\hf-cache
     """
-    for cand in (explicit, os.environ.get("EVS_QWEN_CACHE", "")):
+    for cand in (explicit,
+                 os.environ.get("ANIMA_QWEN_CACHE", ""),
+                 os.environ.get("EVS_QWEN_CACHE", "")):
         if cand and cand.strip():
             return os.path.abspath(cand.strip())
-    userdata = os.environ.get("EVS_USERDATA", "").strip()
+    userdata = (os.environ.get("ANIMA_USERDATA", "").strip()
+                or os.environ.get("EVS_USERDATA", "").strip())
     if userdata:
         return os.path.join(os.path.abspath(userdata), "components", "hf-cache")
     here = os.path.dirname(os.path.abspath(__file__))

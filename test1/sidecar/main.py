@@ -1,8 +1,8 @@
-"""EVS sidecar — local voice/ML brain for the EVS desktop app.
+"""Nexus Anima sidecar — local voice/ML brain for the desktop app.
 
 A WebSocket server on 127.0.0.1 that exposes STT (faster-whisper), VAD
 (webrtcvad), TTS (pyttsx3) and fuzzy command intent matching. The Flutter app
-launches this process, reads the chosen port from the "EVS_SIDECAR_READY <port>"
+launches this process, reads the chosen port from the "ANIMA_SIDECAR_READY <port>"
 stdout line, then connects.
 
 Protocol (JSON text frames)
@@ -429,7 +429,12 @@ async def _main(args) -> None:
     async with websockets.serve(handler, args.host, args.port) as server:
         port = args.port or server.sockets[0].getsockname()[1]
         # Flutter parses this line from stdout to learn the port.
+        # Оба маркера, старый первым. Приложение и движок выходят порознь,
+        # так что рядом может оказаться сборка любого поколения, а это
+        # единственный способ узнать порт: не распознав строку, вторая сторона
+        # остаётся вообще без голоса. Лишняя строка в stdout не стоит ничего.
         print(f"EVS_SIDECAR_READY {port}", flush=True)
+        print(f"ANIMA_SIDECAR_READY {port}", flush=True)
         log_stage(f"ws server listening on port {port}")
         # Start the parent-death watcher ONLY now — after the heavy engine
         # imports (sounddevice/faster-whisper) and the READY print. Its blocking
@@ -500,6 +505,7 @@ def main() -> None:
         pass
     except Exception as e:  # pragma: no cover
         print(f"EVS_SIDECAR_ERROR {e}", file=sys.stderr, flush=True)
+        print(f"ANIMA_SIDECAR_ERROR {e}", file=sys.stderr, flush=True)
         sys.exit(1)
 
 
