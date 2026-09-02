@@ -193,7 +193,7 @@ class SettingsSheet extends StatelessWidget {
         final info = snapshot.data;
         if (info == null) return const SizedBox.shrink();
         return Text(
-          'EVS v${info.version} (${info.buildNumber})',
+          '${context.read<AppState>().t('appName')} v${info.version} (${info.buildNumber})',
           style: TextStyle(color: _sub(context), fontSize: 12),
         );
       },

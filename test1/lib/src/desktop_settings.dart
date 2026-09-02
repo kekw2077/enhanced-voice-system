@@ -5292,7 +5292,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         letterSpacing: 0.5,
                         color: _txt(context))),
                 const SizedBox(height: 4),
-                Text('Enhanced Voice System',
+                // Подзаголовок — не расшифровка имени (у «Nexus Anima» её
+                // нет), а строчка приветственного экрана: одна формулировка
+                // на оба места вместо двух расходящихся.
+                Text('${app.t('prismWelcomeTitle1')} ${app.t('prismWelcomeTitle2')}',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

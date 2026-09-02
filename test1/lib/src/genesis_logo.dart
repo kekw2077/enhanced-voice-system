@@ -932,9 +932,24 @@ const _kfTxBand2X = <(double, double)>[
   (1.0, 0.0),
 ];
 
-const String _genesisWordmark = 'Enhanced Voice System';
+/// Подпись под знаком. Это ИМЯ программы, а не расшифровка: у «Nexus Anima»
+/// расшифровки нет, а прежняя — «Enhanced Voice System» — осталась бы от
+/// старого имени единственным видимым следом, причём на самом заметном экране.
+const String _genesisWordmark = 'Nexus Anima';
+
+/// Доля ширины знака, под которую подгоняется подпись, и потолок увеличения
+/// кегля. Кегль образца (12.5 px при знаке 320) рассчитан на фразу из двадцати
+/// одного знака; имя вдвое короче и на том же кегле висит под знаком узкой
+/// полоской. Потолок нужен, потому что сдвиги глитча заданы в пикселях образца
+/// и растут вместе с кеглем: вдвое более крупная рябь читается уже как дефект
+/// изображения, а не как эффект.
+const double _kGenesisSignatureFit = 0.62;
+const double _kGenesisSignatureMaxScale = 1.5;
 
 // Побуквенные вспышки: индекс символа в подписи, цвет, дорожки, тайминг.
+// Индексы указывают на буквы «NEXUS ANIMA» и обходят пробел (5): вспышка на
+// пробеле — это вспышка ни на чём. Порядок и тайминги те же, что в образце,
+// поэтому ритм лупа сохраняется, хотя подпись стала вдвое короче.
 class _GenLetter {
   final int index;
   final Color color;
@@ -946,12 +961,12 @@ class _GenLetter {
 
 const List<_GenLetter> _genLetters = [
   _GenLetter(1, _genRing2, _kfLtr2Op, _kfLtr2Dx, _kfLtr2Dy, _kfLtr2Skew, 7.5, 5.9),
+  _GenLetter(2, _genRing2, _kfLtr2Op, _kfLtr2Dx, _kfLtr2Dy, _kfLtr2Skew, 12.9, 8.3),
   _GenLetter(4, _genRing1, _kfLtr3Op, _kfLtr3Dx, _kfLtr3Dy, _kfLtr3Skew, 8.8, 6.5),
   _GenLetter(6, _genOrb, _kfLtr4Op, _kfLtr4Dx, _kfLtr4Dy, _kfLtr4Skew, 10.2, 7.1),
+  _GenLetter(7, _genRing1, _kfLtr3Op, _kfLtr3Dx, _kfLtr3Dy, _kfLtr3Skew, 14.3, 9.0),
   _GenLetter(9, _genRing3, _kfLtr1Op, _kfLtr1Dx, _kfLtr1Dy, _kfLtr1Skew, 11.6, 7.7),
-  _GenLetter(12, _genRing2, _kfLtr2Op, _kfLtr2Dx, _kfLtr2Dy, _kfLtr2Skew, 12.9, 8.3),
-  _GenLetter(17, _genRing1, _kfLtr3Op, _kfLtr3Dx, _kfLtr3Dy, _kfLtr3Skew, 14.3, 9.0),
-  _GenLetter(19, _genOrb, _kfLtr4Op, _kfLtr4Dx, _kfLtr4Dy, _kfLtr4Skew, 15.7, 9.6),
+  _GenLetter(10, _genOrb, _kfLtr4Op, _kfLtr4Dx, _kfLtr4Dy, _kfLtr4Skew, 15.7, 9.6),
 ];
 
 // Полоса поверх подписи: доли от габарита блока, высота в CSS-px образца.
@@ -972,7 +987,7 @@ const List<_GenTxBand> _genTxBands = [
   _GenTxBand(0.50, 0.08, 0.24, 4, _genRing3, _kfTxBand1Op, _kfTxBand1X, 14.7, 7.1),
 ];
 
-/// Подпись «Enhanced Voice System» с тем же глитчем, что в образце: градиентный
+/// Подпись под знаком с тем же глитчем, что в образце: градиентный
 /// основной слой, два хроматических двойника в режиме screen, побуквенные
 /// вспышки, полосы-срезы, тряска и варп блока.
 class _GenesisTextPainter extends CustomPainter {
@@ -1260,12 +1275,20 @@ class _GenesisLogoState extends State<GenesisLogo>
     );
     if (!widget.withText) return SizedBox.square(dimension: s, child: mark);
 
-    // Вариант 01: знак, зазор 6 px образца и подпись 12.5 px под ним.
-    final fontSize = s * 12.5 / 320;
+    // Вариант 01: знак, зазор 6 px образца и подпись под ним.
+    final base = s * 12.5 / 320;
     final gap = s * 6 / 320;
     // Образец набран Space Grotesk; в проекте своя шрифтовая пара, поэтому
     // подпись идёт бандлед-шрифтом приложения (см. pubspec: Nunito).
     const font = 'Nunito';
+    // Кегль подбирается по ширине, а не берётся из образца: см.
+    // [_kGenesisSignatureFit]. Уменьшать нельзя — нижняя граница остаётся
+    // кеглем образца, иначе длинное имя ужалось бы в нечитаемую полоску.
+    final w0 = _GenesisTextPainter.measure(font, base).width;
+    final fontSize = w0 <= 0
+        ? base
+        : math.min(base * _kGenesisSignatureMaxScale,
+            math.max(base, base * s * _kGenesisSignatureFit / w0));
     final textSize = _GenesisTextPainter.measure(font, fontSize);
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1291,7 +1314,7 @@ class _GenesisLogoState extends State<GenesisLogo>
 void paintGenesisMark(Canvas canvas, Size size, double t, {double refPx = 300}) =>
     _GenesisMarkPainter(t: t, refPx: refPx).paint(canvas, size);
 
-/// То же для подписи «Enhanced Voice System» (вариант 01). [size] — габарит
+/// То же для подписи под знаком (вариант 01). [size] — габарит
 /// блока подписи, см. [genesisSignatureSize].
 void paintGenesisSignature(Canvas canvas, Size size, double t, double fontSize,
         {String fontFamily = 'Nunito'}) =>

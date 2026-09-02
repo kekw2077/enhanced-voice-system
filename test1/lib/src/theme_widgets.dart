@@ -187,8 +187,8 @@ TextTheme _withHalo(TextTheme t, List<Shadow> s) {
 }
 
 // Animated startup transition: the Genesis logo (variant 01 of
-// genesis/EVS Animations.dc.html — the sign plus the "Enhanced Voice System"
-// signature) is born out of the singularity on the sample's own backdrop, then
+// genesis/EVS Animations.dc.html — the sign plus the wordmark underneath) is
+// born out of the singularity on the sample's own backdrop, then
 // cross-fades into the app. Plays once per cold launch; a tap anywhere skips
 // straight to the app. The overlay only STARTS once the main window is really on
 // screen — with the floating widget enabled (default) the window boots hidden, so

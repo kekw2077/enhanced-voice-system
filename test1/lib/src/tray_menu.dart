@@ -305,7 +305,7 @@ Future<void> _trayMenuMain(List<String> args) async {
   } catch (_) {}
   const opts = WindowOptions(
     size: Size(_kTrayMenuWidth + _kTrayMenuMargin * 2, 200),
-    title: 'EVS Menu',
+    title: 'Anima Menu',
     titleBarStyle: TitleBarStyle.hidden,
     skipTaskbar: true,
     alwaysOnTop: true,
