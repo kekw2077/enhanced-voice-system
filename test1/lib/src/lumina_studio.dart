@@ -428,7 +428,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
           // и лишний воздух разорвал бы сплошную плоскость окна.
           if (_isPrism(context)) const SizedBox(width: 16),
           Expanded(
-            child: evsStudioPane(
+            child: animaStudioPane(
               context,
               padding: EdgeInsets.zero,
               child: _centre(app),
@@ -442,7 +442,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
     if (widget.embedded) return body;
     return Scaffold(
       backgroundColor: _bg(context),
-      body: evsShellBackdrop(context, body),
+      body: animaShellBackdrop(context, body),
     );
   }
 
@@ -787,7 +787,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
   // Рейка разделов. Узкая и всегда на виду: переключение между «создать» и
   // «галереей» — самое частое движение в этом окне.
   Widget _rail(AppState app) {
-    return evsStudioPane(
+    return animaStudioPane(
       context,
       width: 208,
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
@@ -837,7 +837,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
         // и кнопка либо не сработала бы, либо схлопнула бы всю оболочку.
         if (!widget.embedded) ...[
           const SizedBox(height: 10),
-          evsGhostButton(context, app.t('close'), Icons.close,
+          animaGhostButton(context, app.t('close'), Icons.close,
               onTap: () => Navigator.of(context).maybePop()),
         ],
       ]),
@@ -959,7 +959,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
             Text(app.t('luminaQueued'),
                 style: TextStyle(fontSize: 12, color: _sub(context))),
             const Spacer(),
-            evsGhostButton(context, app.t('luminaDrop'), Icons.close,
+            animaGhostButton(context, app.t('luminaDrop'), Icons.close,
                 onTap: () => setState(() => _items.remove(it))),
           ])
         else if (it.running)
@@ -1002,7 +1002,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
           const SizedBox(height: 8),
           Row(children: [
             if (it.path != null) ...[
-              evsGhostButton(context, app.t('studioOpen'), Icons.folder_open,
+              animaGhostButton(context, app.t('studioOpen'), Icons.folder_open,
                   onTap: () => _reveal(it.path!)),
               const SizedBox(width: 8),
               Expanded(
@@ -1102,7 +1102,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
           ),
           const SizedBox(width: 10),
           Column(mainAxisSize: MainAxisSize.min, children: [
-            evsGhostButton(context, app.t('studioGo'), Icons.auto_awesome,
+            animaGhostButton(context, app.t('studioGo'), Icons.auto_awesome,
                 onTap: () => unawaited(_submit())),
             if (_waiting > 0)
               Padding(
@@ -1174,7 +1174,7 @@ class _LuminaStudioState extends State<LuminaStudio> {
   // Панель настроек. Ровно те же девять групп, что были в прежней студии, —
   // но в своей колонке, где они не отбирают место у результатов.
   Widget _params(AppState app) {
-    return evsStudioPane(
+    return animaStudioPane(
       context,
       width: 268,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),

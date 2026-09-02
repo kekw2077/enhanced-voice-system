@@ -214,7 +214,7 @@ class NocturTopBar extends StatelessWidget {
                 children: [
                   const Padding(
                     padding: EdgeInsets.only(right: 9),
-                    child: _EvsLogoMark(size: 22),
+                    child: _AnimaLogoMark(size: 22),
                   ),
                   Text(
                     'Anima',
@@ -259,12 +259,12 @@ class NocturTopBar extends StatelessWidget {
           // Остальные функции — тем же общим меню, что в двух других стилях.
           // «Команды» и «Журнал» в нём ведут на здешние вкладки, а не на
           // страницы настроек: экраны для них у этого стиля свои.
-          EvsMoreButton(
+          AnimaMoreButton(
             onCommands: () => onTab(NocturTab.commands),
             onLog: () => onTab(NocturTab.log),
             builder: (ctx, open) => _tabLabel(
               ctx,
-              ctx.read<AppState>().t('evsMore'),
+              ctx.read<AppState>().t('animaMore'),
               active: false,
               onTap: open,
             ),
@@ -351,7 +351,7 @@ class NocturStatusStrip extends StatelessWidget {
       children: [
         Text(
           key,
-          style: EvsType.mono.copyWith(fontSize: 11, color: color ?? _faint(c)),
+          style: AnimaType.mono.copyWith(fontSize: 11, color: color ?? _faint(c)),
         ),
         const SizedBox(width: 6),
         Flexible(
@@ -359,7 +359,7 @@ class NocturStatusStrip extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: EvsType.mono.copyWith(fontSize: 11, color: color ?? _sub(c)),
+            style: AnimaType.mono.copyWith(fontSize: 11, color: color ?? _sub(c)),
           ),
         ),
       ],
@@ -370,7 +370,7 @@ class NocturStatusStrip extends StatelessWidget {
     padding: const EdgeInsets.symmetric(horizontal: 10),
     child: Text(
       '·',
-      style: EvsType.mono.copyWith(
+      style: AnimaType.mono.copyWith(
         fontSize: 11,
         color: _stroke(c).withValues(alpha: 0.9),
       ),
@@ -411,7 +411,7 @@ class NocturStatusStrip extends StatelessWidget {
           final local = app.isLocalModel(app.selectedModel);
           final model = app.selectedModel.isEmpty
               ? '—'
-              : evsShortModel(app.selectedModel);
+              : animaShortModel(app.selectedModel);
           final where = local
               ? 'on-device'
               : (app.inferenceMode == 'remote' && app.apiKey.isNotEmpty
@@ -476,7 +476,7 @@ class NocturStatusStrip extends StatelessWidget {
               if (hasVram)
                 Text(
                   'GPU ${(gpu.$4 / 1024).toStringAsFixed(1)} / ${(gpu.$3 / 1024).round()} ${app.t('ncGb')}',
-                  style: EvsType.mono.copyWith(
+                  style: AnimaType.mono.copyWith(
                     fontSize: 11,
                     color: _sub(context),
                   ),
@@ -485,7 +485,7 @@ class NocturStatusStrip extends StatelessWidget {
               if (reply != null)
                 Text(
                   app.t('ncReply').replaceAll('{n}', reply.toStringAsFixed(1)),
-                  style: EvsType.mono.copyWith(
+                  style: AnimaType.mono.copyWith(
                     fontSize: 11,
                     color: _sub(context),
                   ),
@@ -594,7 +594,7 @@ class _NocturRingPainter extends CustomPainter {
   final double level;
   final String stage;
   final Color slot;
-  final EvsSkin skin;
+  final AnimaSkin skin;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -828,7 +828,7 @@ class _NocturStageState extends State<_NocturStage> {
                 children: [
                   Text(
                     app.t('ncStateKicker'),
-                    style: EvsType.mono.copyWith(
+                    style: AnimaType.mono.copyWith(
                       fontSize: 10.5,
                       letterSpacing: 10.5 * 0.2,
                       color: _faint(context),
@@ -909,7 +909,7 @@ class _NocturStageState extends State<_NocturStage> {
                 const SizedBox(width: 7),
                 Text(
                   label,
-                  style: EvsType.mono.copyWith(
+                  style: AnimaType.mono.copyWith(
                     fontSize: 10.5,
                     letterSpacing: 10.5 * 0.16,
                     color: color,
@@ -1089,7 +1089,7 @@ class _NocturCapsule extends StatelessWidget {
     ),
     child: Text(
       label,
-      style: EvsType.mono.copyWith(fontSize: 11, color: _sub(context)),
+      style: AnimaType.mono.copyWith(fontSize: 11, color: _sub(context)),
     ),
   );
 }
@@ -1143,9 +1143,9 @@ class _NocturHomeState extends State<_NocturHome> {
       backgroundColor: _bg(context),
       // Выдвижного ящика с историей здесь больше нет: его никто не открывал
       // кнопкой (только краем окна), а список диалогов в приложении теперь
-      // один — колонка вкладки «Диалог» и общее окно `EvsChatsDialog`.
+      // один — колонка вкладки «Диалог» и общее окно `AnimaChatsDialog`.
       body: Container(
-        decoration: _evsShellBg(context),
+        decoration: _animaShellBg(context),
         child: Column(
           children: [
             NocturTopBar(
@@ -1159,8 +1159,8 @@ class _NocturHomeState extends State<_NocturHome> {
                   ? const _NocturStage()
                   : switch (_tab) {
                       NocturTab.dialog => const _NocturDialogTab(),
-                      NocturTab.commands => const EvsCommandsTab(),
-                      NocturTab.log => const EvsLogTab(),
+                      NocturTab.commands => const AnimaCommandsTab(),
+                      NocturTab.log => const AnimaLogTab(),
                     },
             ),
             const NocturStatusStrip(),
@@ -1354,7 +1354,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
                       padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
                       child: Text(
                         g.toUpperCase(),
-                        style: EvsType.mono.copyWith(
+                        style: AnimaType.mono.copyWith(
                           fontSize: 10.5,
                           letterSpacing: 10.5 * 0.2,
                           color: _faint(context),
@@ -1445,15 +1445,15 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    _evsRelTime(app, c.updatedAt),
-                    style: EvsType.mono.copyWith(
+                    _animaRelTime(app, c.updatedAt),
+                    style: AnimaType.mono.copyWith(
                       fontSize: 10.5,
                       color: _faint(context),
                     ),
                   ),
                   // Видимая кнопка меню строки: раньше переименовать или
                   // закрепить чат здесь можно было, только угадав правый клик.
-                  evsChatRowMenuButton(context, c, app),
+                  animaChatRowMenuButton(context, c, app),
                 ],
               ),
               if (preview.isNotEmpty)
@@ -1487,7 +1487,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
     // Модель ушла из мета-строки в пилюлю ниже: там на неё можно нажать и
     // сменить, как в двух других стилях, а не только прочитать.
     final meta = [
-      _evsRelTime(app, conv.updatedAt),
+      _animaRelTime(app, conv.updatedAt),
       app.t('ncReplies').replaceAll('{n}', '${conv.messages.length}'),
     ].join('  ·  ');
     return Column(
@@ -1517,14 +1517,14 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
                       meta,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: EvsType.mono.copyWith(
+                      style: AnimaType.mono.copyWith(
                         fontSize: 11,
                         color: _faint(context),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  evsModelPill(context, fontSize: 12),
+                  animaModelPill(context, fontSize: 12),
                 ],
               ),
               const SizedBox(height: 14),
@@ -1565,7 +1565,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
     required bool last,
   }) {
     final waiting = last && app.isGenerating && m.content.trim().isEmpty;
-    return EvsMessageFrame(
+    return AnimaMessageFrame(
       conversation: conv,
       message: m,
       isLast: last,
@@ -1653,7 +1653,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
           if (m.thinking.trim().isNotEmpty)
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 820),
-              child: EvsThinkingBlock(
+              child: AnimaThinkingBlock(
                 text: m.thinking,
                 live: m.content.trim().isEmpty,
               ),
@@ -1665,7 +1665,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Flexible(
-                  child: EvsTypingText(
+                  child: AnimaTypingText(
                     m.content,
                     selectable: true,
                     style: TextStyle(
@@ -1682,7 +1682,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
           const SizedBox(height: 6),
           Text(
             metaParts.join('  ·  '),
-            style: EvsType.mono.copyWith(
+            style: AnimaType.mono.copyWith(
               fontSize: 10.5,
               color: _faint(context),
             ),
@@ -1731,11 +1731,11 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
             const SizedBox(width: 10),
             const _NocturChatToggle(),
             const SizedBox(width: 8),
-            evsContextGauge(context, app),
+            animaContextGauge(context, app),
             const SizedBox(width: 8),
             // Пока идёт ответ, кнопка становится «Остановить» — как в двух
             // других стилях.
-            evsSendButton(
+            animaSendButton(
               context,
               hasContent: _input.text.trim().isNotEmpty,
               busy: _sending,
@@ -1913,13 +1913,13 @@ class _NocturChatToggle extends StatelessWidget {
 /// Экран голосовых команд. Живёт в этом файле по историческим причинам — сюда
 /// он был написан первым, — но к «Ноктюрну» не привязан: ни его вкладок, ни его
 /// геометрии внутри нет. «Призма» показывает этот же экран своей вкладкой.
-class EvsCommandsTab extends StatefulWidget {
-  const EvsCommandsTab({super.key});
+class AnimaCommandsTab extends StatefulWidget {
+  const AnimaCommandsTab({super.key});
   @override
-  State<EvsCommandsTab> createState() => EvsCommandsTabState();
+  State<AnimaCommandsTab> createState() => AnimaCommandsTabState();
 }
 
-class EvsCommandsTabState extends State<EvsCommandsTab> {
+class AnimaCommandsTabState extends State<AnimaCommandsTab> {
   final TextEditingController _search = TextEditingController();
   VoiceCommandType? _filter;
 
@@ -2030,7 +2030,7 @@ class EvsCommandsTabState extends State<EvsCommandsTab> {
       padding: const EdgeInsets.only(right: 14),
       child: Text(
         label.toUpperCase(),
-        style: EvsType.mono.copyWith(
+        style: AnimaType.mono.copyWith(
           fontSize: 10.5,
           letterSpacing: 10.5 * 0.2,
           color: _faint(context),
@@ -2099,7 +2099,7 @@ class EvsCommandsTabState extends State<EvsCommandsTab> {
                     c.value.isEmpty ? '—' : c.value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: EvsType.mono.copyWith(
+                    style: AnimaType.mono.copyWith(
                       fontSize: 12,
                       color: _sub(context),
                     ),
@@ -2203,7 +2203,7 @@ class EvsCommandsTabState extends State<EvsCommandsTab> {
                     const SizedBox(width: 10),
                     Text(
                       app.cmdThreshold.toStringAsFixed(2),
-                      style: EvsType.mono.copyWith(
+                      style: AnimaType.mono.copyWith(
                         fontSize: 12,
                         color: _txt(context),
                       ),
@@ -2319,7 +2319,7 @@ class EvsCommandsTabState extends State<EvsCommandsTab> {
                       '${all.length} · ${app.t('cmdThreshold').toLowerCase()} '
                       '${app.cmdThreshold.toStringAsFixed(2)} · '
                       '${confirmLabel.toLowerCase()}',
-                      style: EvsType.mono.copyWith(
+                      style: AnimaType.mono.copyWith(
                         fontSize: 11,
                         color: _faint(context),
                       ),
@@ -2479,21 +2479,21 @@ class _NocturButton extends StatelessWidget {
    уровня · источник · сообщение. Уровень выводится из источника, как он и
    пишется в коде (appendLog): голосовой тракт, команды, телефон, ошибки.
 
-   Сами файлы читает EvsLogFeed (desktop_integration.dart) — тот же источник,
+   Сами файлы читает AnimaLogFeed (desktop_integration.dart) — тот же источник,
    что у страницы «Журнал» в настройках, которую открывает рейл Nexus. */
 
 /// Журнал работы. Тоже общий экран: те же файлы, тот же фильтр, тот же поиск
 /// во всех стилях, где он показан вкладкой.
-class EvsLogTab extends StatefulWidget {
-  const EvsLogTab({super.key});
+class AnimaLogTab extends StatefulWidget {
+  const AnimaLogTab({super.key});
   @override
-  State<EvsLogTab> createState() => EvsLogTabState();
+  State<AnimaLogTab> createState() => AnimaLogTabState();
 }
 
-class EvsLogTabState extends State<EvsLogTab> {
+class AnimaLogTabState extends State<AnimaLogTab> {
   final TextEditingController _search = TextEditingController();
   String _filter = 'all';
-  List<EvsLogLine> _lines = const [];
+  List<AnimaLogLine> _lines = const [];
   bool _loading = true;
 
   @override
@@ -2509,7 +2509,7 @@ class EvsLogTabState extends State<EvsLogTab> {
   }
 
   Future<void> _load() async {
-    final out = await EvsLogFeed.load();
+    final out = await AnimaLogFeed.load();
     if (mounted) {
       setState(() {
         _lines = out;
@@ -2593,7 +2593,7 @@ class EvsLogTabState extends State<EvsLogTab> {
                     const SizedBox(height: 6),
                     Text(
                       '${visible.length} / ${_lines.length}',
-                      style: EvsType.mono.copyWith(
+                      style: AnimaType.mono.copyWith(
                         fontSize: 11,
                         color: _faint(context),
                       ),
@@ -2605,7 +2605,7 @@ class EvsLogTabState extends State<EvsLogTab> {
                 label: app.t('ncCopy'),
                 onTap: () {
                   Clipboard.setData(
-                    ClipboardData(text: EvsLogFeed.asText(visible)),
+                    ClipboardData(text: AnimaLogFeed.asText(visible)),
                   );
                   showAppSnackBar(context, app.t('ncCopied'));
                 },
@@ -2613,7 +2613,7 @@ class EvsLogTabState extends State<EvsLogTab> {
               const SizedBox(width: 8),
               _NocturButton(
                 label: app.t('ncLogFolder'),
-                onTap: () => unawaited(EvsLogFeed.openFolder()),
+                onTap: () => unawaited(AnimaLogFeed.openFolder()),
               ),
               const SizedBox(width: 8),
               _NocturButton(
@@ -2727,7 +2727,7 @@ class EvsLogTabState extends State<EvsLogTab> {
     );
   }
 
-  Widget _logRow(BuildContext context, AppState app, EvsLogLine l) {
+  Widget _logRow(BuildContext context, AppState app, AnimaLogLine l) {
     final color = _levelColor(context, l.level);
     // Строки ошибок целиком красятся danger; у остальных цветом уровня —
     // только вертикальный штрих.
@@ -2740,8 +2740,8 @@ class EvsLogTabState extends State<EvsLogTab> {
           SizedBox(
             width: 58,
             child: Text(
-              EvsLogFeed.clock(l.time),
-              style: EvsType.mono.copyWith(
+              AnimaLogFeed.clock(l.time),
+              style: AnimaType.mono.copyWith(
                 fontSize: 12,
                 height: 1.9,
                 color: _faint(context),
@@ -2760,10 +2760,10 @@ class EvsLogTabState extends State<EvsLogTab> {
           SizedBox(
             width: 78,
             child: Text(
-              app.t(EvsLogFeed.labelKey(l.source)),
+              app.t(AnimaLogFeed.labelKey(l.source)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: EvsType.mono.copyWith(
+              style: AnimaType.mono.copyWith(
                 fontSize: 12,
                 height: 1.9,
                 color: _faint(context),
@@ -2773,7 +2773,7 @@ class EvsLogTabState extends State<EvsLogTab> {
           Expanded(
             child: SelectableText(
               l.text,
-              style: EvsType.mono.copyWith(
+              style: AnimaType.mono.copyWith(
                 fontSize: 12,
                 height: 1.9,
                 color: textColor,
@@ -2835,7 +2835,7 @@ class _NocturWhatsNew extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(app.t('ncWhatsNewKicker'),
-                style: EvsType.mono.copyWith(
+                style: AnimaType.mono.copyWith(
                     fontSize: 10.5,
                     letterSpacing: 10.5 * 0.2,
                     color: _faint(context))),
@@ -2858,7 +2858,7 @@ class _NocturWhatsNew extends StatelessWidget {
                     border: Border.all(color: _accent(context)),
                   ),
                   child: Text(entry.version,
-                      style: EvsType.mono.copyWith(
+                      style: AnimaType.mono.copyWith(
                           fontSize: 11.5, color: _accent(context))),
                 ),
               ],

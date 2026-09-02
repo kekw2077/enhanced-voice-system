@@ -743,7 +743,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                                 : _faint(context))),
                     const SizedBox(width: 6),
                     Text(a,
-                        style: EvsType.mono.copyWith(
+                        style: AnimaType.mono.copyWith(
                             fontSize: 11.5,
                             color:
                                 a == chosen ? _txt(context) : _sub(context))),
@@ -778,10 +778,10 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('remoteEnable'),
           desc: app.t('remoteEnableDesc'),
-          control: evsToggle(context, on, app.setRemoteInputEnabled),
+          control: animaToggle(context, on, app.setRemoteInputEnabled),
         ),
         if (on) ...[
           // Status + port.
@@ -805,7 +805,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                           : _danger(context))),
             ]),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('remotePort'),
             control: SizedBox(
               width: 90,
@@ -843,10 +843,10 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
               ],
             ),
           ),
-          evsRow(context, 
+          animaRow(context, 
             stacked: true,
             label: app.t('remoteResponse'),
-            control: evsSegmentedWide<String>(context, [
+            control: animaSegmentedWide<String>(context, [
               ('desktop_tts', app.t('remoteRespDesktop')),
               ('phone_text', app.t('remoteRespPhone')),
               ('both', app.t('remoteRespBoth')),
@@ -878,7 +878,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: evsAddButton(context, app.t('remoteCardAdd'), _newCode),
+              child: animaAddButton(context, app.t('remoteCardAdd'), _newCode),
             ),
           )
         else
@@ -915,7 +915,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
                               color: _txt(context))),
                       const SizedBox(height: 6),
                       SelectableText('$_primaryAddr:${app.remoteInputPort}',
-                          style: EvsType.mono.copyWith(
+                          style: AnimaType.mono.copyWith(
                               fontSize: 12.5, color: _body(context))),
                       const SizedBox(height: 4),
                       Text(app.t('remotePairHint'),
@@ -1000,7 +1000,7 @@ class _RemoteInputPanelState extends State<_RemoteInputPanel> {
             Text(_deviceStatus(d),
                 style: TextStyle(fontSize: 11, color: _faint(context))),
             const SizedBox(width: 8),
-            evsToggle(context, d.enabled, (v) => app.setRemoteDeviceEnabled(d, v)),
+            animaToggle(context, d.enabled, (v) => app.setRemoteDeviceEnabled(d, v)),
           ]),
           const SizedBox(height: 6),
           Row(children: [
@@ -2023,7 +2023,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
             else
-              evsToggle(context, _elevated,
+              animaToggle(context, _elevated,
                   (v) => setState(() => _elevated = v)),
           ]),
         ],

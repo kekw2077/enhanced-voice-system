@@ -125,14 +125,14 @@ class _SttTestCardState extends State<_SttTestCard> {
                 ),
                 const SizedBox(height: 12),
                 Row(children: [
-                  evsGhostButton(context, 
+                  animaGhostButton(context, 
                     _testing ? app.t('sttTestStop') : app.t('sttTestStart'),
                     _testing ? Icons.stop : Icons.mic,
                     onTap: () => _testing ? _stop() : _start(),
                   ),
                   if (_final.isNotEmpty || _partial.isNotEmpty) ...[
                     const SizedBox(width: 8),
-                    evsGhostButton(context, 
+                    animaGhostButton(context, 
                       app.t('sttTestClear'),
                       Icons.clear,
                       onTap: _clear,
@@ -301,7 +301,7 @@ class _WebSearchCardState extends State<_WebSearchCard> {
               ),
             ),
             const SizedBox(width: 10),
-            evsToggle(context, app.webSearchEnabled, app.setWebSearchEnabled),
+            animaToggle(context, app.webSearchEnabled, app.setWebSearchEnabled),
           ]),
           if (app.webSearchEnabled) ...[
             const SizedBox(height: 14),
@@ -459,15 +459,15 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
                 }
                 switch (app.vizType) {
                   case 'waves':
-                    return const EvsRingViz(size: 200);
+                    return const AnimaRingViz(size: 200);
                   case 'bars':
-                    return const EvsBarsViz(width: 340, height: 140);
+                    return const AnimaBarsViz(width: 340, height: 140);
                   case 'orb':
                     return SiriOrb(
                       size: app.orbSize.clamp(120, 210),
                       level: lv,
                       state: _orbState,
-                      colors: evsOrbColors(accent),
+                      colors: animaOrbColors(accent),
                       animationDuration: app.orbSpeed,
                     );
                   case 'lkbars':
@@ -482,10 +482,10 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
                       maxHeight: 150,
                     );
                   case 'wave3d':
-                    return const EvsWaveViz(
+                    return const AnimaWaveViz(
                         kind: 'wave3d', size: 220, reactive: true);
                   case 'waveflat':
-                    return const EvsWaveViz(
+                    return const AnimaWaveViz(
                         kind: 'waveflat', size: 220, reactive: true);
                   case 'none':
                     return Text(app.t('vizNone'),
@@ -503,7 +503,7 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
           ),
         ),
         const SizedBox(height: 12),
-        evsSegmentedWide<String>(context, [
+        animaSegmentedWide<String>(context, [
           ('idle', app.t('wsStateIdle')),
           ('listening', app.t('wsStateListening')),
           ('speaking', app.t('wsStateSpeaking')),
@@ -520,7 +520,7 @@ class _VizPreviewCardState extends State<_VizPreviewCard>
                     fontWeight: FontWeight.w600,
                     color: _body(context))),
           ),
-          evsToggle(context, _simulate, (v) {
+          animaToggle(context, _simulate, (v) {
             setState(() => _simulate = v);
             if (!v) VoiceLevels.instance.tts.value = 0;
           }),
@@ -656,7 +656,7 @@ class _SttReadinessBanner extends StatelessWidget {
                 const SizedBox(width: 10),
                 Flexible(
                   child: Text(label,
-                      style: EvsType.body.copyWith(
+                      style: AnimaType.body.copyWith(
                           fontSize: 13,
                           color: Color.lerp(tone, _txt(context), 0.35))),
                 ),
@@ -700,7 +700,7 @@ class _DeviceSelector extends StatelessWidget {
             Text(app.t('deviceLabel'),
                 style: TextStyle(color: _sub(context), fontSize: 11)),
             const SizedBox(height: 6),
-            evsSegmentedWide<String>(context, 
+            animaSegmentedWide<String>(context, 
               [
                 ('cpu', app.t('deviceCpu')),
                 ('cuda', name.isNotEmpty ? 'GPU · $name' : app.t('deviceGpu')),
@@ -991,7 +991,7 @@ class _SttEngineCardsState extends State<_SttEngineCards> {
                     style: TextStyle(
                         color: _sub(context), fontSize: 11)),
                 const SizedBox(height: 6),
-                evsSegmentedWide<String>(context, 
+                animaSegmentedWide<String>(context, 
                   const [('tiny', 'tiny'), ('base', 'base'), ('small', 'small')],
                   ['tiny', 'base', 'small'].contains(app.whisperModel)
                       ? app.whisperModel
@@ -1120,7 +1120,7 @@ class _RemoteSttFieldsState extends State<_RemoteSttFields> {
         // кто ловит голос при пропаже сервера, и однажды защёлкнулась на
         // Whisper у пользователя GigaAM.
         _label(app.t('engRemoteFallbackLabel')),
-        evsSegmentedWide<String>(
+        animaSegmentedWide<String>(
           context,
           [('gigaam', 'GigaAM-v3'), ('whisper', 'Whisper')],
           app.sttLocalEngine,
@@ -1266,7 +1266,7 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
               style: TextStyle(color: _sub(context), fontSize: 12.5)),
           const SizedBox(height: 10),
           Row(children: [
-            evsGhostButton(context, app.t('mdlDelete'), Icons.delete_outline,
+            animaGhostButton(context, app.t('mdlDelete'), Icons.delete_outline,
                 onTap: () async {
               await app.removeCustomVoice(v);
               if (mounted) setState(() {});
@@ -1292,7 +1292,7 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
           Text(app.t('voiceImportHint'),
               style: TextStyle(color: _sub(context), fontSize: 12.5)),
           const SizedBox(height: 10),
-          evsGhostButton(context, app.t('voiceImportBtn'), Icons.file_open,
+          animaGhostButton(context, app.t('voiceImportBtn'), Icons.file_open,
               onTap: () async {
             final res = await FilePicker.pickFiles();
             final path = res?.files.single.path;
@@ -1446,7 +1446,7 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
 }
 
 // Журнал работы приложения (страница _Pages.appLog). Читает те же файлы и тем
-// же кодом, что вкладка «Журнал» в «Ноктюрне» — EvsLogFeed; отличается только
+// же кодом, что вкладка «Журнал» в «Ноктюрне» — AnimaLogFeed; отличается только
 // подача: здесь она карточная, как остальные настройки.
 class _AppLogCard extends StatefulWidget {
   const _AppLogCard();
@@ -1457,7 +1457,7 @@ class _AppLogCard extends StatefulWidget {
 class _AppLogCardState extends State<_AppLogCard> {
   final TextEditingController _search = TextEditingController();
   String _filter = 'all';
-  List<EvsLogLine> _lines = const [];
+  List<AnimaLogLine> _lines = const [];
   bool _loading = true;
 
   static const List<(String, String)> _filters = [
@@ -1483,7 +1483,7 @@ class _AppLogCardState extends State<_AppLogCard> {
   }
 
   Future<void> _load() async {
-    final out = await EvsLogFeed.load();
+    final out = await AnimaLogFeed.load();
     if (!mounted) return;
     setState(() {
       _lines = out;
@@ -1522,7 +1522,7 @@ class _AppLogCardState extends State<_AppLogCard> {
     );
   }
 
-  Widget _row(AppState app, EvsLogLine l) {
+  Widget _row(AppState app, AnimaLogLine l) {
     // Строки ошибок красятся целиком; у остальных цветом уровня — только штрих.
     final text = l.level == 'danger' ? _danger(context) : _sub(context);
     return Padding(
@@ -1532,8 +1532,8 @@ class _AppLogCardState extends State<_AppLogCard> {
         children: [
           SizedBox(
             width: 58,
-            child: Text(EvsLogFeed.clock(l.time),
-                style: EvsType.mono.copyWith(
+            child: Text(AnimaLogFeed.clock(l.time),
+                style: AnimaType.mono.copyWith(
                     fontSize: 12, height: 1.9, color: _faint(context))),
           ),
           Container(
@@ -1547,15 +1547,15 @@ class _AppLogCardState extends State<_AppLogCard> {
           ),
           SizedBox(
             width: 82,
-            child: Text(app.t(EvsLogFeed.labelKey(l.source)),
+            child: Text(app.t(AnimaLogFeed.labelKey(l.source)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: EvsType.mono.copyWith(
+                style: AnimaType.mono.copyWith(
                     fontSize: 12, height: 1.9, color: _faint(context))),
           ),
           Expanded(
             child: SelectableText(l.text,
-                style: EvsType.mono
+                style: AnimaType.mono
                     .copyWith(fontSize: 12, height: 1.9, color: text)),
           ),
         ],
@@ -1609,18 +1609,18 @@ class _AppLogCardState extends State<_AppLogCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              evsGhostButton(context, app.t('ncCopy'), Icons.copy_all_outlined,
+              animaGhostButton(context, app.t('ncCopy'), Icons.copy_all_outlined,
                   onTap: () {
                 Clipboard.setData(
-                    ClipboardData(text: EvsLogFeed.asText(visible)));
+                    ClipboardData(text: AnimaLogFeed.asText(visible)));
                 showAppSnackBar(context, app.t('ncCopied'));
               }),
               const SizedBox(width: 8),
-              evsGhostButton(
+              animaGhostButton(
                   context, app.t('ncLogFolder'), Icons.folder_open_outlined,
-                  onTap: () => unawaited(EvsLogFeed.openFolder())),
+                  onTap: () => unawaited(AnimaLogFeed.openFolder())),
               const SizedBox(width: 8),
-              evsGhostButton(context, app.t('ncRefresh'), Icons.refresh,
+              animaGhostButton(context, app.t('ncRefresh'), Icons.refresh,
                   onTap: () => unawaited(_load())),
             ],
           ),
@@ -1661,7 +1661,7 @@ class _AppLogCardState extends State<_AppLogCard> {
           ),
           const SizedBox(height: 8),
           Text('${visible.length} / ${_lines.length}',
-              style: EvsType.mono
+              style: AnimaType.mono
                   .copyWith(fontSize: 11, color: _faint(context))),
         ],
       ),
@@ -1886,7 +1886,7 @@ class _DenoiseSelectorState extends State<_DenoiseSelector> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              evsSegmentedWide<String>(context, 
+              animaSegmentedWide<String>(context, 
                 [
                   ('off', app.t('dnOff')),
                   ('light', app.t('dnLight')),
@@ -2002,11 +2002,11 @@ class _MultiMicCardState extends State<_MultiMicCard> {
                       color: _txt(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w600))),
-          evsToggle(context, active, (v) => app.toggleExtraMic(d.id, d.label, v)),
+          animaToggle(context, active, (v) => app.toggleExtraMic(d.id, d.label, v)),
         ]),
         if (active) ...[
           const SizedBox(height: 10),
-          evsSegmentedWide<String>(context, 
+          animaSegmentedWide<String>(context, 
             [
               ('off', app.t('dnOff')),
               ('light', app.t('dnLight')),
@@ -2177,7 +2177,7 @@ Future<String?> showEvsSettingsExitPrompt(
               children: [
                 Row(
                   children: [
-                    const _EvsLogoMark(),
+                    const _AnimaLogoMark(),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -2354,7 +2354,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 style: TextStyle(color: _body(context), fontSize: 13)),
           ),
       ],
-      child: evsSelectButton(context, current.$2, minWidth: 120),
+      child: animaSelectButton(context, current.$2, minWidth: 120),
     );
   }
 
@@ -2455,7 +2455,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               : const {},
           child: Focus(
             autofocus: app.appStyle != AppStyle.standard,
-            child: evsShellBackdrop(
+            child: animaShellBackdrop(
               context,
               // Same shell shape as DesktopHome: the nav rail spans the FULL window
               // height and the title bar sits only over the content column. The old
@@ -2860,7 +2860,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final nexus = app.appStyle != AppStyle.standard;
     return Container(
       width: nexus ? 252 : 244,
-      decoration: _evsRailBg(context),
+      decoration: _animaRailBg(context),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2885,7 +2885,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     ),
                   ),
                   const SizedBox(width: 9),
-                  const _EvsLogoMark(size: 28),
+                  const _AnimaLogoMark(size: 28),
                   const SizedBox(width: 9),
                   Text('Nexus Anima',
                       style: TextStyle(
@@ -2913,7 +2913,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     const SizedBox(height: 8),
                     Row(children: [
                       Text(app.t('nxCloseHint'),
-                          style: EvsType.caption.copyWith(
+                          style: AnimaType.caption.copyWith(
                               fontSize: 11, color: _faint(context))),
                       const SizedBox(width: 6),
                       Container(
@@ -2925,7 +2925,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                           border: Border.all(color: _stroke(context)),
                         ),
                         child: Text('Esc',
-                            style: EvsType.mono.copyWith(
+                            style: AnimaType.mono.copyWith(
                                 fontSize: 10.5, color: _sub(context))),
                       ),
                     ]),
@@ -3639,7 +3639,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _remoteInputCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.wifi_tethering,
             title: app.t('remoteCardListener'),
             rows: [_RemoteInputPanel(app)]),
@@ -3651,26 +3651,26 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // =================== ОБЩИЕ ===================
   List<_CardSpec> _basicsCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.language,
         title: app.t('cardLangLoc'),
         rows: [
-          evsRow(context, 
+          animaRow(context, 
             stacked: true,
             label: app.t('interfaceLanguage'),
             desc: app.t('interfaceLanguageDesc'),
-            control: evsSegmentedWide<String>(context, 
+            control: animaSegmentedWide<String>(context, 
               const [('ru', 'RU'), ('en', 'EN')],
               app.lang,
               (v) => app.setLang(v),
             ),
           ),
-          evsRow(context, 
+          animaRow(context, 
             stacked: true,
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
-            control: evsSegmentedWide<String>(context, 
+            control: animaSegmentedWide<String>(context, 
               [('auto', app.t('sttAuto')), ('ru', 'RU'), ('en', 'EN')],
               app.sttLanguage,
               (v) => app.setSttLanguage(v),
@@ -3678,12 +3678,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
       )),
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.light_mode_outlined,
         title: app.t('cardAppearance'),
         rows: [
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('uiStyle'),
             desc: app.t('uiStyleDesc'),
@@ -3693,10 +3693,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           // ниже; вторая такая же строка была бы вторым местом для одного и
           // того же выбора.
           if (app.appStyle != AppStyle.prism)
-            evsRow(context,
+            animaRow(context,
               stacked: true,
               label: app.t('themeMode'),
-              control: evsSegmentedWide<AppThemeMode>(context,
+              control: animaSegmentedWide<AppThemeMode>(context,
                 [
                   (AppThemeMode.dark, app.t('themeDark')),
                   (AppThemeMode.claude, app.t('themeClaude')),
@@ -3706,7 +3706,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 (v) => app.setThemeMode(v),
               ),
             ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('fontSize'),
             desc: app.t('fontSizeDesc'),
             control: SizedBox(
@@ -3739,11 +3739,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           // Ambient-animation policy (CPU load regulation): the decorative
           // loops used to run 60 fps forever (~a full core idle); this row lets
           // the user pick always / only-when-active / never.
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('motionMode'),
             desc: app.t('motionModeDesc'),
-            control: evsSegmentedWide<String>(context,
+            control: animaSegmentedWide<String>(context,
               [
                 ('full', app.t('motionFull')),
                 ('balanced', app.t('motionBalanced')),
@@ -3774,19 +3774,19 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _startupCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(
+        animaCard(
           context,
           icon: Icons.desktop_windows_outlined,
           title: app.t('cardStartup'),
           rows: [
-            evsRow(context,
+            animaRow(context,
               stacked: true,
               label: app.t('startupView'),
               desc: app.t('startupViewDesc'),
               // Один выбор ставит оба флага сразу, поэтому тумблер «Плавающий
               // виджет» в «Виджетах и оверлее» не может с ним разойтись: он и
               // есть половина этого выбора.
-              control: evsSegmentedWide<String>(context, [
+              control: animaSegmentedWide<String>(context, [
                 ('widget', app.t('startupViewWidget')),
                 ('both', app.t('startupViewBoth')),
                 ('window', app.t('startupViewWindow')),
@@ -3798,26 +3798,26 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 );
               }),
             ),
-            evsRow(context,
+            animaRow(context,
               label: app.t('autostart'),
               desc: app.t('autostartDesc'),
-              control: evsToggle(context, app.autostart, (v) {
+              control: animaToggle(context, app.autostart, (v) {
                 app.setAutostart(v);
                 DesktopIntegration.instance.applyAutostart(v);
               }),
             ),
-            evsRow(context, 
+            animaRow(context, 
               label: app.t('minimizeToTray'),
               desc: app.t('minimizeToTrayDesc'),
               control:
-                  evsToggle(context, app.minimizeToTray, (v) => app.setMinimizeToTray(v)),
+                  animaToggle(context, app.minimizeToTray, (v) => app.setMinimizeToTray(v)),
             ),
-            evsRow(context, 
+            animaRow(context, 
               label: app.t('closeToTray'),
               desc: app.t('closeToTrayDesc'),
-              control: evsToggle(context, app.closeToTray, (v) => app.setCloseToTray(v)),
+              control: animaToggle(context, app.closeToTray, (v) => app.setCloseToTray(v)),
             ),
-            evsRow(context, 
+            animaRow(context, 
               label: app.t('globalHotkey'),
               desc: app.t('globalHotkeyDesc'),
               control: const Row(
@@ -3838,7 +3838,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     ];
   }
 
-  Widget _stubToggle(String key) => evsToggle(context, 
+  Widget _stubToggle(String key) => animaToggle(context, 
         _stub[key] ?? false,
         (v) => setState(() => _stub[key] = v),
       );
@@ -3923,7 +3923,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         value: cs.progress > 0 ? cs.progress : null,
                         minHeight: 6,
                         backgroundColor: _stroke(context),
-                        valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                        valueColor: const AlwaysStoppedAnimation(_animaGMid),
                       ),
                     ),
                   ),
@@ -3939,14 +3939,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               return _compBadge(
                   app.t('componentReady'), _success(context));
             case ComponentState.error:
-              return evsGhostButton(context, app.t('retry'), Icons.refresh,
+              return animaGhostButton(context, app.t('retry'), Icons.refresh,
                   onTap: () => _downloadSidecar(app));
             case ComponentState.absent:
               final info = ComponentManager.instance.infoOf('sidecar');
               final mb = info != null && info.size > 0
                   ? ' (${(info.size / 1048576).round()} MB)'
                   : '';
-              return evsGhostButton(context, '${app.t('download')}$mb', Icons.download,
+              return animaGhostButton(context, '${app.t('download')}$mb', Icons.download,
                   onTap: () => _downloadSidecar(app));
           }
         },
@@ -3983,7 +3983,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                         value: p > 0 ? p : null,
                         minHeight: 6,
                         backgroundColor: _stroke(context),
-                        valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                        valueColor: const AlwaysStoppedAnimation(_animaGMid),
                       ),
                     ),
                   ),
@@ -3995,7 +3995,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ),
             );
           case UpdateStatus.ready:
-            return evsGhostButton(context, 
+            return animaGhostButton(context, 
                 '${app.t('updRestart')} · ${AppUpdater.instance.availableVersion}',
                 Icons.restart_alt,
                 onTap: () => AppUpdater.instance.applyAndRestart());
@@ -4005,10 +4005,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               child: _compBadge(app.t('updUpToDate'), _success(context)),
             );
           case UpdateStatus.error:
-            return evsGhostButton(context, app.t('retry'), Icons.refresh,
+            return animaGhostButton(context, app.t('retry'), Icons.refresh,
                 onTap: () => AppUpdater.instance.checkAndDownload());
           case UpdateStatus.idle:
-            return evsGhostButton(context, app.t('checkUpdate'), Icons.refresh,
+            return animaGhostButton(context, app.t('checkUpdate'), Icons.refresh,
                 onTap: () => AppUpdater.instance.checkAndDownload());
         }
       },
@@ -4165,33 +4165,33 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _cmdExecCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context, icon: Icons.bolt_outlined, title: app.t('cardCmdExec'), rows: [
-          evsRow(context, 
+        animaCard(context, icon: Icons.bolt_outlined, title: app.t('cardCmdExec'), rows: [
+          animaRow(context, 
             label: app.t('cmdAllow'),
             desc: app.t('cmdAllowDesc'),
-            control: evsToggle(context, app.cmdEnabled, app.setCmdEnabled),
+            control: animaToggle(context, app.cmdEnabled, app.setCmdEnabled),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('chatToggle'),
             desc: app.t('chatToggleDesc'),
-            control: evsToggle(context, app.chatEnabled, app.setChatEnabled),
+            control: animaToggle(context, app.chatEnabled, app.setChatEnabled),
           ),
         ]),
         full: true,
       ),
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.schedule, title: app.t('cardCmdRecognition'), rows: [
-        evsRow(context, 
+        animaRow(context, 
           stacked: true,
           label: app.t('cmdMode'),
           desc: app.t('cmdModeDesc'),
-          control: evsSegmentedWide<String>(context, [
+          control: animaSegmentedWide<String>(context, [
             ('wakeword', app.t('cmdModeWake')),
             ('separate', app.t('cmdModeSeparate')),
             ('first', app.t('cmdModeFirst')),
           ], app.cmdMode, app.setCmdMode),
         ),
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('cmdActivator'),
           desc: app.t('cmdActivatorDesc'),
           control: SizedBox(
@@ -4199,7 +4199,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               child: _inlineField(_activatorCtrl,
                   mono: true, onChanged: (v) => app.setWakeWord(v))),
         ),
-        evsRow(context, 
+        animaRow(context, 
           stacked: true,
           label: app.t('cmdStopWords'),
           desc: app.t('cmdStopWordsDesc'),
@@ -4212,12 +4212,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _cmdSecurityCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.shield_outlined, title: app.t('cardSecurity'), rows: [
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('cmdThreshold'),
           desc: app.t('cmdThresholdDesc'),
-          control: evsSlider(context, 
+          control: animaSlider(context, 
             value: app.cmdThreshold * 100,
             min: 0,
             max: 100,
@@ -4226,10 +4226,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             onChanged: (v) => app.setCmdThreshold(v / 100),
           ),
         ),
-        evsRow(context, 
+        animaRow(context, 
           stacked: true,
           label: app.t('cmdConfirm'),
-          control: evsSegmentedWide<String>(context, [
+          control: animaSegmentedWide<String>(context, [
             ('always', app.t('cmdConfirmAlways')),
             ('risky', app.t('cmdConfirmRisky')),
             ('never', app.t('cmdConfirmNever')),
@@ -4243,7 +4243,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final cmds = app.voiceCommands;
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.format_list_bulleted, title: app.t('cardCatalog'), rows: [
           if (cmds.isEmpty)
             Padding(
@@ -4258,7 +4258,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               spacing: 10,
               runSpacing: 8,
               children: [
-                evsAddButton(context, app.t('cmdAdd'), () => _openAddCommandWizard(app)),
+                animaAddButton(context, app.t('cmdAdd'), () => _openAddCommandWizard(app)),
                 InkWell(
                   borderRadius: BorderRadius.circular(9),
                   onTap: () => _openSuggestCommands(app),
@@ -4469,14 +4469,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final accent = Color(app.vizAccent);
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.auto_awesome_outlined,
             title: app.t('cardWsPreview'),
             rows: [const _VizPreviewCard()]),
         full: true,
       ),
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.style_outlined,
             title: app.t('cardWsStyle'),
             rows: [
@@ -4515,9 +4515,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _widgetParamCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.tune, title: app.t('cardWsParams'), rows: [
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('wsAccent'),
           desc: app.t('wsAccentDesc'),
           control: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -4556,7 +4556,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ]),
         ),
         if (app.vizType == 'orb') ...[
-          evsNamedSlider(context, 
+          animaNamedSlider(context, 
             label: app.t('wsOrbSize'),
             value: app.orbSize.clamp(120, 320),
             min: 120,
@@ -4566,7 +4566,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             right: '320',
             onChanged: (v) => app.setOrbSize(v),
           ),
-          evsNamedSlider(context, 
+          animaNamedSlider(context, 
             label: app.t('wsOrbSpeed'),
             desc: app.t('wsOrbSpeedDesc'),
             value: app.orbSpeed.clamp(6, 40),
@@ -4579,7 +4579,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
         if (app.vizType == 'lkbars')
-          evsNamedSlider(context, 
+          animaNamedSlider(context, 
             label: app.t('wsBarCount'),
             value: app.barCount.toDouble().clamp(3, 13),
             min: 3,
@@ -4589,26 +4589,26 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             right: '13',
             onChanged: (v) => app.setBarCount(v.round()),
           ),
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('showVizBg'),
           desc: app.t('showVizBgDesc'),
-          control: evsToggle(context, app.showVizBg, app.setShowVizBg),
+          control: animaToggle(context, app.showVizBg, app.setShowVizBg),
         ),
       ])),
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.picture_in_picture_alt_outlined,
           title: app.t('ovlEnter'),
           rows: [
-            evsRow(context, 
+            animaRow(context, 
               label: app.t('ovlShow'),
               desc: app.t('ovlEnterDesc'),
-              control: evsToggle(context, app.overlayMode, app.setOverlayMode),
+              control: animaToggle(context, app.overlayMode, app.setOverlayMode),
             ),
-            evsRow(context, 
+            animaRow(context, 
               stacked: true,
               label: app.t('ovlSize'),
               desc: app.t('ovlSizeDesc'),
-              control: evsSegmentedWide<double>(context, [
+              control: animaSegmentedWide<double>(context, [
                 (200.0, app.t('ovlSizeS')),
                 (260.0, app.t('ovlSizeM')),
                 (330.0, app.t('ovlSizeL')),
@@ -4622,17 +4622,17 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   Widget _vizMini(String key, Color accent) {
     switch (key) {
       case 'waves':
-        return const EvsRingViz(size: 52);
+        return const AnimaRingViz(size: 52);
       case 'prismorb':
         return const PrismOrb(size: 52, showMic: false, reactive: false);
       case 'bars':
-        return const EvsBarsViz(width: 62, height: 38);
+        return const AnimaBarsViz(width: 62, height: 38);
       case 'orb':
         return SiriOrb(
             size: 48,
             level: 0.4,
             state: SiriOrbState.listening,
-            colors: evsOrbColors(accent),
+            colors: animaOrbColors(accent),
             glow: false);
       case 'lkbars':
         return LkBarVisualizer(
@@ -4644,14 +4644,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             minHeight: 5,
             maxHeight: 34);
       case 'wave3d':
-        return const EvsWaveViz(
+        return const AnimaWaveViz(
             kind: 'wave3d',
             size: 52,
             numCols: 46,
             numRows: 30,
             background: Color(0xFF060612));
       case 'waveflat':
-        return const EvsWaveViz(
+        return const AnimaWaveViz(
             kind: 'waveflat',
             size: 52,
             particleCount: 520,
@@ -4678,7 +4678,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // сюда из «Подключения» — тот же самый список, без второй реализации.
   List<_CardSpec> _llmAssetCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.memory, title: app.t('cardModelPick'), rows: [
         if (app.models.isEmpty)
           Padding(
@@ -4700,11 +4700,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _imageServerCard(AppState app) {
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.image_outlined,
             title: app.t('cardImageServer'),
             rows: [
-              evsRow(context,
+              animaRow(context,
                   stacked: true,
                   label: app.t('imgServerUrl'),
                   desc: app.t('imgServerUrlDesc'),
@@ -4715,20 +4715,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               // Не поле для ввода, а список с сервера. Имя чекпоинта раньше
               // набирали руками, и опечатка в нём ничего не подсвечивала: всё
               // выглядело настроенным, а генерация падала с «нет файла модели».
-              evsRow(context,
+              animaRow(context,
                   label: app.t('imgModel'),
                   desc: app.imageModel.trim().isEmpty
                       ? app.t('imgModelDesc')
                       : app.imageModel,
-                  control: evsGhostButton(
+                  control: animaGhostButton(
                       context, app.t('studioModelManage'), Icons.tune,
                       onTap: () => unawaited(showDialog<void>(
                           context: context,
                           builder: (_) => ImageModelsSheet(app: app))))),
-              evsRow(context,
+              animaRow(context,
                   label: app.t('imgFreeVoice'),
                   desc: app.t('imgFreeVoiceDesc'),
-                  control: evsToggle(context, app.imageFreeVoiceToo,
+                  control: animaToggle(context, app.imageFreeVoiceToo,
                       app.setImageFreeVoiceToo)),
             ]),
         full: true,
@@ -4746,24 +4746,24 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final set = app.relayUrl.trim().isNotEmpty;
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.network_check_outlined,
             title: app.t('cardRelay'),
             rows: [
-              evsRow(context,
+              animaRow(context,
                   stacked: true,
                   label: app.t('relayAddressField'),
                   desc: app.t('cardRelayDesc'),
-                  control: evsGhostButton(
+                  control: animaGhostButton(
                       context,
                       set ? app.relayUrl : app.t('relaySetAddress'),
                       Icons.tune,
                       onTap: () =>
                           unawaited(showRelayAddressDialog(context, app)))),
-              evsRow(context,
+              animaRow(context,
                   label: app.t('prismNavRelay'),
                   desc: app.t('cardRelayOpenDesc'),
-                  control: evsGhostButton(
+                  control: animaGhostButton(
                       context, app.t('relayShow'), Icons.open_in_new,
                       onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
@@ -4777,12 +4777,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _llmConnCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context, icon: Icons.wifi, title: app.t('cardConnMode'), rows: [
+        animaCard(context, icon: Icons.wifi, title: app.t('cardConnMode'), rows: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
             child: Column(
               children: [
-                evsRadioCard(context, 
+                animaRadioCard(context, 
                   selected: app.inferenceMode == 'localServer',
                   title: app.t('modeLocalServer'),
                   desc: app.t('modeLocalServerDesc'),
@@ -4792,7 +4792,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       : null,
                 ),
                 const SizedBox(height: 8),
-                evsRadioCard(context, 
+                animaRadioCard(context, 
                   selected: app.inferenceMode == 'remote',
                   title: app.t('modeRemote'),
                   desc: app.t('modeRemoteDesc'),
@@ -4810,7 +4810,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         full: true,
       ),
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.travel_explore,
             title: app.t('webSearch'),
             rows: [const _WebSearchCard()]),
@@ -4830,7 +4830,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _llmGenCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context, icon: Icons.tune, title: app.t('cardGenParams'), rows: [
+        animaCard(context, icon: Icons.tune, title: app.t('cardGenParams'), rows: [
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
             child: Text(app.t('genParamsDesc'),
@@ -4840,7 +4840,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           // сообщает, что она умеет (`capabilities` в /api/show): у Gemma там
           // нет «thinking», и включать нечего. Молчать об этом — значит
           // оставить человека наедине с переключателем, который не работает.
-          evsRow(context,
+          animaRow(context,
             label: app.t('genThinking'),
             desc: app.selectedModelThinks == false
                 ? app.t('genThinkingNone').replaceAll('{m}', app.selectedModel)
@@ -4848,7 +4848,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             control: app.selectedModelThinks == false
                 ? Text(app.t('genThinkingNA'),
                     style: TextStyle(fontSize: 12, color: _faint(context)))
-                : evsToggle(context, app.llmThinking,
+                : animaToggle(context, app.llmThinking,
                     (v) => app.setLlmThinking(v)),
           ),
           _GenParam(app, 'temperature', 'Temperature', 'genTemperatureDesc',
@@ -4870,14 +4870,14 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           // Сжатие стоит рядом с размером окна намеренно: это две стороны
           // одного вопроса — сколько разговора помещается и что делать, когда
           // он перестал помещаться.
-          evsRow(context,
+          animaRow(context,
             label: app.t('ctxAutoCompress'),
             desc: app.t('ctxAutoCompressDesc'),
-            control: evsToggle(context, app.ctxAutoCompress,
+            control: animaToggle(context, app.ctxAutoCompress,
                 (v) => app.setCtxAutoCompress(v)),
           ),
           if (app.ctxAutoCompress)
-            evsNamedSlider(context,
+            animaNamedSlider(context,
               label: app.t('ctxCompressAt'),
               desc: app.t('ctxCompressAtDesc'),
               value: app.ctxCompressAt.clamp(0.5, 0.95),
@@ -4948,9 +4948,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final p = app.persona;
     String pct(double v) => '${(v * 100).round()}%';
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.chat_bubble_outline, title: app.t('cardStyle'), rows: [
-        evsNamedSlider(context, 
+        animaNamedSlider(context, 
           label: app.t('formality'),
           value: p.formality,
           valueLabel: pct(p.formality),
@@ -4958,7 +4958,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('formalRight'),
           onChanged: (v) => _persona((x) => x.formality = v),
         ),
-        evsNamedSlider(context, 
+        animaNamedSlider(context, 
           label: app.t('empathy'),
           value: p.empathy,
           valueLabel: pct(p.empathy),
@@ -4966,7 +4966,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('empathyRight'),
           onChanged: (v) => _persona((x) => x.empathy = v),
         ),
-        evsNamedSlider(context, 
+        animaNamedSlider(context, 
           label: app.t('verbosity'),
           value: p.verbosity,
           valueLabel: pct(p.verbosity),
@@ -4974,7 +4974,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('verbosityRight'),
           onChanged: (v) => _persona((x) => x.verbosity = v),
         ),
-        evsNamedSlider(context, 
+        animaNamedSlider(context, 
           label: app.t('humor'),
           value: p.humor,
           valueLabel: pct(p.humor),
@@ -4982,7 +4982,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           right: app.t('humorRight'),
           onChanged: (v) => _persona((x) => x.humor = v),
         ),
-        evsNamedSlider(context, 
+        animaNamedSlider(context, 
           label: app.t('creativity'),
           value: p.creativity,
           valueLabel: pct(p.creativity),
@@ -4991,9 +4991,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           onChanged: (v) => _persona((x) => x.creativity = v),
         ),
       ])),
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.person_outline, title: app.t('cardAssistant'), rows: [
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('assistantNameLabel'),
           desc: app.t('assistantNameDesc'),
           control: SizedBox(
@@ -5003,11 +5003,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 onChanged: (v) => _persona((x) => x.assistantName = v)),
           ),
         ),
-        evsRow(context, 
+        animaRow(context, 
           stacked: true,
           label: app.t('emojiPolicy'),
           desc: app.t('emojiPolicyDesc'),
-          control: evsSegmentedWide<String>(context, 
+          control: animaSegmentedWide<String>(context, 
             [
               ('emoji_never', app.t('emojiNever')),
               ('emoji_sometimes', app.t('emojiSometimes')),
@@ -5045,17 +5045,17 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     final p = app.persona;
     return [
       _CardSpec(
-        evsCard(context, icon: Icons.access_time, title: app.t('cardMemory'), rows: [
-          evsRow(context, 
+        animaCard(context, icon: Icons.access_time, title: app.t('cardMemory'), rows: [
+          animaRow(context, 
             label: app.t('autoSaveFacts'),
             desc: app.t('autoSaveFactsDesc'),
-            control: evsToggle(context, 
+            control: animaToggle(context, 
                 p.autoSaveMemories, (v) => _persona((x) => x.autoSaveMemories = v)),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('askBeforeRemember'),
             desc: app.t('askBeforeRememberDesc'),
-            control: evsToggle(context, p.askBeforeRemembering,
+            control: animaToggle(context, p.askBeforeRemembering,
                 (v) => _persona((x) => x.askBeforeRemembering = v)),
           ),
           for (final m in p.savedMemories) _memItem(app, m),
@@ -5064,7 +5064,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               padding: const EdgeInsets.all(12),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: evsDangerButton(context, app.t('clearMemory'),
+                child: animaDangerButton(context, app.t('clearMemory'),
                     () => _persona((x) => x.savedMemories.clear())),
               ),
             ),
@@ -5114,7 +5114,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // =================== ПРИВАТНОСТЬ ===================
   List<_CardSpec> _privacyAccessCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.shield_outlined, title: app.t('cardCmdScope'), rows: [
         _permGrid(app, [
           ('permFiles', app.t('permFiles')),
@@ -5125,22 +5125,22 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ('permRegistry', app.t('permRegistry')),
         ]),
       ])),
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.dns_outlined, title: app.t('cardNetSec'), rows: [
-        evsRow(context, 
+        animaRow(context, 
             label: app.t('offlineMode'),
             desc: app.t('offlineModeDesc'),
             control: _stubToggle('offline')),
-        evsRow(context, 
+        animaRow(context, 
             label: app.t('noTelemetry'),
             desc: app.t('noTelemetryDesc'),
             control: _stubToggle('noTelemetry')),
-        evsRow(context, 
+        animaRow(context, 
             label: app.t('noModelNet'),
             desc: app.t('noModelNetDesc'),
             control: _stubToggle('noModelNet')),
       ])),
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.warning_amber_outlined, title: app.t('cardBlacklist'), rows: [
         Padding(
           padding: const EdgeInsets.all(14),
@@ -5149,7 +5149,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             runSpacing: 6,
             children: [
               for (final t in _blacklist) _tag(t),
-              evsAddButton(context, app.t('add'),
+              animaAddButton(context, app.t('add'),
                   () => _stubSnack(app), small: true),
             ],
           ),
@@ -5161,26 +5161,26 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _privacyDataCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context, icon: Icons.delete_outline, title: app.t('cardData'), rows: [
-          evsRow(context, 
+        animaCard(context, icon: Icons.delete_outline, title: app.t('cardData'), rows: [
+          animaRow(context, 
             label: app.t('clearHistory'),
             desc: app.t('clearHistoryDesc'),
-            control: evsDangerButton(context, app.t('clearHistory'), () => _stubSnack(app)),
+            control: animaDangerButton(context, app.t('clearHistory'), () => _stubSnack(app)),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('resetMemory'),
             desc: app.t('resetMemoryDesc'),
-            control: evsDangerButton(context, app.t('resetMemory'), () {
+            control: animaDangerButton(context, app.t('resetMemory'), () {
               _persona((x) {
                 x.savedMemories.clear();
                 x.memoryNote = '';
               });
             }),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('resetAll'),
             desc: app.t('resetAllDesc'),
-            control: evsDangerButton(context, app.t('fullReset'), () => _stubSnack(app)),
+            control: animaDangerButton(context, app.t('fullReset'), () => _stubSnack(app)),
           ),
         ]),
         full: true,
@@ -5273,7 +5273,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _aboutInfoCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context, icon: Icons.info_outline, title: app.t('navAbout'), rows: [
+        animaCard(context, icon: Icons.info_outline, title: app.t('navAbout'), rows: [
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 24, 18, 18),
             child: Column(
@@ -5283,7 +5283,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                 // Гейт переднего плана: страницу открывают, чтобы посмотреть
                 // именно на знак, поэтому луп идёт бесконечно, пока окно видно,
                 // и не ждёт активности ассистента.
-                const _EvsLogoMark(size: 96, gate: MotionGate.foreground),
+                const _AnimaLogoMark(size: 96, gate: MotionGate.foreground),
                 const SizedBox(height: 12),
                 Text('Nexus Anima',
                     style: TextStyle(
@@ -5312,13 +5312,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   // =================== ЖУРНАЛ ===================
   // Тот же журнал, что на вкладке «Журнал» в «Ноктюрне», и те же файлы: читает
-  // EvsLogFeed. Отсюда его берут классический стиль и Nexus (кнопка «Журнал» в
+  // AnimaLogFeed. Отсюда его берут классический стиль и Nexus (кнопка «Журнал» в
   // рейле раньше открывала список изменений — то есть журнал патчей вместо
   // журнала работы).
   List<_CardSpec> _appLogCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.receipt_long_outlined,
             title: app.t('navLog'),
             rows: [const _AppLogCard()]),
@@ -5329,7 +5329,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _changelogCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.description_outlined, title: app.t('changelog'), rows: [
         // The changelog is a page of its own now, so it can list far more than
         // the three entries that used to fit next to the version card.
@@ -5365,13 +5365,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _aboutUpdateCards(AppState app) {
     return [
-      _CardSpec(evsCard(context,
+      _CardSpec(animaCard(context,
           icon: Icons.refresh, title: app.t('updates'), rows: [
-        evsRow(context, 
+        animaRow(context, 
             label: app.t('autoCheck'),
             desc: app.t('autoCheckDesc'),
-            control: evsToggle(context, app.autoUpdateCheck, app.setAutoUpdateCheck)),
-        evsRow(context,
+            control: animaToggle(context, app.autoUpdateCheck, app.setAutoUpdateCheck)),
+        animaRow(context,
             label: app.t('checkNow'),
             desc: app.t('updFlowDesc'),
             control: _updateControl(app)),
@@ -5383,16 +5383,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           valueListenable: AppUpdater.instance.rollbackVersion,
           builder: (_, prev, __) => prev.isEmpty
               ? const SizedBox.shrink()
-              : evsRow(context,
+              : animaRow(context,
                   label: app.t('updRollback'),
                   desc: app.t('updRollbackDesc').replaceAll('{v}', prev),
-                  control: evsGhostButton(
+                  control: animaGhostButton(
                       context,
                       '${app.t('updRollback')} · $prev',
                       Icons.settings_backup_restore,
                       onTap: () => _confirmRollback(app, prev))),
         ),
-        evsRow(context,
+        animaRow(context,
             stacked: true,
             label: app.t('updServer'),
             desc: app.t('updServerDesc'),
@@ -5449,12 +5449,12 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // ---- Микрофон и распознавание ----
   List<_CardSpec> _sttCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.mic_none,
         title: app.t('cardStt'),
         rows: [
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('sidecar'),
             desc: app.t('sidecarDesc'),
             control: ValueListenableBuilder<SidecarStatus>(
@@ -5462,16 +5462,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               builder: (_, s, __) => _sidecarChip(app, s),
             ),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('sidecarComponent'),
             desc: app.t('sidecarComponentDesc'),
             control: _sidecarComponentControl(app),
           ),
-          evsRow(context, 
+          animaRow(context, 
             stacked: true,
             label: app.t('sttEngine'),
             desc: app.t('sttEngineDesc'),
-            control: evsSegmentedWide<String>(context, 
+            control: animaSegmentedWide<String>(context, 
               [('windows', 'Windows STT'), ('whisper', app.t('localEngineName'))],
               app.sttEngine,
               (v) => app.setSttEngine(v),
@@ -5494,11 +5494,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           // Шумоподавление, чувствительность и модели к ним переехали в свой
           // раздел — «Чувствительность и шумоподавление». Здесь остаётся то,
           // что отвечает на вопрос «чем и на каком языке распознаём».
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('recognitionLanguage'),
             desc: app.t('recognitionLanguageDesc'),
-            control: evsSegmentedWide<String>(context, 
+            control: animaSegmentedWide<String>(context, 
               [('auto', app.t('sttAuto')), ('ru', 'RU'), ('en', 'EN')],
               app.sttLanguage,
               (v) => app.setSttLanguage(v),
@@ -5522,7 +5522,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   List<_CardSpec> _sensitivityCards(AppState app) {
     return [
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.graphic_eq,
             title: app.t('cardDenoise'),
             rows: [
@@ -5532,11 +5532,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     style: TextStyle(fontSize: 12, color: _faint(context))),
               ),
               _DenoiseSelector(app),
-              evsRow(context,
+              animaRow(context,
                 stacked: true,
                 label: app.t('micSensitivity'),
                 desc: app.t('micSensitivityDesc'),
-                control: evsSegmentedWide<int>(context,
+                control: animaSegmentedWide<int>(context,
                   [
                     (3, app.t('micSensLow')),
                     (2, app.t('micSensMed')),
@@ -5547,10 +5547,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                   (v) => app.setMicVadAggr(v),
                 ),
               ),
-              evsRow(context,
+              animaRow(context,
                 label: app.t('micGain'),
                 desc: app.t('micGainDesc'),
-                control: evsSlider(context,
+                control: animaSlider(context,
                   value: app.micGain.clamp(0.5, 4.0),
                   min: 0.5,
                   max: 4.0,
@@ -5563,7 +5563,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
         full: true,
       ),
       _CardSpec(
-        evsCard(context,
+        animaCard(context,
             icon: Icons.dns_outlined,
             title: app.t('cardLocalModels'),
             rows: [_AssetModelsCard(app)]),
@@ -5574,17 +5574,17 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _micDeviceCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.settings_voice_outlined,
         title: app.t('cardInputDevice'),
         rows: [
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('inputDevice'),
             desc: app.t('inputDeviceDesc'),
             control: _inputDeviceControl(app),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('inputLevel'),
             control: SizedBox(
               width: 180,
@@ -5596,7 +5596,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                     value: lvl.clamp(0.0, 1.0),
                     minHeight: 6,
                     backgroundColor: _stroke(context),
-                    valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                    valueColor: const AlwaysStoppedAnimation(_animaGMid),
                   ),
                 ),
               ),
@@ -5623,16 +5623,16 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _listenCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.headset_mic_outlined,
         title: app.t('cardListenMode'),
         rows: [
-          evsRow(context, 
+          animaRow(context, 
             stacked: true,
             label: app.t('activationMode'),
             desc: app.t('activationModeDesc'),
-            control: evsSegmentedWide<String>(context,
+            control: animaSegmentedWide<String>(context,
               [('continuous', app.t('continuous')), ('ptt', 'Push-to-Talk')],
               app.listenMode,
               (v) => app.setListenMode(v),
@@ -5641,7 +5641,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           // Область назначения клавиш появляется только у Push-to-Talk: в
           // непрерывном режиме удерживать нечего.
           if (app.listenMode == 'ptt') ...[
-            evsRow(context,
+            animaRow(context,
               stacked: true,
               label: app.t('pttKeysLabel'),
               desc: app.t('pttKeysDesc'),
@@ -5652,15 +5652,15 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             if (_pttConflictsWithShowWindow(app))
               _PttNote(app.t('pttConflict'), danger: true),
           ],
-          evsRow(context,
+          animaRow(context,
             label: app.t('autoSendPause'),
             desc: app.t('autoSendPauseDesc'),
-            control: evsToggle(context, app.micAutoSend, (v) => app.setMicAutoSend(v)),
+            control: animaToggle(context, app.micAutoSend, (v) => app.setMicAutoSend(v)),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('pauseDuration'),
             desc: app.t('pauseDurationDesc'),
-            control: evsSlider(context, 
+            control: animaSlider(context, 
               value: app.micPauseSeconds.toDouble().clamp(1, 10),
               min: 1,
               max: 10,
@@ -5669,10 +5669,10 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setMicPauseSeconds(v.round()),
             ),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('showPartial'),
             desc: app.t('showPartialDesc'),
-            control: evsToggle(context, app.showPartial, app.setShowPartial),
+            control: animaToggle(context, app.showPartial, app.setShowPartial),
           ),
         ],
       )),
@@ -5704,25 +5704,25 @@ class _DesktopSettingsState extends State<DesktopSettings> {
   // its own page.
   List<_CardSpec> _voiceOutCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.record_voice_over_outlined,
         title: app.t('cardVoiceResp'),
         rows: [
-          evsRow(context,
+          animaRow(context,
             label: app.t('voiceResponses'),
             desc: app.t('voiceResponsesDesc'),
-            control: evsToggle(context, app.voiceResponses, app.setVoiceResponses),
+            control: animaToggle(context, app.voiceResponses, app.setVoiceResponses),
           ),
-          evsRow(context,
+          animaRow(context,
             label: app.t('announceReady'),
             desc: app.t('announceReadyDesc'),
-            control: evsToggle(context, app.announceReady, app.setAnnounceReady),
+            control: animaToggle(context, app.announceReady, app.setAnnounceReady),
           ),
-          evsRow(context,
+          animaRow(context,
             label: app.t('ttsRate'),
             desc: app.t('ttsRateDesc'),
-            control: evsSlider(context,
+            control: animaSlider(context,
               value: app.ttsRate.clamp(0.5, 2.0),
               min: 0.5,
               max: 2.0,
@@ -5731,9 +5731,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               onChanged: (v) => app.setTtsRate(v),
             ),
           ),
-          evsRow(context,
+          animaRow(context,
             label: app.t('ttsVolume'),
-            control: evsSlider(context,
+            control: animaSlider(context,
               value: (app.ttsVolume * 100).clamp(0, 100),
               min: 0,
               max: 100,
@@ -5744,7 +5744,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           ),
         ],
       )),
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.record_voice_over_outlined,
         title: app.t('cardAssistantVoice'),
@@ -5755,13 +5755,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _voiceEngineCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.graphic_eq,
         title: app.t('ttsEngineTitle'),
         rows: [_TtsEngineCard(app)],
       )),
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.text_fields,
         title: app.t('ttsInterp'),
@@ -5772,7 +5772,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _voiceCloneCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.graphic_eq,
         title: app.t('ttsCosySectionTitle'),
@@ -5783,42 +5783,42 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _voiceFxCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.auto_fix_high_outlined,
         title: app.t('ttsFx'),
         rows: [
-          evsRow(context,
+          animaRow(context,
             label: app.t('ttsFx'),
             desc: app.t('ttsFxDesc'),
-            control: evsToggle(context, app.ttsFxEnabled, (v) => app.setTtsFx(enabled: v)),
+            control: animaToggle(context, app.ttsFxEnabled, (v) => app.setTtsFx(enabled: v)),
           ),
           if (app.ttsFxEnabled) ...[
-            evsRow(context,
+            animaRow(context,
               label: app.t('ttsFxPreset'),
               desc: app.t('ttsFxPresetDesc'),
-              control: evsAddButton(context, 'EDI', () => app.applyEdiPreset(), icon: Icons.smart_toy_outlined),
+              control: animaAddButton(context, 'EDI', () => app.applyEdiPreset(), icon: Icons.smart_toy_outlined),
             ),
-            evsNamedSlider(context,
+            animaNamedSlider(context,
               label: app.t('ttsFxDetune'),
               desc: app.t('ttsFxDetuneDesc'),
               value: app.ttsFxDetune,
               valueLabel: '${(app.ttsFxDetune * 100).round()}%',
               onChanged: (v) => app.setTtsFx(detune: v),
             ),
-            evsNamedSlider(context,
+            animaNamedSlider(context,
               label: app.t('ttsFxMetallic'),
               value: app.ttsFxMetallic,
               valueLabel: '${(app.ttsFxMetallic * 100).round()}%',
               onChanged: (v) => app.setTtsFx(metallic: v),
             ),
-            evsNamedSlider(context,
+            animaNamedSlider(context,
               label: app.t('ttsFxReverb'),
               value: app.ttsFxReverb,
               valueLabel: '${(app.ttsFxReverb * 100).round()}%',
               onChanged: (v) => app.setTtsFx(reverb: v),
             ),
-            evsNamedSlider(context,
+            animaNamedSlider(context,
               label: app.t('ttsFxBright'),
               desc: app.t('ttsFxBrightDesc'),
               value: (app.ttsFxLowpass - 800) / 5200,
@@ -5833,7 +5833,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
   List<_CardSpec> _voicePhraseCards(AppState app) {
     return [
-      _CardSpec(evsCard(
+      _CardSpec(animaCard(
         context,
         icon: Icons.playlist_play,
         title: app.t('clonePhr2Title'),
@@ -5861,7 +5861,7 @@ class _PttNote extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(text,
-                style: EvsType.caption.copyWith(
+                style: AnimaType.caption.copyWith(
                     color: danger ? _danger(context) : _sub(context))),
           ),
         ]),
@@ -5969,7 +5969,7 @@ class _PttHotkeyRowState extends State<_PttHotkeyRow> {
             children: [
               if (caps.isEmpty)
                 Text(_rec ? app.t('pttPressKeys') : app.t('pttUnset'),
-                    style: EvsType.caption.copyWith(
+                    style: AnimaType.caption.copyWith(
                         color: _rec ? _accent(context) : _faint(context)))
               else
                 for (int i = 0; i < caps.length; i++) ...[
@@ -6195,7 +6195,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                 style: TextStyle(fontSize: 11.5, color: _warn(context))),
           ),
         // Endpoint + check.
-        evsRow(context,
+        animaRow(context,
           stacked: true,
           label: app.t('ttsCosyEndpoint'),
           control: Column(
@@ -6260,7 +6260,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         ),
         // Управление локальным сервером клона: раньше его поднимали руками из
         // консоли, хотя приложение уже умеет с ним разговаривать.
-        evsRow(context,
+        animaRow(context,
           stacked: true,
           label: app.t('cloneSrvTitle'),
           desc: app.t('cloneSrvDesc'),
@@ -6473,7 +6473,7 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
         child: Text(app.t('ttsCosyWiringHint'),
             style: TextStyle(fontSize: 11, color: _faint(context))),
       ),
-      evsRow(context, 
+      animaRow(context, 
         stacked: true,
         label: app.t('ttsCosyClone'),
         control: Column(
@@ -6522,9 +6522,9 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
           ],
         ),
       ),
-      evsRow(context, 
+      animaRow(context, 
         label: app.t('ttsCosySpeed'),
-        control: evsSlider(context, 
+        control: animaSlider(context, 
           value: app.cosyvoiceSpeed.clamp(0.5, 2.0),
           min: 0.5,
           max: 2.0,
@@ -6533,7 +6533,7 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
           onChanged: app.setCosyvoiceSpeed,
         ),
       ),
-      evsRow(context,
+      animaRow(context,
         stacked: true,
         label: app.t('cloneLanguage'),
         desc: app.t('cloneLanguageHint'),
@@ -6644,7 +6644,7 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
                 label: app.t('presetFieldDevice'),
                 on: _device != null,
                 onToggle: (v) => setState(() => _device = v ? 'cpu' : null),
-                child: evsSegmentedWide<String>(context, [
+                child: animaSegmentedWide<String>(context, [
                   ('cpu', app.t('deviceCpu')),
                   ('cuda', app.t('deviceGpu')),
                 ], _device ?? 'cpu', (v) => setState(() => _device = v)),
@@ -6653,7 +6653,7 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
                 label: app.t('presetFieldDenoise'),
                 on: _denoise != null,
                 onToggle: (v) => setState(() => _denoise = v ? 'light' : null),
-                child: evsSegmentedWide<String>(context, [
+                child: animaSegmentedWide<String>(context, [
                   ('off', app.t('presetDnOff')),
                   ('light', app.t('presetDnLight')),
                   ('strong', app.t('presetDnStrong')),
@@ -6663,7 +6663,7 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
                 label: app.t('presetFieldWeb'),
                 on: _web != null,
                 onToggle: (v) => setState(() => _web = v ? true : null),
-                child: evsSegmentedWide<bool>(context, [
+                child: animaSegmentedWide<bool>(context, [
                   (true, app.t('presetWebOn')),
                   (false, app.t('presetWebOff')),
                 ], _web ?? true, (v) => setState(() => _web = v)),
@@ -6750,7 +6750,7 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
                       value: cs.progress > 0 ? cs.progress : null,
                       minHeight: 6,
                       backgroundColor: _stroke(context),
-                      valueColor: const AlwaysStoppedAnimation(_evsGMid),
+                      valueColor: const AlwaysStoppedAnimation(_animaGMid),
                     ),
                   ),
                 ),
@@ -6764,14 +6764,14 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
           case ComponentState.ready:
             return _compBadge(app.t('componentReady'), _success(context));
           case ComponentState.error:
-            return evsGhostButton(context, app.t('retry'), Icons.refresh,
+            return animaGhostButton(context, app.t('retry'), Icons.refresh,
                 onTap: () => ComponentManager.instance.ensure('clone'));
           case ComponentState.absent:
             final info = ComponentManager.instance.infoOf('clone');
             final gb = info != null && info.size > 0
                 ? ' (${(info.size / 1073741824).toStringAsFixed(1)} GB)'
                 : '';
-            return evsGhostButton(context, '${app.t('download')}$gb',
+            return animaGhostButton(context, '${app.t('download')}$gb',
                 Icons.download,
                 onTap: () => ComponentManager.instance.ensure('clone'));
         }
@@ -6833,7 +6833,7 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
     final have = app.voiceCommands.where((c) => c.speakVariants.isNotEmpty).length
         + app.speakVarsMap.length;
     return Row(children: [
-      evsGhostButton(context, app.t('speakVarWrite'), Icons.auto_awesome,
+      animaGhostButton(context, app.t('speakVarWrite'), Icons.auto_awesome,
           onTap: _varsBusy
               ? null
               : () async {
@@ -7044,19 +7044,19 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
           child: Text(app.t('cloneSectionHint'),
               style: TextStyle(fontSize: 11, color: _faint(context))),
         ),
-        evsRow(context,
+        animaRow(context,
           label: app.t('cloneTitle'),
           desc: app.t('cloneHint'),
-          control: evsToggle(context, app.cloneEnabled, app.setCloneEnabled),
+          control: animaToggle(context, app.cloneEnabled, app.setCloneEnabled),
         ),
         if (app.cloneEnabled) ...[
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('cloneComponent'),
             desc: app.t('cloneComponentDesc'),
             control: _componentControl(),
           ),
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('cloneSample'),
             control: Row(children: [
@@ -7094,19 +7094,19 @@ class _VoiceCloneCardState extends State<_VoiceCloneCard> {
           ),
           _engineStatus(),
           _prerenderStatus(),
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('clonePhr2Title'),
             desc: app.t('clonePhrasesDesc'),
             control: _phrasesTable(),
           ),
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('speakVarTitle'),
             desc: app.t('speakVarDesc'),
             control: _speakVariants(),
           ),
-          evsRow(context,
+          animaRow(context,
             stacked: true,
             label: app.t('clonePhraseLib'),
             desc: app.t('clonePhraseLibHint'),
@@ -7182,16 +7182,16 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('ttsInterp'),
           desc: app.t('ttsInterpDesc'),
-          control: evsToggle(context, app.ttsInterpEnabled, app.setTtsInterpEnabled),
+          control: animaToggle(context, app.ttsInterpEnabled, app.setTtsInterpEnabled),
         ),
         if (app.ttsInterpEnabled) ...[
-          evsRow(context, 
+          animaRow(context, 
             stacked: true,
             label: app.t('ttsInterpMode'),
-            control: evsSegmentedWide<String>(context, 
+            control: animaSegmentedWide<String>(context, 
               [
                 ('rules', app.t('ttsInterpRules')),
                 ('model', app.t('ttsInterpModel')),
@@ -7210,7 +7210,7 @@ class _TtsInterpCardState extends State<_TtsInterpCard> {
             ),
           ),
           if (app.ttsInterpMode == 'model')
-            evsRow(context,
+            animaRow(context,
               stacked: true,
               label: app.t('ttsInterpModelField'),
               desc: app.t('ttsInterpModelPickDesc'),
@@ -7263,7 +7263,7 @@ class _ModelModeCard extends StatelessWidget {
                 style: TextStyle(color: _body(context), fontSize: 13)),
           ),
       ],
-      child: evsSelectButton(context, label, minWidth: 150),
+      child: animaSelectButton(context, label, minWidth: 150),
     );
   }
 
@@ -7289,11 +7289,11 @@ class _ModelModeCard extends StatelessWidget {
             ],
           ),
         ),
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('modelForSearch'),
           control: _picker(context, app.searchModel, app.setSearchModel),
         ),
-        evsRow(context, 
+        animaRow(context, 
           label: app.t('modelForChat'),
           control: _picker(context, app.chatModel, app.setChatModel),
         ),
@@ -7368,7 +7368,7 @@ class _GenParamState extends State<_GenParam> {
                   color: on ? _accent(context) : _faint(context)),
             ),
             const SizedBox(width: 12),
-            evsToggle(context, on, (b) {
+            animaToggle(context, on, (b) {
               setState(() => _dragging = null);
               app.setLlmOption(widget.name, b ? _round(value) : null);
             }),
@@ -7626,7 +7626,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
           ),
         ),
         if (_open) ...[
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('llmNumCtx'),
             desc: app.t('llmNumCtxDesc'),
             control: SizedBox(
@@ -7637,7 +7637,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                   error: _ctxErr),
             ),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('llmNumPredict'),
             desc: app.t('llmNumPredictDesc'),
             control: SizedBox(
@@ -7648,7 +7648,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
                   error: _predErr),
             ),
           ),
-          evsRow(context, 
+          animaRow(context, 
             label: app.t('llmTemp'),
             desc: app.t('llmTempDesc'),
             control: SizedBox(
@@ -7656,7 +7656,7 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
               child: _field(_temp, _onTemp, error: _tempErr),
             ),
           ),
-          evsRow(context,
+          animaRow(context,
             label: app.t('llmKeepAlive'),
             desc: app.t('llmKeepAliveDesc'),
             control: SizedBox(
@@ -7734,7 +7734,7 @@ class _StylePicker extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Text(label,
-                    style: EvsType.control.copyWith(
+                    style: AnimaType.control.copyWith(
                         color: selected ? _txt(context) : _sub(context))),
               ],
             ),
@@ -7777,7 +7777,7 @@ class _StylePicker extends StatelessWidget {
 // status pill/line) + right chat column. Purely decorative — no real data.
 class _StylePreviewPainter extends CustomPainter {
   final AppStyle style;
-  final EvsSkin skin;
+  final AnimaSkin skin;
   _StylePreviewPainter(this.style, this.skin);
 
   @override
@@ -7940,7 +7940,7 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
                     style: TextStyle(fontSize: 11.5, color: _body(context))),
               ),
               const SizedBox(width: 10),
-              evsGhostButton(
+              animaGhostButton(
                   context, app.t('clonePhr2Enable'), Icons.record_voice_over,
                   onTap: () => app.setTtsEngineChoice('cosyvoice')),
             ]),
@@ -7949,7 +7949,7 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
           child: Align(
             alignment: Alignment.centerLeft,
-            child: evsGhostButton(
+            child: animaGhostButton(
                 context, app.t('clonePhr2Prepare'), Icons.download_done,
                 onTap: () {
               SidecarClient.instance.prerender(phrases);

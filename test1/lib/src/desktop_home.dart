@@ -1,6 +1,6 @@
 part of '../main.dart';
 
-String _evsRelTime(AppState app, DateTime dt) {
+String _animaRelTime(AppState app, DateTime dt) {
   final now = DateTime.now();
   if (now.difference(dt).inMinutes < 1) return app.t('justNow');
   final today = DateTime(now.year, now.month, now.day);
@@ -32,7 +32,7 @@ class DesktopHome extends StatelessWidget {
     // Subscribe the shell to theme changes. Every colour token resolves through
     // `_pal(context)` which uses `context.read` (no subscription), and this
     // widget is `const`, so without an explicit dependency the shell background
-    // (_bg / _evsShellBg) was computed once and never repainted when themeMode
+    // (_bg / _animaShellBg) was computed once and never repainted when themeMode
     // changed (live theme switch, or the async prefs load right after startup) —
     // leaving a stale dark shell behind the transparent chat area while the
     // sidebar/content (which do watch) followed the theme. Rebuild on themeMode.
@@ -54,7 +54,7 @@ class DesktopHome extends StatelessWidget {
         : Scaffold(
             backgroundColor: _bg(context),
             body: Container(
-              decoration: _evsShellBg(context),
+              decoration: _animaShellBg(context),
               // The sidebar spans the FULL window height (its themed surface
               // reaches the very top), and the window title bar sits only over
               // the main content — so the top of the window reads as two colours
@@ -101,11 +101,11 @@ class _DesktopSidebar extends StatelessWidget {
     );
   }
 
-  // Кнопка рейки — общая `evsIconButton`: свою держали все три оболочки, и
+  // Кнопка рейки — общая `animaIconButton`: свою держали все три оболочки, и
   // вели они себя по-разному (где-то без подсказки, где-то без отклика).
   Widget _iconBtn(BuildContext context, IconData icon, VoidCallback onTap,
           {String? tooltip}) =>
-      evsIconButton(context, icon: icon, tooltip: tooltip, onTap: onTap);
+      animaIconButton(context, icon: icon, tooltip: tooltip, onTap: onTap);
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +113,7 @@ class _DesktopSidebar extends StatelessWidget {
     final convs = app.conversations;
     return Container(
       width: 264,
-      decoration: _evsRailBg(context),
+      decoration: _animaRailBg(context),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -137,7 +137,7 @@ class _DesktopSidebar extends StatelessWidget {
                   DragToMoveArea(
                     child: Row(
                       children: [
-                        const _EvsLogoMark(),
+                        const _AnimaLogoMark(),
                         const SizedBox(width: 9),
                         Expanded(
                           child: Text(
@@ -175,7 +175,7 @@ class _DesktopSidebar extends StatelessWidget {
                       // делся — он в общем меню, вместе с остальными
                       // функциями, и теперь одинаково находится во всех трёх
                       // стилях, а не только тут.
-                      const EvsMoreButton(),
+                      const AnimaMoreButton(),
                       _iconBtn(context, Icons.add, () {
                         app.buzz();
                         app.newChat();
@@ -189,7 +189,7 @@ class _DesktopSidebar extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
               child: Text(
                 'ИСТОРИЯ',
-                style: EvsType.sectionLabel
+                style: AnimaType.sectionLabel
                     .copyWith(letterSpacing: 0.9, color: _sectionLabel(context)),
               ),
             ),
@@ -282,15 +282,15 @@ class _DesktopSidebar extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _evsRelTime(app, c.updatedAt),
+                          _animaRelTime(app, c.updatedAt),
                           style: TextStyle(fontSize: 11.5, color: _faint(context)),
                         ),
                       ],
                     ),
                   ),
                   // Видимый способ добраться до меню строки — общий для всех
-                  // списков диалогов (см. `evsChatRowMenuButton`).
-                  evsChatRowMenuButton(context, c, app),
+                  // списков диалогов (см. `animaChatRowMenuButton`).
+                  animaChatRowMenuButton(context, c, app),
                 ],
               ),
             ),
@@ -870,7 +870,7 @@ class _NexusHubPainter extends CustomPainter {
   final double t, energy;
   final String stage;
   final bool vad, stt, llm, tts;
-  final EvsSkin skin;
+  final AnimaSkin skin;
   _NexusHubPainter({
     required this.t,
     required this.energy,
@@ -1108,7 +1108,7 @@ class _NexusRail extends StatelessWidget {
     final app = context.watch<AppState>();
     return Container(
       width: 66,
-      decoration: _evsRailBg(context),
+      decoration: _animaRailBg(context),
       child: SafeArea(
         child: Column(
           children: [
@@ -1141,9 +1141,9 @@ class _NexusRail extends StatelessWidget {
                 onTap: () => _openStudio(context, StudioMode.speech)),
             const Spacer(),
             // Остальные функции — общим меню, тем же, что в двух других стилях.
-            EvsMoreButton(
+            AnimaMoreButton(
               builder: (ctx, open) => _navIcon(
-                  ctx, Icons.more_horiz, ctx.read<AppState>().t('evsMore'),
+                  ctx, Icons.more_horiz, ctx.read<AppState>().t('animaMore'),
                   onTap: open),
             ),
             _navIcon(context, Icons.settings_outlined, app.t('settings'),
@@ -1170,7 +1170,7 @@ class _NexusLogoBead extends StatelessWidget {
   Widget build(BuildContext context) => const SizedBox(
         width: 40,
         height: 40,
-        child: Center(child: _EvsLogoMark(size: 38)),
+        child: Center(child: _AnimaLogoMark(size: 38)),
       );
 }
 
@@ -1250,7 +1250,7 @@ class _NexusStageState extends State<_NexusStage> {
               ),
               const SizedBox(width: 8),
               Text('${app.t('nxStatus')}: $label',
-                  style: EvsType.control.copyWith(color: _txt(context))),
+                  style: AnimaType.control.copyWith(color: _txt(context))),
             ],
           ),
         );
@@ -1279,7 +1279,7 @@ class _NexusStageState extends State<_NexusStage> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: EvsType.control.copyWith(color: _sub(context))),
+              style: AnimaType.control.copyWith(color: _sub(context))),
         if ((reply ?? '').isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
@@ -1287,7 +1287,7 @@ class _NexusStageState extends State<_NexusStage> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: EvsType.label.copyWith(color: _txt(context))),
+                style: AnimaType.label.copyWith(color: _txt(context))),
           ),
       ],
     );
@@ -1313,7 +1313,7 @@ class _NexusStageState extends State<_NexusStage> {
                       .join('   ·   '),
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.right,
-                  style: EvsType.caption.copyWith(color: _faint(context)),
+                  style: AnimaType.caption.copyWith(color: _faint(context)),
                 ),
               ),
             ],
@@ -1419,7 +1419,7 @@ class _NexusSubsystemCards extends StatelessWidget {
                   child: Text(label.toUpperCase(),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: EvsType.caption.copyWith(
+                      style: AnimaType.caption.copyWith(
                           fontSize: 10.5,
                           letterSpacing: 1.3,
                           fontWeight: FontWeight.w700,
@@ -1449,13 +1449,13 @@ class _NexusSubsystemCards extends StatelessWidget {
           Text(val,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: EvsType.body
+              style: AnimaType.body
                   .copyWith(fontSize: 13.5, color: valColor ?? _txt(c))),
           const SizedBox(height: 3),
           Text(sub,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: EvsType.mono.copyWith(fontSize: 11, color: _sub(c))),
+              style: AnimaType.mono.copyWith(fontSize: 11, color: _sub(c))),
         ],
       );
 
@@ -1479,7 +1479,7 @@ class _NexusSubsystemCards extends StatelessWidget {
 
   Widget _ttsCard(
       BuildContext c, AppState app, SidecarClient sc, NexusPipeline pipe) {
-    final (engine, sub) = evsTtsEngineLabel(app);
+    final (engine, sub) = animaTtsEngineLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
     // Cosyvoice health only gates the dot when cosyvoice is the engine actually
     // in use — a clone (XTTS) override makes cosyvoice reachability irrelevant.
@@ -1500,7 +1500,7 @@ class _NexusSubsystemCards extends StatelessWidget {
   Widget _llmCard(BuildContext c, AppState app, NexusPipeline pipe) {
     final local = app.isLocalModel(app.selectedModel);
     final model =
-        app.selectedModel.isEmpty ? '—' : evsShortModel(app.selectedModel);
+        app.selectedModel.isEmpty ? '—' : animaShortModel(app.selectedModel);
     final String mode;
     if (local) {
       mode = 'on-device · fllama';
@@ -1574,7 +1574,7 @@ class _NexusSubsystemCards extends StatelessWidget {
             child: Text(label,
                 maxLines: 1,
                 overflow: TextOverflow.clip,
-                style: EvsType.caption.copyWith(
+                style: AnimaType.caption.copyWith(
                     fontSize: 9.5, letterSpacing: 0.4, color: _faint(c))),
           ),
           const SizedBox(width: 6),
@@ -1598,7 +1598,7 @@ class _NexusSubsystemCards extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.right,
-                style: EvsType.mono.copyWith(fontSize: 10, color: _sub(c))),
+                style: AnimaType.mono.copyWith(fontSize: 10, color: _sub(c))),
           ),
         ],
       ),
@@ -1640,9 +1640,9 @@ class _NexusHomeState extends State<_NexusHome> {
     return Scaffold(
       backgroundColor: _bg(context),
       // Выдвижного ящика со списком диалогов здесь больше нет: список один на
-      // всё приложение — `EvsChatsDialog`, его открывает «Диалог» на рейке.
+      // всё приложение — `AnimaChatsDialog`, его открывает «Диалог» на рейке.
       body: Container(
-        decoration: _evsShellBg(context),
+        decoration: _animaShellBg(context),
         // Rail spans the full window height; the title bar sits over the whole
         // content area (stage + chat) so the window buttons stay top-right.
         child: const Row(
@@ -1757,11 +1757,11 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
           Row(
             children: [
               Text(app.t('nxNavDialog'),
-                  style: EvsType.label
+                  style: AnimaType.label
                       .copyWith(fontSize: 14, color: _txt(context))),
               const Spacer(),
               Text('${app.t('nxToday')} · ${_two(now.hour)}:${_two(now.minute)}',
-                  style: EvsType.caption
+                  style: AnimaType.caption
                       .copyWith(fontSize: 11.5, color: _faint(context))),
               const SizedBox(width: 6),
               // Список диалогов и новый диалог. В «Ноктюрне» это отдельная
@@ -1786,7 +1786,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
           const SizedBox(height: 8),
           // Модель диалога — здесь же, а не только в настройках: сменить её на
           // ходу можно в любом стиле, как в классической шапке чата.
-          Align(alignment: Alignment.centerLeft, child: evsModelPill(context)),
+          Align(alignment: Alignment.centerLeft, child: animaModelPill(context)),
         ],
       ),
     );
@@ -1804,7 +1804,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
       alignment: m.role == 'user'
           ? Alignment.centerRight
           : Alignment.centerLeft,
-      child: EvsMessageFrame(
+      child: AnimaMessageFrame(
         conversation: conv,
         message: m,
         isLast: isLast,
@@ -1860,7 +1860,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
             ),
           ),
           child: Text(m.content,
-              style: EvsType.body.copyWith(fontSize: 13.5, color: _txt(context))),
+              style: AnimaType.body.copyWith(fontSize: 13.5, color: _txt(context))),
         ),
       );
     }
@@ -1873,23 +1873,23 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
         children: [
           // Ход рассуждения — над ответом и свёрнутым.
           if (m.thinking.trim().isNotEmpty)
-            EvsThinkingBlock(text: m.thinking, live: m.content.trim().isEmpty),
+            AnimaThinkingBlock(text: m.thinking, live: m.content.trim().isEmpty),
           if (waiting)
             // Слово и значок метка выбирает сама. Заголовок блока рассуждения
             // над ней уже говорит «Думает…» — повторять это второй раз было бы
             // не сообщением, а эхом.
-            const EvsShimmerLabel()
+            const AnimaShimmerLabel()
           else
-            EvsTypingText(m.content,
-                style: EvsType.body
+            AnimaTypingText(m.content,
+                style: AnimaType.body
                     .copyWith(fontSize: 13.5, color: _txt(context))),
           if (!waiting)
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 '${_two(m.time.hour)}:${_two(m.time.minute)} · '
-                '${app.selectedModel.isEmpty ? '—' : evsShortModel(app.selectedModel)}',
-                style: EvsType.caption
+                '${app.selectedModel.isEmpty ? '—' : animaShortModel(app.selectedModel)}',
+                style: AnimaType.caption
                     .copyWith(fontSize: 10.5, color: _faint(context)),
               ),
             ),
@@ -1925,7 +1925,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                     child: Text(app.t('chatDisabledHint'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: EvsType.body
+                        style: AnimaType.body
                             .copyWith(fontSize: 12.5, color: _sub(context))),
                   ),
                 ]),
@@ -1969,7 +1969,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
                   // классическом чате.
                   onChanged: (_) => setState(() {}),
                   style:
-                      EvsType.body.copyWith(fontSize: 13, color: _txt(context)),
+                      AnimaType.body.copyWith(fontSize: 13, color: _txt(context)),
                   decoration: InputDecoration(
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
@@ -1987,7 +1987,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
           // Отправить · остановить · подождать — общая кнопка. Пока идёт
           // ответ, она становится «Остановить»: раньше остановить генерацию
           // можно было только в классическом стиле и только в ролевой игре.
-          evsSendButton(
+          animaSendButton(
             context,
             hasContent: _controller.text.trim().isNotEmpty,
             busy: busy,
@@ -1996,7 +1996,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
           // Кольцо контекста стоит вплотную к отправке намеренно: решение
           // «не пора ли сжать» принимается ровно в момент отправки.
           const SizedBox(width: 9),
-          evsContextGauge(context, app),
+          animaContextGauge(context, app),
           const SizedBox(width: 9),
           _chatToggleBtn(context, app),
         ],
@@ -2007,10 +2007,10 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
   // Chat on/off, in the slot the mic button used to occupy (the mic listens
   // continuously, so a push-to-talk button there was redundant). Off = the
   // assistant only takes voice commands.
-  // Тумблер чата — общий (`evsChatToggleButton`): своя копия была здесь и в
+  // Тумблер чата — общий (`animaChatToggleButton`): своя копия была здесь и в
   // «Ноктюрне», а в классическом стиле её не было вовсе.
   Widget _chatToggleBtn(BuildContext context, AppState app) =>
-      evsChatToggleButton(context);
+      animaChatToggleButton(context);
 
   Widget _empty(BuildContext context, AppState app) {
     return Center(
@@ -2020,7 +2020,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
           Icon(Icons.forum_outlined, size: 30, color: _faint(context)),
           const SizedBox(height: 10),
           Text(app.t('askAnything'),
-              style: EvsType.body.copyWith(color: _faint(context))),
+              style: AnimaType.body.copyWith(color: _faint(context))),
         ],
       ),
     );
@@ -2061,7 +2061,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
 
 // Список диалогов для стиля «Nexus» здесь больше не живёт: их было три —
 // колонка «Ноктюрна», это окно и выдвижной ящик `ConversationsSheet`, и
-// каждый умел своё. Остался один общий — `EvsChatsDialog` в
+// каждый умел своё. Остался один общий — `AnimaChatsDialog` в
 // shell_common.dart, с поиском и полным набором действий над строкой.
 
 // Колонка диалога своей ширины. Отдельным виджетом, потому что вся раскладка

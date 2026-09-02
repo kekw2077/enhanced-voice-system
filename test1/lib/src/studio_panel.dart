@@ -403,7 +403,7 @@ class _StudioPanelState extends State<StudioPanel> {
     }
     // Тот же запрос, что шлёт сайдкар (CosyVoiceEngine): те же поля и тот же
     // порядок — сервер один и тот же, второй диалект заводить незачем.
-    final boundary = '----evsStudio${DateTime.now().microsecondsSinceEpoch}';
+    final boundary = '----animaStudio${DateTime.now().microsecondsSinceEpoch}';
     final parts = <List<int>>[];
     void field(String name, String value) {
       parts.add(utf8.encode('--$boundary'));
@@ -783,13 +783,13 @@ class _StudioPanelState extends State<StudioPanel> {
                         color: _txt(context))),
                 const Spacer(),
                 if (_items.any((i) => !i.busy)) ...[
-                  evsGhostButton(context, app.t('studioDropAll'),
+                  animaGhostButton(context, app.t('studioDropAll'),
                       Icons.delete_sweep_outlined,
                       onTap: () => unawaited(_dropAll(app))),
                   const SizedBox(width: 8),
                 ],
                 if (!widget.embedded)
-                  evsGhostButton(context, app.t('close'), Icons.close,
+                  animaGhostButton(context, app.t('close'), Icons.close,
                       onTap: () => Navigator.of(context).maybePop()),
               ]),
             ),
@@ -801,7 +801,7 @@ class _StudioPanelState extends State<StudioPanel> {
                 padding: _isPrism(context)
                     ? const EdgeInsets.fromLTRB(18, 0, 18, 0)
                     : EdgeInsets.zero,
-                child: evsStudioPane(
+                child: animaStudioPane(
                   context,
                   padding: EdgeInsets.zero,
                   child: _feed(app, image),
@@ -813,7 +813,7 @@ class _StudioPanelState extends State<StudioPanel> {
               padding: _isPrism(context)
                   ? const EdgeInsets.fromLTRB(18, 0, 18, 18)
                   : EdgeInsets.zero,
-              child: evsStudioPane(
+              child: animaStudioPane(
                 context,
                 padding: EdgeInsets.zero,
                 child: _composer(app, image),
@@ -824,7 +824,7 @@ class _StudioPanelState extends State<StudioPanel> {
     if (widget.embedded) return body;
     return Scaffold(
       backgroundColor: _bg(context),
-      body: evsShellBackdrop(context, body),
+      body: animaShellBackdrop(context, body),
     );
   }
 
@@ -924,7 +924,7 @@ class _StudioPanelState extends State<StudioPanel> {
               // Запуск файла отдал бы его проигрывателю или просмотрщику по
               // умолчанию, а нужно обычно другое: показать, где он лежит, чтобы
               // скопировать или перетащить. Ключ /select именно для этого.
-              evsGhostButton(context, app.t('studioOpen'), Icons.folder_open,
+              animaGhostButton(context, app.t('studioOpen'), Icons.folder_open,
                   onTap: () => unawaited(io.Process.start(
                       'explorer.exe', ['/select,${it.path!}'],
                       runInShell: false))),
@@ -1009,7 +1009,7 @@ class _StudioPanelState extends State<StudioPanel> {
         if (image) ...[
           _modelBar(app),
           Row(children: [
-            evsGhostButton(
+            animaGhostButton(
                 context,
                 app.t(_hintsOpen ? 'studioHintsHide' : 'studioHints'),
                 _hintsOpen ? Icons.expand_less : Icons.lightbulb_outline,
@@ -1121,7 +1121,7 @@ class _StudioPanelState extends State<StudioPanel> {
         if (!image) ...[
           if (_voice == 'clone') ...[
             Row(children: [
-              evsGhostButton(context, app.t('studioPickSample'),
+              animaGhostButton(context, app.t('studioPickSample'),
                   Icons.audiotrack_outlined, onTap: _pickCloneSample),
               const SizedBox(width: 10),
               Expanded(
@@ -1184,7 +1184,7 @@ class _StudioPanelState extends State<StudioPanel> {
             ),
           ),
           const SizedBox(width: 10),
-          evsGhostButton(context, app.t(image ? 'studioGo' : 'studioSay'),
+          animaGhostButton(context, app.t(image ? 'studioGo' : 'studioSay'),
               image ? Icons.auto_awesome : Icons.play_arrow,
               onTap: _busy ? null : () => unawaited(_submit())),
         ]),
@@ -1279,7 +1279,7 @@ class _StudioPanelState extends State<StudioPanel> {
               color: _modelNote == null ? _faint(context) : _accent(context)),
           onPressed: _model.isEmpty ? null : () => unawaited(_openNote(app)),
         ),
-        evsGhostButton(context, app.t('studioModelManage'), Icons.tune,
+        animaGhostButton(context, app.t('studioModelManage'), Icons.tune,
             onTap: () => unawaited(_openModels(app))),
       ]),
     );
@@ -1313,7 +1313,7 @@ class _StudioPanelState extends State<StudioPanel> {
         ),
       ),
       const SizedBox(width: 10),
-      evsGhostButton(context, app.t('imgLoraPick'), Icons.extension_outlined,
+      animaGhostButton(context, app.t('imgLoraPick'), Icons.extension_outlined,
           onTap: () => unawaited(_openLoras(app))),
     ]);
   }
@@ -1957,7 +1957,7 @@ class _ImageModelsSheetState extends State<ImageModelsSheet> {
                   ImageModelNoteSheet(app: app, model: m.name, note: m.note))),
         ),
         if (!active)
-          evsGhostButton(context, app.t('imgModelsUse'), Icons.play_arrow,
+          animaGhostButton(context, app.t('imgModelsUse'), Icons.play_arrow,
               onTap: _busy ? null : () => unawaited(_select(m))),
         const SizedBox(width: 6),
         IconButton(
@@ -1996,7 +1996,7 @@ class _ImageModelsSheetState extends State<ImageModelsSheet> {
                     : formatBytes(p.done),
                 style: TextStyle(fontSize: 11.5, color: _sub(context))),
             const SizedBox(width: 8),
-            evsGhostButton(context, app.t('imgModelsCancel'), Icons.stop,
+            animaGhostButton(context, app.t('imgModelsCancel'), Icons.stop,
                 onTap: () => unawaited(_act(() => _c.cancelPull()))),
           ]),
           const SizedBox(height: 8),
@@ -2020,7 +2020,7 @@ class _ImageModelsSheetState extends State<ImageModelsSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(children: [
-          evsGhostButton(
+          animaGhostButton(
               context,
               app.t(_addOpen ? 'imgModelsAddHide' : 'imgModelsAdd'),
               _addOpen ? Icons.expand_less : Icons.download_outlined,
@@ -2056,7 +2056,7 @@ class _ImageModelsSheetState extends State<ImageModelsSheet> {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            evsGhostButton(context, app.t('imgModelsPull'), Icons.download,
+            animaGhostButton(context, app.t('imgModelsPull'), Icons.download,
                 onTap: running || _busy ? null : _startOwnPull),
             const SizedBox(width: 10),
             Expanded(
@@ -2117,7 +2117,7 @@ class _ImageModelsSheetState extends State<ImageModelsSheet> {
           Text(app.t('imgModelsNoRoom'),
               style: TextStyle(fontSize: 11.5, color: _warn(context)))
         else
-          evsGhostButton(context, app.t('imgModelsPull'), Icons.download,
+          animaGhostButton(context, app.t('imgModelsPull'), Icons.download,
               onTap: running || _busy
                   ? null
                   : () => unawaited(_startPull(p.url, p.file, p.note))),
@@ -2687,7 +2687,7 @@ class _ImageLorasSheetState extends State<ImageLorasSheet> {
                   : formatBytes(p.done),
               style: TextStyle(fontSize: 11.5, color: _sub(context))),
           const SizedBox(width: 8),
-          evsGhostButton(context, app.t('imgModelsCancel'), Icons.stop,
+          animaGhostButton(context, app.t('imgModelsCancel'), Icons.stop,
               onTap: () => unawaited(_act(() => _c.cancelPull()))),
         ]),
         const SizedBox(height: 8),
@@ -2710,7 +2710,7 @@ class _ImageLorasSheetState extends State<ImageLorasSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(children: [
-          evsGhostButton(
+          animaGhostButton(
               context,
               app.t(_addOpen ? 'imgModelsAddHide' : 'imgLoraAdd'),
               _addOpen ? Icons.expand_less : Icons.download_outlined,
@@ -2738,7 +2738,7 @@ class _ImageLorasSheetState extends State<ImageLorasSheet> {
           ),
           const SizedBox(height: 8),
           Row(children: [
-            evsGhostButton(context, app.t('imgModelsPull'), Icons.download,
+            animaGhostButton(context, app.t('imgModelsPull'), Icons.download,
                 onTap: running || _busy ? null : _startPull),
             const SizedBox(width: 10),
             Expanded(

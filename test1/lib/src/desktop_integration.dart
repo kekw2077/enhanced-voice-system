@@ -51,6 +51,11 @@ class CommandExecutor {
     for (final u in value.toLowerCase().codeUnits) {
       h = ((h << 5) + h + u) & 0x7fffffff;
     }
+    // Папка в планировщике задач НЕ переименована намеренно. Под этим именем
+    // уже лежат задачи, созданные на прежних версиях; сменить его — значит
+    // осиротить их: команды перестанут выполняться, а записи останутся висеть
+    // там, где приложение их больше не ищет. Ровно то, о чём предупреждает
+    // комментарий выше — имена задач должны переживать обновление.
     return 'EVS\\cmd_${h.toRadixString(16)}';
   }
 
@@ -84,7 +89,7 @@ class CommandExecutor {
       // installed on.
       final dir = await io.Directory(
               '${await appDataRoot()}${io.Platform.pathSeparator}tmp')
-          .createTemp('evs_task');
+          .createTemp('anima_task');
       final script = io.File('${dir.path}\\create_task.cmd');
       await script.writeAsString('@echo off\r\n'
           'schtasks /create /tn "$tn" /tr "${_taskAction(c)}" '
@@ -1126,7 +1131,8 @@ class DesktopIntegration with WindowListener, TrayListener {
   // handy for a self-hosted feed later. Empty/unset -> production URL.
   static String get effectiveFeedUrl {
     try {
-      final env = io.Platform.environment['EVS_UPDATE_FEED'];
+      final env = io.Platform.environment['ANIMA_UPDATE_FEED'] ??
+          io.Platform.environment['EVS_UPDATE_FEED'];
       if (env != null && env.trim().isNotEmpty) return env.trim();
     } catch (_) {}
     // Свой сервер обновлений из настроек. Ниже переменной окружения намеренно:
@@ -1368,7 +1374,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       return;
     }
     await trayManager.setContextMenu(Menu(items: [
-      MenuItem(key: 'show', label: app?.t('trayShow') ?? 'Show EVS'),
+      MenuItem(key: 'show', label: app?.t('trayShow') ?? 'Show Nexus Anima'),
       MenuItem(
           key: 'overlay', label: app?.t('trayOverlay') ?? 'Floating widget'),
       MenuItem.separator(),
@@ -1539,7 +1545,7 @@ class DesktopIntegration with WindowListener, TrayListener {
       ];
     }
     return [
-      TrayMenuEntry('show', app?.t('trayShow') ?? 'Show EVS',
+      TrayMenuEntry('show', app?.t('trayShow') ?? 'Show Nexus Anima',
           d: PrismIcons.hub),
       TrayMenuEntry('overlay', app?.t('trayOverlay') ?? 'Floating widget',
           d: PrismIcons.spark,
@@ -1773,11 +1779,11 @@ class CloneServer {
 // каждый по-своему.
 
 /// Одна строка журнала, разобранная из файла формата `<iso>  <текст>`.
-class EvsLogLine {
-  const EvsLogLine(this.time, this.source, this.text, this.level);
+class AnimaLogLine {
+  const AnimaLogLine(this.time, this.source, this.text, this.level);
   final DateTime? time;
 
-  /// Группа фильтра (см. [EvsLogFeed.sources]); подпись — [EvsLogFeed.labelKey].
+  /// Группа фильтра (см. [AnimaLogFeed.sources]); подпись — [AnimaLogFeed.labelKey].
   final String source;
   final String text;
 
@@ -1785,8 +1791,8 @@ class EvsLogLine {
   final String level;
 }
 
-class EvsLogFeed {
-  EvsLogFeed._();
+class AnimaLogFeed {
+  AnimaLogFeed._();
 
   /// Файл → (группа фильтра, уровень). Ровно те имена, которыми пишет
   /// appendLog(...) по всему проекту, плюс лог установщика обновления.
@@ -1821,8 +1827,8 @@ class EvsLogFeed {
 
   /// Свежий срез журнала, новые записи сверху. [tail] — сколько последних строк
   /// брать из каждого файла: файлы дописываются вечно, а на экране нужен хвост.
-  static Future<List<EvsLogLine>> load({int tail = 400}) async {
-    final out = <EvsLogLine>[];
+  static Future<List<AnimaLogLine>> load({int tail = 400}) async {
+    final out = <AnimaLogLine>[];
     try {
       final root = await appDataRoot();
       final sep = io.Platform.pathSeparator;
@@ -1844,7 +1850,7 @@ class EvsLogFeed {
             ts = DateTime.tryParse(raw.substring(0, sp));
             if (ts != null) text = raw.substring(sp + 2);
           }
-          out.add(EvsLogLine(ts, e.value.$1, text, e.value.$2));
+          out.add(AnimaLogLine(ts, e.value.$1, text, e.value.$2));
         }
       }
     } catch (_) {}
@@ -1861,7 +1867,7 @@ class EvsLogFeed {
   }
 
   /// Журнал как текст — для кнопки «Копировать».
-  static String asText(List<EvsLogLine> lines) => lines
+  static String asText(List<AnimaLogLine> lines) => lines
       .map((l) => '${clock(l.time)}  ${l.source}  ${l.text}')
       .join('\n');
 }

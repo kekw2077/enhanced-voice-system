@@ -444,7 +444,7 @@ class RelayMonitor extends ChangeNotifier {
 
 /// Скорость человеческими словами. Игровой трафик — это десятки килобит,
 /// и показывать его в мегабитах с тремя нулями после запятой бессмысленно.
-String evsFormatBps(int bps) {
+String animaFormatBps(int bps) {
   if (bps <= 0) return '0';
   if (bps < 1000) return '$bps бит/с';
   if (bps < 1000000) return '${(bps / 1000).toStringAsFixed(bps < 10000 ? 1 : 0)} кбит/с';

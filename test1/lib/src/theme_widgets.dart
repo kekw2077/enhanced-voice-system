@@ -51,7 +51,7 @@ class MiraiApp extends StatelessWidget {
   // platforms (proprietary), so Android/desktop/web keep the bundled Nunito.
   // «Призма» нарисована на Figtree и берёт её — но ТОЛЬКО она: три других стиля
   // остаются на Nunito и не меняются ни на пиксель.
-  String? _appFontFamily(AppStyle style) => evsFontFamily(style);
+  String? _appFontFamily(AppStyle style) => animaFontFamily(style);
 
   ThemeData _buildTheme(AppStyle style, AppThemeMode mode, PrismAccent accent) {
     final skin = skinFor(style, mode, accent: accent);
@@ -414,7 +414,7 @@ _Palette _palFor(AppThemeMode m) {
 // the Nexus palettes/metrics below. The legacy `_bg/_card/…` helpers keep their
 // signatures and just read `pal` from the active skin; anything genuinely new
 // (accent2, radii, glow, background glows) reads through `_skin(context)`.
-class EvsSkin {
+class AnimaSkin {
   // ignore: library_private_types_in_public_api  (single-library project — _Palette never leaves it)
   final _Palette pal; // the 13 colour slots
   final Color accent2; // second stop for accent gradients
@@ -430,7 +430,7 @@ class EvsSkin {
   final double topBarHeight; // 52 (noctur) / 0
   final double statusBarHeight; // 34 (noctur) / 0
   final bool tabsNav; // true → text tabs replace the nav rail
-  const EvsSkin({
+  const AnimaSkin({
     // ignore: library_private_types_in_public_api
     required this.pal,
     required this.accent2,
@@ -448,7 +448,7 @@ class EvsSkin {
 
 /// The active skin, carried down the tree through [ThemeData.extensions].
 ///
-/// The colours are untouched — this is the very [EvsSkin] `skinFor` has always
+/// The colours are untouched — this is the very [AnimaSkin] `skinFor` has always
 /// produced. What changes is how it arrives. `_pal(c)` used to reach for
 /// `c.read<AppState>()`, and `read` does not subscribe: a theme change
 /// repainted nothing by itself, so every screen had to remember a
@@ -467,12 +467,12 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.accent,
   });
 
-  final EvsSkin skin;
+  final AnimaSkin skin;
   final AppStyle style;
   final PrismAccent accent;
 
   @override
-  AppTokens copyWith({EvsSkin? skin, AppStyle? style, PrismAccent? accent}) =>
+  AppTokens copyWith({AnimaSkin? skin, AppStyle? style, PrismAccent? accent}) =>
       AppTokens(
         skin: skin ?? this.skin,
         style: style ?? this.style,
@@ -602,8 +602,8 @@ const _Palette _kNocturClaudeDark = _kNexusClaudeDark;
 
 // Shared «Ноктюрн» metrics (TZ §4.4): window 14 · card 10 · control 8–10 ·
 // header 52 · telemetry 34. No rail — the tabs in the header do the navigating.
-EvsSkin _nocturSkin(_Palette pal, {required Color accent2, required bool glow}) =>
-    EvsSkin(
+AnimaSkin _nocturSkin(_Palette pal, {required Color accent2, required bool glow}) =>
+    AnimaSkin(
       pal: pal,
       accent2: accent2,
       radiusCard: 10,
@@ -627,7 +627,7 @@ const List<String> kPrismFontFallback = ['Nunito'];
 
 /// Семейство шрифта по стилю. Вынесено из темы наружу: тот же выбор нужен окну
 /// меню трея, у которого своя тема и нет доступа к состоянию приложения.
-String? evsFontFamily(AppStyle style) {
+String? animaFontFamily(AppStyle style) {
   if (defaultTargetPlatform == TargetPlatform.iOS) return null;
   return style == AppStyle.prism ? kPrismFont : 'Nunito';
 }
@@ -773,7 +773,7 @@ _Palette _prismWarmDarkPal(PrismRamp r) => _Palette(
 
 // Геометрия «Призмы» (tokens.json): карточка 20, поле/контрол 13, рейка 232.
 // Свечение включено на тёмных темах — оно же красит точки сетки и статусы.
-EvsSkin _prismSkin(_Palette pal, PrismRamp r) => EvsSkin(
+AnimaSkin _prismSkin(_Palette pal, PrismRamp r) => AnimaSkin(
       pal: pal,
       accent2: r.a3,
       radiusCard: 20,
@@ -787,7 +787,7 @@ EvsSkin _prismSkin(_Palette pal, PrismRamp r) => EvsSkin(
 // Resolve the active (style × theme) skin. Classic wraps `_palFor` unchanged.
 // `accent` действует только на «Призму» — единственный стиль, где акцент
 // выбирает пользователь; остальные три берут его из палитры темы.
-EvsSkin skinFor(
+AnimaSkin skinFor(
   AppStyle style,
   AppThemeMode theme, {
   PrismAccent accent = PrismAccent.google,
@@ -819,7 +819,7 @@ EvsSkin skinFor(
   if (style == AppStyle.nexus) {
     switch (theme) {
       case AppThemeMode.dark:
-        return const EvsSkin(
+        return const AnimaSkin(
           pal: _kNexusDark,
           accent2: Color(0xFF8B7CFF),
           radiusCard: 14,
@@ -829,7 +829,7 @@ EvsSkin skinFor(
           bgGlows: _kNexusDarkGlows,
         );
       case AppThemeMode.claude:
-        return const EvsSkin(
+        return const AnimaSkin(
           pal: _kNexusClaude,
           accent2: Color(0xFFE0956B),
           radiusCard: 14,
@@ -838,7 +838,7 @@ EvsSkin skinFor(
           glow: false,
         );
       case AppThemeMode.claudeDark:
-        return const EvsSkin(
+        return const AnimaSkin(
           pal: _kNexusClaudeDark,
           accent2: Color(0xFFE0B24A),
           radiusCard: 14,
@@ -854,10 +854,10 @@ EvsSkin skinFor(
   // future skin-routed radius equals the current value. accent2 is derived so
   // classic-only gradients (unused for now) stay on-theme.
   final p = _palFor(theme);
-  return EvsSkin(
+  return AnimaSkin(
     pal: p,
     accent2: Color.lerp(p.accent, p.info, 0.45) ?? p.accent,
-    radiusCard: EvsRadius.lg, // 18 — matches evsCard's current corner radius
+    radiusCard: AnimaRadius.lg, // 18 — matches animaCard's current corner radius
     radiusControl: 10,
     railWidth: 0,
     glow: false,
@@ -880,7 +880,7 @@ AppTokens _tokens(BuildContext c) {
   );
 }
 
-EvsSkin _skin(BuildContext c) => _tokens(c).skin;
+AnimaSkin _skin(BuildContext c) => _tokens(c).skin;
 
 // True when the Nexus interface style is active — lets the shared evs* control
 // helpers apply Nexus geometry (surface-lift segments, accent→accent2 toggles,
@@ -958,7 +958,7 @@ List<BoxShadow> _shadow(BuildContext c,
 // --- Design scales — single source of truth for spacing / radii / type.
 // Ad-hoc `fontSize:` and magic paddings migrate onto these per screen.
 
-abstract final class EvsSpace {
+abstract final class AnimaSpace {
   static const double xs = 4;
   static const double sm = 8;
   static const double md = 12;
@@ -967,7 +967,7 @@ abstract final class EvsSpace {
   static const double xxl = 32;
 }
 
-abstract final class EvsRadius {
+abstract final class AnimaRadius {
   static const double sm = 8;
   static const double md = 12;
   static const double lg = 18;
@@ -978,9 +978,9 @@ abstract final class EvsRadius {
 }
 
 // Type scale. Colour is intentionally omitted — apply a token at the call site,
-// e.g. `EvsType.body.copyWith(color: _txt(context))`. Family comes from
+// e.g. `AnimaType.body.copyWith(color: _txt(context))`. Family comes from
 // ThemeData (Nunito), so it is not set here.
-abstract final class EvsType {
+abstract final class AnimaType {
   static const TextStyle display =
       TextStyle(fontSize: 30, height: 1.15, fontWeight: FontWeight.w800, letterSpacing: -0.3);
   static const TextStyle title =
@@ -2135,7 +2135,7 @@ class _AnimatedBorderState extends State<AnimatedBorder>
    composer, the particle orb and all send/voice logic are reused as-is. */
 
 // Mockup palette: violet accent + blue→purple→pink gradient on near-black.
-const Color _evsGMid = Color(0xFF8855CC);
+const Color _animaGMid = Color(0xFF8855CC);
 // ---- Ambient-motion policy -------------------------------------------------
 // The always-looping decorative animations (particle sphere, animated borders,
 // idle visualizer sweeps) were the app's single biggest idle cost: several 60fps
@@ -2296,7 +2296,7 @@ Color _shade(Color base, double amount) => amount >= 0
 // Shell window background: a radial highlight over the themed background on dark
 // themes; on the light themes (apple/claude) a flat themed page background so
 // the whole shell reads as light instead of a dark plate.
-BoxDecoration _evsShellBg(BuildContext c) {
+BoxDecoration _animaShellBg(BuildContext c) {
   final p = _pal(c);
   // «Ноктюрн» differs from Nexus by the LAYOUT, not the palette, and its
   // background is deliberately flat — no radial highlight, no glow spots
@@ -2323,7 +2323,7 @@ BoxDecoration _evsShellBg(BuildContext c) {
 ///
 /// [divider] — с какой стороны рисовать линию в остальных стилях. В «Призме»
 /// она не рисуется вовсе: у панели уже есть свой контур.
-Widget evsStudioPane(
+Widget animaStudioPane(
   BuildContext context, {
   required Widget child,
   required EdgeInsets padding,
@@ -2353,16 +2353,16 @@ Widget evsStudioPane(
   );
 }
 
-/// Подложка ОКНА целиком. Три стиля обходятся заливкой из [_evsShellBg];
+/// Подложка ОКНА целиком. Три стиля обходятся заливкой из [_animaShellBg];
 /// «Призме» нужны ещё два слоя под интерфейсом — фон-аврора и сетка точек, —
 /// а декорация их дать не может. Поэтому все окна (главное, настройки, обе
 /// студии) заворачивают содержимое сюда, а не в голый Container: иначе стиль
 /// был бы только в главном окне, а настройки открывались бы плоскими.
 ///
 /// Порядок слоёв тот же и обязателен: фон → сетка точек → интерфейс.
-Widget evsShellBackdrop(BuildContext context, Widget child) {
+Widget animaShellBackdrop(BuildContext context, Widget child) {
   if (!_isPrism(context)) {
-    return Container(decoration: _evsShellBg(context), child: child);
+    return Container(decoration: _animaShellBg(context), child: child);
   }
   return Container(
     color: _bg(context),
@@ -2378,7 +2378,7 @@ Widget evsShellBackdrop(BuildContext context, Widget child) {
 
 // Left nav rail / sidebar background: a subtly darker vertical gradient of the
 // themed background on dark themes, a flat themed card surface on light.
-BoxDecoration _evsRailBg(BuildContext c) {
+BoxDecoration _animaRailBg(BuildContext c) {
   final p = _pal(c);
   // «Призма»: рейка прозрачная, отделена только волосяной линией — ровно как
   // боковое меню оболочки. Заливка здесь закрыла бы фон-аврору, и окно
@@ -2406,22 +2406,22 @@ BoxDecoration _evsRailBg(BuildContext c) {
 // entrance (flash → ring → event horizon → doppler flare → orbits → swooshes →
 // glitch), then it keeps breathing with the sample's endless loop for as long as
 // MotionPolicy allows it. Keeps a `const` constructor so the existing
-// `const _EvsLogoMark(...)` call sites stay valid unchanged.
+// `const _AnimaLogoMark(...)` call sites stay valid unchanged.
 //
 // [gate] — чем гасится вечный луп. Марка в углу окна остаётся фоновым
 // украшением (MotionGate.ambient), а знак на странице «О программе» — это сам
 // экран, туда идёт MotionGate.foreground: страницу открывают ради него.
-class _EvsLogoMark extends StatelessWidget {
+class _AnimaLogoMark extends StatelessWidget {
   final double size;
   final MotionGate gate;
-  const _EvsLogoMark({this.size = 30, this.gate = MotionGate.ambient});
+  const _AnimaLogoMark({this.size = 30, this.gate = MotionGate.ambient});
 
   @override
   Widget build(BuildContext context) => GenesisLogo(size: size, gate: gate);
 }
 
 
-Widget evsCard(
+Widget animaCard(
   BuildContext context, {
   required IconData icon,
   required String title,
@@ -2430,7 +2430,7 @@ Widget evsCard(
   // «Призма»: карточка — стеклянная панель с одним заголовком в разрядку.
   // Ни рамки под шапкой, ни цветного квадрата с иконкой: в макете карточки
   // разделены воздухом, а не линиями, и иконка внутри карточки там не
-  // встречается ни разу. Строки при этом те же самые — evsRow сам знает, как
+  // встречается ни разу. Строки при этом те же самые — animaRow сам знает, как
   // выглядеть в этом стиле.
   if (_isPrism(context)) {
     return PrismPanel(
@@ -2474,7 +2474,7 @@ Widget evsCard(
                   width: 26,
                   height: 26,
                   decoration: BoxDecoration(
-                    borderRadius: EvsRadius.rSm,
+                    borderRadius: AnimaRadius.rSm,
                     color: hc.withValues(alpha: 0.15),
                   ),
                   child: Icon(icon, size: 13, color: hc),
@@ -2483,7 +2483,7 @@ Widget evsCard(
               const SizedBox(width: 9),
               Text(title.toUpperCase(),
                   style:
-                      EvsType.sectionLabel.copyWith(color: _sectionLabel(context))),
+                      AnimaType.sectionLabel.copyWith(color: _sectionLabel(context))),
             ],
           ),
         ),
@@ -2493,7 +2493,7 @@ Widget evsCard(
   );
 }
 
-Widget evsRow(BuildContext context, {
+Widget animaRow(BuildContext context, {
   required String label,
   String? desc,
   required Widget control,
@@ -2513,7 +2513,7 @@ Widget evsRow(BuildContext context, {
                 fontSize: 13.5,
                 fontWeight: FontWeight.w600,
                 color: _txt(context))
-            : EvsType.label.copyWith(color: _body(context)),
+            : AnimaType.label.copyWith(color: _body(context)),
       ),
       if (desc != null) ...[
         SizedBox(height: prism ? 3 : 2),
@@ -2522,7 +2522,7 @@ Widget evsRow(BuildContext context, {
           style: prism
               ? TextStyle(
                   fontSize: 11.5, height: 1.45, color: _faint(context))
-              : EvsType.caption.copyWith(color: _sub(context)),
+              : AnimaType.caption.copyWith(color: _sub(context)),
         ),
       ],
     ],
@@ -2635,7 +2635,7 @@ Widget evsRow(BuildContext context, {
 }
 
 // Full-width segmented selector: equal-width pills in a single row that fills
-// the available width (used with `evsRow(context, stacked: true)`). Replaces the
+// the available width (used with `animaRow(context, stacked: true)`). Replaces the
 // right-aligned Wrap that folded 3–4 options into a cramped floating block.
 // Active-segment decoration for the segmented controls. Classic: accent-tinted
 // fill + border. Nexus (§5.4): the active pill lifts to the surface colour with
@@ -2663,7 +2663,7 @@ BoxDecoration _segActiveDeco(BuildContext context, bool selected, bool nexus) {
   );
 }
 
-Widget evsSegmentedWide<T>(
+Widget animaSegmentedWide<T>(
   BuildContext context,
   List<(T, String)> options,
   T value,
@@ -2714,7 +2714,7 @@ Widget evsSegmentedWide<T>(
   );
 }
 
-Widget evsSegmented<T>(
+Widget animaSegmented<T>(
   BuildContext context,
   List<(T, String)> options,
   T value,
@@ -2759,7 +2759,7 @@ Widget evsSegmented<T>(
   );
 }
 
-Widget evsToggle(BuildContext context, bool value, ValueChanged<bool> onChanged) {
+Widget animaToggle(BuildContext context, bool value, ValueChanged<bool> onChanged) {
   // «Призма»: таблетка 46x26 с белым бегунком и градиентом акцентной тройки.
   if (_isPrism(context)) {
     return PrismToggle(value: value, onChanged: onChanged);
@@ -2827,7 +2827,7 @@ Widget evsToggle(BuildContext context, bool value, ValueChanged<bool> onChanged)
 }
 
 // Dropdown-styled display button (non-functional placeholder for stub selects).
-Widget evsSelectButton(BuildContext context, String label, {double minWidth = 148, VoidCallback? onTap}) {
+Widget animaSelectButton(BuildContext context, String label, {double minWidth = 148, VoidCallback? onTap}) {
   return GestureDetector(
     onTap: onTap,
     child: Container(
@@ -2858,7 +2858,7 @@ Widget evsSelectButton(BuildContext context, String label, {double minWidth = 14
   );
 }
 
-Widget evsGhostButton(BuildContext context, String label, IconData icon, {VoidCallback? onTap}) {
+Widget animaGhostButton(BuildContext context, String label, IconData icon, {VoidCallback? onTap}) {
   // «Призма»: таблетка с подложкой поля и контуром — второстепенное действие
   // рядом с настоящей кнопкой не должно спорить с ней заливкой.
   if (_isPrism(context)) {
@@ -2880,14 +2880,14 @@ Widget evsGhostButton(BuildContext context, String label, IconData icon, {VoidCa
         children: [
           Icon(icon, size: 13, color: _sub(context)),
           const SizedBox(width: 6),
-          Text(label, style: EvsType.control.copyWith(color: _sub(context))),
+          Text(label, style: AnimaType.control.copyWith(color: _sub(context))),
         ],
       ),
     ),
   );
 }
 
-Widget evsSlider(BuildContext context, {
+Widget animaSlider(BuildContext context, {
   required double value,
   required double min,
   required double max,
@@ -2928,7 +2928,7 @@ Widget evsSlider(BuildContext context, {
     );
   }
   // Up to 210px wide, but shrinks to fit narrow cards (no fixed width that
-  // would overflow inside evsRow's bounded control slot).
+  // would overflow inside animaRow's bounded control slot).
   return ConstrainedBox(
     constraints: const BoxConstraints(maxWidth: 210),
     child: Row(
@@ -2961,7 +2961,7 @@ Widget evsSlider(BuildContext context, {
 }
 
 // Full-width labelled slider (Style/Generation cards in the mockups).
-Widget evsNamedSlider(BuildContext context, {
+Widget animaNamedSlider(BuildContext context, {
   required String label,
   String? desc,
   required double value,
@@ -3032,7 +3032,7 @@ Widget evsNamedSlider(BuildContext context, {
 }
 
 // Selectable connection-mode card (Model section).
-Widget evsRadioCard(BuildContext context, {
+Widget animaRadioCard(BuildContext context, {
   required bool selected,
   required String title,
   required String desc,
@@ -3079,12 +3079,12 @@ Widget evsRadioCard(BuildContext context, {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: EvsType.label.copyWith(
+                    style: AnimaType.label.copyWith(
                         fontWeight: FontWeight.w700,
                         color: selected ? _txt(context) : _body(context))),
                 const SizedBox(height: 2),
                 Text(desc,
-                    style: EvsType.caption
+                    style: AnimaType.caption
                         .copyWith(height: 1.35, color: _sub(context))),
                 if (extra != null)
                   Padding(
@@ -3100,7 +3100,7 @@ Widget evsRadioCard(BuildContext context, {
   );
 }
 
-Widget evsAddButton(BuildContext context, String label, VoidCallback onTap,
+Widget animaAddButton(BuildContext context, String label, VoidCallback onTap,
     {IconData icon = Icons.add, bool small = false}) {
   return GestureDetector(
     onTap: onTap,
@@ -3127,7 +3127,7 @@ Widget evsAddButton(BuildContext context, String label, VoidCallback onTap,
   );
 }
 
-Widget evsDangerButton(BuildContext context, String label, VoidCallback onTap) {
+Widget animaDangerButton(BuildContext context, String label, VoidCallback onTap) {
   final d = _danger(context);
   return GestureDetector(
     onTap: onTap,
@@ -3139,7 +3139,7 @@ Widget evsDangerButton(BuildContext context, String label, VoidCallback onTap) {
         border: Border.all(color: d.withValues(alpha: 0.32)),
       ),
       child: Text(label,
-          style: EvsType.label
+          style: AnimaType.label
               .copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: d)),
     ),
   );
@@ -3152,23 +3152,23 @@ Widget evsDangerButton(BuildContext context, String label, VoidCallback onTap) {
 /// во всех оболочках и подхватит будущую пятую. Нули пропускаются: сегмент
 /// нулевой ширины рисовался бы как щель между соседями и читался бы как
 /// разделитель.
-class EvsMeterPart {
-  const EvsMeterPart(this.label, this.value, this.color);
+class AnimaMeterPart {
+  const AnimaMeterPart(this.label, this.value, this.color);
   final String label;
   final num value;
   final Color color;
 }
 
-Widget evsMeter(
+Widget animaMeter(
   BuildContext context,
-  List<EvsMeterPart> parts, {
+  List<AnimaMeterPart> parts, {
   double height = 10,
   bool legend = true,
   String Function(num)? format,
 }) {
   final shown = [for (final p in parts) if (p.value > 0) p];
   final total = shown.fold<double>(0, (sum, p) => sum + p.value);
-  final fmt = format ?? evsThousands;
+  final fmt = format ?? animaThousands;
 
   final bar = ClipRRect(
     borderRadius: BorderRadius.circular(height / 2),
@@ -3222,7 +3222,7 @@ Widget evsMeter(
                 const SizedBox(width: 6),
                 Text(
                   '${p.label} · ${fmt(p.value)}',
-                  style: EvsType.caption.copyWith(color: _sub(context)),
+                  style: AnimaType.caption.copyWith(color: _sub(context)),
                 ),
               ],
             ),
@@ -3238,7 +3238,7 @@ Widget evsMeter(
 /// глазами), линия — для величины, которая тянется во времени. Шкала снизу
 /// всегда от нуля: график перевода, начатый от 60 %, показывал бы рывок там,
 /// где на самом деле прибавили полпроцента.
-Widget evsTrend(
+Widget animaTrend(
   BuildContext context, {
   required List<double> values,
   bool bars = false,
@@ -3258,9 +3258,9 @@ Widget evsTrend(
         child: values.isEmpty
             ? Center(
                 child: Text('—',
-                    style: EvsType.caption.copyWith(color: _faint(context))))
+                    style: AnimaType.caption.copyWith(color: _faint(context))))
             : CustomPaint(
-                painter: _EvsTrendPainter(
+                painter: _AnimaTrendPainter(
                   values: values,
                   bars: bars,
                   color: tint,
@@ -3272,14 +3272,14 @@ Widget evsTrend(
       if (caption != null && caption.isNotEmpty) ...[
         const SizedBox(height: 7),
         Text(caption,
-            style: EvsType.caption.copyWith(color: _faint(context), fontSize: 11)),
+            style: AnimaType.caption.copyWith(color: _faint(context), fontSize: 11)),
       ],
     ],
   );
 }
 
-class _EvsTrendPainter extends CustomPainter {
-  _EvsTrendPainter({
+class _AnimaTrendPainter extends CustomPainter {
+  _AnimaTrendPainter({
     required this.values,
     required this.bars,
     required this.color,
@@ -3375,7 +3375,7 @@ class _EvsTrendPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_EvsTrendPainter old) =>
+  bool shouldRepaint(_AnimaTrendPainter old) =>
       old.bars != bars ||
       old.color != color ||
       old.top != top ||
@@ -3383,7 +3383,7 @@ class _EvsTrendPainter extends CustomPainter {
 }
 
 /// Число с разрядами через неразрывный пробел: 68 123, а не 68123.
-String evsThousands(num value) {
+String animaThousands(num value) {
   final digits = value.round().abs().toString();
   final out = StringBuffer(value < 0 ? '-' : '');
   for (var i = 0; i < digits.length; i++) {
@@ -3447,7 +3447,7 @@ class _WindowTitleBar extends StatelessWidget {
             _WinBtn(Icons.arrow_back, () => Navigator.of(context).maybePop(),
                 iconSize: 15),
             Text(title!,
-                style: EvsType.label
+                style: AnimaType.label
                     .copyWith(fontSize: 12.5, color: _sub(context))),
           ],
           const Expanded(child: DragToMoveArea(child: SizedBox.expand())),
@@ -3539,8 +3539,8 @@ class _KeySep extends StatelessWidget {
 /// тому, что ассистент вдруг перестал помнить, о чём шла речь, — а иногда
 /// теряет и системную подсказку, то есть характер. Кольцо делает приближение
 /// к этому пределу видимым заранее.
-class EvsContextGauge extends StatelessWidget {
-  const EvsContextGauge({
+class AnimaContextGauge extends StatelessWidget {
+  const AnimaContextGauge({
     super.key,
     required this.used,
     required this.limit,
@@ -3589,10 +3589,10 @@ class EvsContextGauge extends StatelessWidget {
 
 /// Кольцо для текущего чата. Отдельная функция, чтобы три стиля интерфейса
 /// собирали его одинаково и считали заполнение один раз, а не дважды.
-Widget evsContextGauge(BuildContext context, AppState app) {
+Widget animaContextGauge(BuildContext context, AppState app) {
   final (used, limit) = app.contextUsage(app.current);
   if (app.current == null) return const SizedBox.shrink();
-  return EvsContextGauge(
+  return AnimaContextGauge(
     used: used,
     limit: limit,
     hint: app.contextHint(app.current),
@@ -3641,17 +3641,17 @@ class _ContextRingPainter extends CustomPainter {
 // развёрнутое оно топит собой то, за чем пришли. Показывается только когда
 // модель его действительно прислала — просто включённый режим размышлений
 // ничего не рисует, потому что не всякая модель их отдаёт отдельным полем.
-class EvsThinkingBlock extends StatefulWidget {
-  const EvsThinkingBlock({super.key, required this.text, required this.live});
+class AnimaThinkingBlock extends StatefulWidget {
+  const AnimaThinkingBlock({super.key, required this.text, required this.live});
   final String text;
   // Пока ответ ещё набирается, заголовок говорит «думает», а не «думал».
   final bool live;
 
   @override
-  State<EvsThinkingBlock> createState() => _EvsThinkingBlockState();
+  State<AnimaThinkingBlock> createState() => _AnimaThinkingBlockState();
 }
 
-class _EvsThinkingBlockState extends State<EvsThinkingBlock> {
+class _AnimaThinkingBlockState extends State<AnimaThinkingBlock> {
   bool _open = false;
 
   @override
@@ -3706,8 +3706,8 @@ class _EvsThinkingBlockState extends State<EvsThinkingBlock> {
 // картинки: глаз перестаёт его читать и снова не может отличить работу от
 // зависания. Поэтому слов несколько, и каждое приходит со своим значком —
 // меняется вся метка целиком, а не текст под неподвижной звёздочкой.
-class EvsWaitPhrase {
-  const EvsWaitPhrase(this.key, this.icon);
+class AnimaWaitPhrase {
+  const AnimaWaitPhrase(this.key, this.icon);
 
   /// Ключ перевода, а не готовая строка: слова живут в `i18n.dart` рядом с
   /// остальными и переводятся там же, а не прячутся в коде виджета.
@@ -3715,15 +3715,15 @@ class EvsWaitPhrase {
   final IconData icon;
 }
 
-const List<EvsWaitPhrase> kEvsWaitPhrases = <EvsWaitPhrase>[
-  EvsWaitPhrase('nxWaiting', Icons.auto_awesome),
-  EvsWaitPhrase('nxWaitThink', Icons.psychology_alt),
-  EvsWaitPhrase('nxWaitWeigh', Icons.balance),
-  EvsWaitPhrase('nxWaitGather', Icons.bubble_chart),
-  EvsWaitPhrase('nxWaitWords', Icons.edit_note),
-  EvsWaitPhrase('nxWaitDig', Icons.manage_search),
-  EvsWaitPhrase('nxWaitSort', Icons.segment),
-  EvsWaitPhrase('nxWaitGears', Icons.autorenew),
+const List<AnimaWaitPhrase> kEvsWaitPhrases = <AnimaWaitPhrase>[
+  AnimaWaitPhrase('nxWaiting', Icons.auto_awesome),
+  AnimaWaitPhrase('nxWaitThink', Icons.psychology_alt),
+  AnimaWaitPhrase('nxWaitWeigh', Icons.balance),
+  AnimaWaitPhrase('nxWaitGather', Icons.bubble_chart),
+  AnimaWaitPhrase('nxWaitWords', Icons.edit_note),
+  AnimaWaitPhrase('nxWaitDig', Icons.manage_search),
+  AnimaWaitPhrase('nxWaitSort', Icons.segment),
+  AnimaWaitPhrase('nxWaitGears', Icons.autorenew),
 ];
 
 // Надпись «думает», по которой пробегает блик, — вместо трёх точек.
@@ -3735,15 +3735,15 @@ const List<EvsWaitPhrase> kEvsWaitPhrases = <EvsWaitPhrase>[
 // Контроллер обязательно через `AmbientMotion` — правило проекта: вечный
 // `repeat()` останавливается, когда окно не видно, иначе он крутит кадры в
 // фоне и греет карту впустую.
-class EvsShimmerLabel extends StatefulWidget {
-  const EvsShimmerLabel({
+class AnimaShimmerLabel extends StatefulWidget {
+  const AnimaShimmerLabel({
     super.key,
     this.phrases = kEvsWaitPhrases,
     this.period = const Duration(milliseconds: 3400),
   });
 
   /// Пул фраз. Одна фраза в списке — метка просто не меняется.
-  final List<EvsWaitPhrase> phrases;
+  final List<AnimaWaitPhrase> phrases;
 
   /// Как часто меняется слово. Три с половиной секунды — примерно столько
   /// нужно, чтобы фразу прочитали и не успели устать; смена раз в секунду
@@ -3751,10 +3751,10 @@ class EvsShimmerLabel extends StatefulWidget {
   final Duration period;
 
   @override
-  State<EvsShimmerLabel> createState() => _EvsShimmerLabelState();
+  State<AnimaShimmerLabel> createState() => _AnimaShimmerLabelState();
 }
 
-class _EvsShimmerLabelState extends State<EvsShimmerLabel>
+class _AnimaShimmerLabelState extends State<AnimaShimmerLabel>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 1500));
@@ -3835,7 +3835,7 @@ class _EvsShimmerLabelState extends State<EvsShimmerLabel>
   // Значок дышит в такт блику — один и тот же контроллер на полтора оборота в
   // секунду, поэтому метка читается как одно живое целое, а не как две
   // независимые анимации, случайно оказавшиеся рядом.
-  Widget _icon(EvsWaitPhrase p, Color lit) {
+  Widget _icon(AnimaWaitPhrase p, Color lit) {
     return AnimatedBuilder(
       animation: _c,
       builder: (_, child) {
@@ -3895,7 +3895,7 @@ class _EvsShimmerLabelState extends State<EvsShimmerLabel>
           // того же градиента вокруг букв. Надпись лежит на панели, где фон
           // ровный, и обводка ей не нужна.
           child: Text(text,
-              style: EvsType.body.copyWith(
+              style: AnimaType.body.copyWith(
                   fontSize: 13,
                   color: base,
                   letterSpacing: 0.2,
@@ -3919,8 +3919,8 @@ class _EvsShimmerLabelState extends State<EvsShimmerLabel>
 // занимает своё окончательное место — но прозрачным, и проступает за треть
 // секунды. Переносы посчитаны сразу и дальше не меняются, двигается только
 // прозрачность, а плавность даёт она, а не темп выдачи.
-class EvsTypingText extends StatefulWidget {
-  const EvsTypingText(this.text,
+class AnimaTypingText extends StatefulWidget {
+  const AnimaTypingText(this.text,
       {super.key,
       this.style,
       this.selectable = false,
@@ -3934,7 +3934,7 @@ class EvsTypingText extends StatefulWidget {
   final Duration fade;
 
   @override
-  State<EvsTypingText> createState() => _EvsTypingTextState();
+  State<AnimaTypingText> createState() => _AnimaTypingTextState();
 }
 
 /// Кусок, который ещё проступает: текст до [end] и сколько ему осталось.
@@ -3942,13 +3942,13 @@ class EvsTypingText extends StatefulWidget {
 /// Время считается остатком, а не отметкой о рождении: у тикера отсчёт
 /// начинается заново после каждой остановки, и абсолютные отметки, взятые до
 /// неё, после превращались бы в чепуху.
-class _EvsFadeRun {
-  _EvsFadeRun(this.end, this.left);
+class _AnimaFadeRun {
+  _AnimaFadeRun(this.end, this.left);
   final int end;
   double left;
 }
 
-class _EvsTypingTextState extends State<EvsTypingText>
+class _AnimaTypingTextState extends State<AnimaTypingText>
     with SingleTickerProviderStateMixin {
   // Тикер заводится ТОЛЬКО когда есть чему проступать, и никак не лениво: у
   // готовых сообщений (а их в переписке подавляющее большинство) первым
@@ -3960,7 +3960,7 @@ class _EvsTypingTextState extends State<EvsTypingText>
 
   /// До какого места текст уже проступил полностью.
   int _settled = 0;
-  final List<_EvsFadeRun> _runs = <_EvsFadeRun>[];
+  final List<_AnimaFadeRun> _runs = <_AnimaFadeRun>[];
 
   @override
   void initState() {
@@ -3980,7 +3980,7 @@ class _EvsTypingTextState extends State<EvsTypingText>
   }
 
   @override
-  void didUpdateWidget(EvsTypingText old) {
+  void didUpdateWidget(AnimaTypingText old) {
     super.didUpdateWidget(old);
     if (widget.text == old.text) return;
     final grew = widget.text.length > old.text.length &&
@@ -3993,7 +3993,7 @@ class _EvsTypingTextState extends State<EvsTypingText>
       _tick?.stop();
       return;
     }
-    _runs.add(_EvsFadeRun(
+    _runs.add(_AnimaFadeRun(
         widget.text.length, widget.fade.inMicroseconds / 1e6));
     // Куски приходят чаще, чем проступают, и их набирается с десяток — это
     // нормально и даёт мягкий хвост. Но если модель сыплет мелко и часто,
@@ -4039,7 +4039,7 @@ class _EvsTypingTextState extends State<EvsTypingText>
 
   @override
   Widget build(BuildContext context) {
-    final style = widget.style ?? EvsType.body;
+    final style = widget.style ?? AnimaType.body;
     final n = widget.text.length;
     final settled = _settled.clamp(0, n);
     // Пустая строка между абзацами — своим размером, а не размером текста.

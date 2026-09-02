@@ -10,7 +10,7 @@ part of '../main.dart';
    Данные настоящие:
      состояние       → NexusPipeline.instance.stage (тот же конвейер, что
                        питает сцену Nexus и кольцо «Ноктюрна»)
-     шар             → EvsLiveViz — живые уровни синтеза, а не таймер
+     шар             → AnimaLiveViz — живые уровни синтеза, а не таймер
      процессор, ОЗУ  → SystemMonitor.instance.stats
      видеопамять     → SidecarClient.instance.gpuInfo
      ответ модели    → NexusPipeline.instance.lastReplySec
@@ -216,7 +216,7 @@ class _PrismOrb extends StatelessWidget {
     final app = context.watch<AppState>();
     final ptt = app.listenMode == 'ptt';
     // Шар из макета целиком: кольца, коническое свечение и ядро с микрофоном.
-    // Общая визуализация (EvsLiveViz) здесь НЕ используется — у этого стиля
+    // Общая визуализация (AnimaLiveViz) здесь НЕ используется — у этого стиля
     // свой шар, и он часть его облика, а не выбираемое оформление виджета.
     const orb = SizedBox(height: 190, child: Center(child: PrismOrb()));
     if (!ptt) return orb;

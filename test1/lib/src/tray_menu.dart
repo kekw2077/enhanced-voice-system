@@ -541,7 +541,7 @@ class _TrayMenuAppState extends State<TrayMenuApp> with WindowListener {
           useMaterial3: true,
           brightness: skin.pal.brightness,
           scaffoldBackgroundColor: Colors.transparent,
-          fontFamily: evsFontFamily(app.appStyle),
+          fontFamily: animaFontFamily(app.appStyle),
           fontFamilyFallback:
               app.appStyle == AppStyle.prism ? kPrismFontFallback : null,
         ),

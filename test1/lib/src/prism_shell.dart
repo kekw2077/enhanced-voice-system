@@ -22,7 +22,7 @@ part of '../main.dart';
      Иначе девять тысяч точек считали бы физику 60 раз в секунду в пустом окне.
 
    • Навигация. В рейке ровно семь пунктов — столько же, сколько в макете, а не
-     весь список evsAppActions, из которого строят меню три другие оболочки.
+     весь список animaAppActions, из которого строят меню три другие оболочки.
      Ничего при этом не потеряно: остальные точки входа лежат там, куда их
      кладёт сам макет — архив кнопкой под списком диалогов, журнал карточкой
      на «Модулях», модели внутри настроек. Заводя новую функцию, ищите ей
@@ -1378,7 +1378,7 @@ class _PrismHomeState extends State<_PrismHome> {
           _PrismScreen.chat => _PrismChat(query: _search.text),
           _PrismScreen.modules => _PrismModules(onLog: () => _go(_PrismScreen.log)),
           _PrismScreen.commands => const _PrismCommands(),
-          _PrismScreen.log => const EvsLogTab(),
+          _PrismScreen.log => const AnimaLogTab(),
           _PrismScreen.images => const LuminaStudio(embedded: true),
           _PrismScreen.relay => const RelayPanel(embedded: true),
                   _PrismScreen.czn => const CznPanel(embedded: true),
@@ -1523,7 +1523,7 @@ class _PrismRail extends StatelessWidget {
                   // часть рейки, и в режиме «Умные» она замирала, как только
                   // ассистент затихал. Знак приложения, стоящий столбом,
                   // читается как зависшая программа, а не как экономия.
-                  const _EvsLogoMark(size: 36, gate: MotionGate.foreground),
+                  const _AnimaLogoMark(size: 36, gate: MotionGate.foreground),
                   const SizedBox(width: 11),
                   Expanded(
                     child: Column(
@@ -1717,8 +1717,8 @@ class _PrismRailStatus extends StatelessWidget {
     // моноширинные строки, что стоят в макете, только не выдуманные.
     final model = app.selectedModel.isEmpty
         ? app.t('statusNoModel')
-        : evsShortModel(app.selectedModel);
-    final (tts, _) = evsTtsEngineLabel(app);
+        : animaShortModel(app.selectedModel);
+    final (tts, _) = animaTtsEngineLabel(app);
     final stt = sttEngineLabel(app);
 
     final (used, limit) = app.contextUsage(app.current);

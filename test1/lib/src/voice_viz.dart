@@ -15,7 +15,7 @@ class VoiceLevels {
 // same vizType switch as the other hero/overlay styles. Background is kept
 // transparent by default so the particles float over the app/widget backdrop;
 // callers pass reduced particle counts for small thumbnails to stay cheap.
-class EvsWaveViz extends StatelessWidget {
+class AnimaWaveViz extends StatelessWidget {
   final String kind; // 'wave3d' | 'waveflat'
   final double size;
   final Color background;
@@ -30,7 +30,7 @@ class EvsWaveViz extends StatelessWidget {
   // the same hook every other visualization already uses. Off for the static
   // picker thumbnails, which keep the original blue ramp.
   final bool reactive;
-  const EvsWaveViz({
+  const AnimaWaveViz({
     super.key,
     required this.kind,
     this.size = 320,
@@ -141,17 +141,17 @@ double _wakeGlow(int wakeMs) {
 // Mirrored bar "spectrum": bars are FIXED in place and move ONLY up/down
 // (no sideways scrolling — user request). Heights = assistant speech level
 // shaped by a center bell + light per-bar shimmer, VU-style attack/decay.
-class EvsBarsViz extends StatefulWidget {
+class AnimaBarsViz extends StatefulWidget {
   final double width;
   final double height;
   final Color? color; // state/accent tint (blended into the bar gradient)
-  const EvsBarsViz(
+  const AnimaBarsViz(
       {super.key, this.width = 340, this.height = 150, this.color});
   @override
-  State<EvsBarsViz> createState() => _EvsBarsVizState();
+  State<AnimaBarsViz> createState() => _AnimaBarsVizState();
 }
 
-class _EvsBarsVizState extends State<EvsBarsViz>
+class _AnimaBarsVizState extends State<AnimaBarsViz>
     with SingleTickerProviderStateMixin {
   static const int _n = 33;
   // Driven by MotionPolicy: the idle shimmer costs a full 60 fps repaint even
@@ -254,15 +254,15 @@ class _BarsPainter extends CustomPainter {
 // Circular ring with radial spikes. Spikes sit at FIXED angles and only
 // extend/retract with the assistant speech level (no rotation/circular
 // travel — user request); the color sweep still slowly cycles for life.
-class EvsRingViz extends StatefulWidget {
+class AnimaRingViz extends StatefulWidget {
   final double size;
   final Color? color; // state/accent tint (blended into the sweep)
-  const EvsRingViz({super.key, this.size = 230, this.color});
+  const AnimaRingViz({super.key, this.size = 230, this.color});
   @override
-  State<EvsRingViz> createState() => _EvsRingVizState();
+  State<AnimaRingViz> createState() => _AnimaRingVizState();
 }
 
-class _EvsRingVizState extends State<EvsRingViz>
+class _AnimaRingVizState extends State<AnimaRingViz>
     with SingleTickerProviderStateMixin {
   static const int _spikes = 90;
   late final AnimationController _rot =
@@ -383,7 +383,7 @@ class _RingPainter extends CustomPainter {
 
 /// Generates the three orb blob colors from a single accent (HSL shifts) —
 /// same recipe as the user-provided widgets settings mock.
-SiriOrbColors evsOrbColors(Color accent, {bool onLight = false}) {
+SiriOrbColors animaOrbColors(Color accent, {bool onLight = false}) {
   final h = HSLColor.fromColor(accent);
   Color shift(double deg, double satMul, double lightMul) => h
       .withHue((h.hue + deg) % 360)
@@ -444,10 +444,10 @@ Color vizStateAccent(BuildContext c, AppState app) {
   }
 }
 
-class EvsLiveViz extends StatelessWidget {
+class AnimaLiveViz extends StatelessWidget {
   final String kind; // 'orb' | 'lkbars'
   final double maxSize;
-  const EvsLiveViz({super.key, required this.kind, required this.maxSize});
+  const AnimaLiveViz({super.key, required this.kind, required this.maxSize});
 
   @override
   Widget build(BuildContext context) {
@@ -512,7 +512,7 @@ class EvsLiveViz extends StatelessWidget {
               size: math.min(app.orbSize, maxSize),
               level: lv,
               state: st,
-              colors: evsOrbColors(accent,
+              colors: animaOrbColors(accent,
                   onLight: _pal(context).brightness == Brightness.light),
               animationDuration: app.orbSpeed,
             );
@@ -600,24 +600,24 @@ class _OverlayWidgetViewState extends State<OverlayWidgetView> {
                       if (viz == 'prismorb')
                         PrismOrb(size: content * 0.94, showMic: false)
                       else if (viz == 'bars')
-                        EvsBarsViz(
+                        AnimaBarsViz(
                             width: content * 0.86,
                             height: content * 0.46,
                             color: accent)
                       else if (viz == 'waves')
-                        EvsRingViz(size: content * 0.86, color: accent)
+                        AnimaRingViz(size: content * 0.86, color: accent)
                       else if (viz == 'orb')
-                        EvsLiveViz(kind: 'orb', maxSize: content * 0.72)
+                        AnimaLiveViz(kind: 'orb', maxSize: content * 0.72)
                       else if (viz == 'lkbars')
-                        EvsLiveViz(kind: 'lkbars', maxSize: content * 0.8)
+                        AnimaLiveViz(kind: 'lkbars', maxSize: content * 0.8)
                       else if (viz == 'wave3d')
-                        EvsWaveViz(
+                        AnimaWaveViz(
                             kind: 'wave3d',
                             size: content * 0.92,
                             fadeEdges: true,
                             reactive: true)
                       else if (viz == 'waveflat')
-                        EvsWaveViz(
+                        AnimaWaveViz(
                             kind: 'waveflat',
                             size: content * 0.92,
                             fadeEdges: true,
@@ -892,7 +892,7 @@ class _DesktopMicWidgetState extends State<_DesktopMicWidget>
                   ),
                   child: Text(live ? app.t('micListening') : app.t('ready'),
                       maxLines: 1,
-                      style: EvsType.caption.copyWith(
+                      style: AnimaType.caption.copyWith(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
                           color: _success(context))),

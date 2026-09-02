@@ -124,7 +124,7 @@ class _PrismWelcomeState extends State<PrismWelcome>
         children: [
           // Знак — существующая анимация EVS, а не свой значок: марка у
           // программы одна на все экраны.
-          const _EvsLogoMark(size: 26),
+          const _AnimaLogoMark(size: 26),
           const SizedBox(width: 10),
           Text(
             app.t('prismWelcomeBrand'),

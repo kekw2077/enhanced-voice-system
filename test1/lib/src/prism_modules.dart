@@ -9,10 +9,10 @@ part of '../main.dart';
    В макете все числа — таймер со случайными скачками. Здесь их нет ни одного:
 
      нейросеть      → app.connectionStatus, contextUsage, gpuInfo
-     синтез речи    → evsTtsEngineLabel + SidecarClient.ttsStatus
+     синтез речи    → animaTtsEngineLabel + SidecarClient.ttsStatus
      распознавание  → sttEngineLabel / sttRuntimeLabel + sttState + deviceStatus
      график         → SystemMonitor.instance.stats, накопленные за минуту
-     журнал         → EvsLogFeed.load() — те же файлы, что вкладка «Журнал»
+     журнал         → AnimaLogFeed.load() — те же файлы, что вкладка «Журнал»
 
    Метрика, которой нет, не рисуется. Полоска на выдуманном проценте хуже
    отсутствующей строки: по ней принимают решения.
@@ -39,7 +39,7 @@ class _PrismModulesState extends State<_PrismModules> {
   Timer? _sampler;
   bool _auto = true;
 
-  List<EvsLogLine> _log = const [];
+  List<AnimaLogLine> _log = const [];
   bool _logLoading = true;
 
   @override
@@ -66,7 +66,7 @@ class _PrismModulesState extends State<_PrismModules> {
   }
 
   Future<void> _loadLog() async {
-    final lines = await EvsLogFeed.load();
+    final lines = await AnimaLogFeed.load();
     if (!mounted) return;
     setState(() {
       // Последние записи сверху: на карточке помещается десяток, и это должны
@@ -156,7 +156,7 @@ class _PrismGhostButton extends StatefulWidget {
   /// Контур иконки из макета — см. [PrismIcons]. Экраны «Призмы» передают его.
   final String? d;
 
-  /// Запасной путь для общего `evsGhostButton`: он зовётся из всех четырёх
+  /// Запасной путь для общего `animaGhostButton`: он зовётся из всех четырёх
   /// стилей и знает только про Material-иконки. Своего контура у такого
   /// вызова нет, и рисовать его наугад было бы хуже, чем взять готовую.
   final IconData? icon;
@@ -318,7 +318,7 @@ class _PrismSubsystemCards extends StatelessWidget {
           app.t('modelField'),
           app.selectedModel.isEmpty
               ? '—'
-              : evsShortModel(app.selectedModel),
+              : animaShortModel(app.selectedModel),
           accent: true,
         ),
       ],
@@ -326,7 +326,7 @@ class _PrismSubsystemCards extends StatelessWidget {
   }
 
   Widget _tts(BuildContext c, AppState app, SidecarClient sc) {
-    final (engine, sub) = evsTtsEngineLabel(app);
+    final (engine, sub) = animaTtsEngineLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
     final ok = connected && sc.ttsAvailable;
     return _PrismModuleCard(
@@ -637,7 +637,7 @@ class _PrismSparkPainter extends CustomPainter {
 class _PrismLogCard extends StatelessWidget {
   const _PrismLogCard(
       {required this.lines, required this.loading, required this.onOpen});
-  final List<EvsLogLine> lines;
+  final List<AnimaLogLine> lines;
   final bool loading;
   final VoidCallback onOpen;
 

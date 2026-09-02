@@ -10,7 +10,7 @@ part of '../main.dart';
 
    1. Экран один на все оболочки. `embedded: true` — вкладка внутри «Призмы»,
       без флага — отдельная страница в остальных трёх стилях. Своих цветов
-      здесь нет ни одного: evsCard/evsRow/evsToggle сами знают, как выглядеть
+      здесь нет ни одного: animaCard/animaRow/animaToggle сами знают, как выглядеть
       в текущем стиле, поэтому будущий пятый стиль подхватится сам.
    2. Процесс регистрируется в ProcessJob. Осиротевший переводчик держал бы
       захват окна и слой поверх игры до перезагрузки.
@@ -757,7 +757,7 @@ class _CznPanelState extends State<CznPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          evsSegmentedWide<_CznTab>(
+          animaSegmentedWide<_CznTab>(
             context,
             [
               (_CznTab.state, app.t('cznTabState')),
@@ -816,17 +816,17 @@ class _CznPanelState extends State<CznPanel> {
   ) {
     if (_cfg == null) {
       return [
-        evsCard(
+        animaCard(
           context,
           icon: Icons.tune,
           title: app.t('cznSettingsTitle'),
           rows: [
-            evsRow(
+            animaRow(
               context,
               stacked: true,
               label: app.t('cznNoConfig'),
               desc: app.t('cznNoConfigDesc'),
-              control: evsGhostButton(
+              control: animaGhostButton(
                 context,
                 app.t('cznPick'),
                 Icons.folder_outlined,
@@ -860,13 +860,13 @@ class _CznPanelState extends State<CznPanel> {
         final points = CznPoint.all(app);
         final now = _base(points);
 
-        return evsCard(
+        return animaCard(
           context,
           icon: Icons.donut_large_outlined,
           title: app.t('cznBaseTitle'),
           rows: [
             if (now == null)
-              evsRow(
+              animaRow(
                 context,
                 label: app.t('cznBaseUnknown'),
                 desc: app.t('cznBaseUnknownDesc'),
@@ -887,19 +887,19 @@ class _CznPanelState extends State<CznPanel> {
                             '${(now.share * 100).toStringAsFixed(1)}%',
                             app.t('cznBaseShare'),
                             _accent(context)),
-                        _tile(context, evsThousands(now.translated),
+                        _tile(context, animaThousands(now.translated),
                             app.t('cznBaseTranslated'), _success(context)),
-                        _tile(context, evsThousands(now.pending),
+                        _tile(context, animaThousands(now.pending),
                             app.t('cznBasePending'), _warn(context)),
-                        _tile(context, evsThousands(now.total),
+                        _tile(context, animaThousands(now.total),
                             app.t('cznBaseTotal'), null),
                       ],
                     ),
                     const SizedBox(height: 18),
-                    evsMeter(context, [
-                      EvsMeterPart(app.t('cznBaseTranslatedShort'),
+                    animaMeter(context, [
+                      AnimaMeterPart(app.t('cznBaseTranslatedShort'),
                           now.translated, _success(context)),
-                      EvsMeterPart(
+                      AnimaMeterPart(
                           app.t('cznBasePendingShort'), now.pending, _warn(context)),
                     ]),
                   ],
@@ -911,7 +911,7 @@ class _CznPanelState extends State<CznPanel> {
                 desc: points.length < 2
                     ? app.t('cznTrendWaiting')
                     : app.t('cznTrendDesc'),
-                child: evsTrend(
+                child: animaTrend(
                   context,
                   values: [for (final p in points) p.share * 100],
                   maxValue: 100,
@@ -951,12 +951,12 @@ class _CznPanelState extends State<CznPanel> {
     final asked = resolved + (session['miss'] ?? 0);
     final days = st.history;
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.insights_outlined,
       title: app.t('cznStatusTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznAttached'),
           desc: st.attached
@@ -965,7 +965,7 @@ class _CznPanelState extends State<CznPanel> {
           active: st.attached,
           control: const SizedBox.shrink(),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznSessionCoverage'),
           desc: app.t('cznSessionCoverageDesc'),
@@ -976,11 +976,11 @@ class _CznPanelState extends State<CznPanel> {
             asked == 0
                 ? '—'
                 : '${(st.sessionCoverage * 100).toStringAsFixed(0)}%  ·  '
-                    '${evsThousands(resolved)} / ${evsThousands(asked)}',
-            style: EvsType.caption.copyWith(color: _sub(context)),
+                    '${animaThousands(resolved)} / ${animaThousands(asked)}',
+            style: AnimaType.caption.copyWith(color: _sub(context)),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznLatency'),
           desc: app.t('cznLatencyDesc'),
@@ -989,7 +989,7 @@ class _CznPanelState extends State<CznPanel> {
                 ? '—'
                 : '${st.medianMs!.toStringAsFixed(0)} / '
                     '${st.p95Ms!.toStringAsFixed(0)} ${app.t('msShort')}',
-            style: EvsType.caption.copyWith(color: _sub(context)),
+            style: AnimaType.caption.copyWith(color: _sub(context)),
           ),
         ),
         if (asked > 0)
@@ -997,20 +997,20 @@ class _CznPanelState extends State<CznPanel> {
             context,
             title: app.t('cznSourcesTitle'),
             desc: app.t('cznSourcesDesc'),
-            child: evsMeter(context, [
-              EvsMeterPart(app.t('cznSrcCache'), session['cache'] ?? 0,
+            child: animaMeter(context, [
+              AnimaMeterPart(app.t('cznSrcCache'), session['cache'] ?? 0,
                   _success(context)),
-              EvsMeterPart(
+              AnimaMeterPart(
                   app.t('cznSrcExact'), session['exact'] ?? 0, _accent(context)),
-              EvsMeterPart(
+              AnimaMeterPart(
                   app.t('cznSrcLoose'), session['loose'] ?? 0, _info(context)),
-              EvsMeterPart(
+              AnimaMeterPart(
                   app.t('cznSrcScene'), session['scene'] ?? 0, _accent2(context)),
-              EvsMeterPart(
+              AnimaMeterPart(
                   app.t('cznSrcFuzzy'), session['fuzzy'] ?? 0, _warn(context)),
-              EvsMeterPart(app.t('cznSrcStation'), session['station'] ?? 0,
+              AnimaMeterPart(app.t('cznSrcStation'), session['station'] ?? 0,
                   _sub(context)),
-              EvsMeterPart(
+              AnimaMeterPart(
                   app.t('cznSrcMiss'), session['miss'] ?? 0, _danger(context)),
             ]),
           ),
@@ -1019,7 +1019,7 @@ class _CznPanelState extends State<CznPanel> {
             context,
             title: app.t('cznDailyTitle'),
             desc: app.t('cznDailyDesc'),
-            child: evsTrend(
+            child: animaTrend(
               context,
               values: [for (final d in days) d.resolved.toDouble()],
               bars: true,
@@ -1037,17 +1037,17 @@ class _CznPanelState extends State<CznPanel> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(value,
-            style: EvsType.title
+            style: AnimaType.title
                 .copyWith(color: color ?? _txt(context), fontSize: 21)),
         const SizedBox(height: 3),
-        Text(label, style: EvsType.caption.copyWith(color: _faint(context))),
+        Text(label, style: AnimaType.caption.copyWith(color: _faint(context))),
       ],
     );
   }
 
   /// Строка карточки под график: заголовок, пояснение и сам рисунок.
   ///
-  /// Не evsRow: там подпись и управление стоят рядом и делят ширину, а графику
+  /// Не animaRow: там подпись и управление стоят рядом и делят ширину, а графику
   /// нужна вся — сжатый до половины карточки он перестаёт читаться.
   Widget _chartRow(
     BuildContext context, {
@@ -1063,9 +1063,9 @@ class _CznPanelState extends State<CznPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(title, style: EvsType.label.copyWith(color: _txt(context))),
+          Text(title, style: AnimaType.label.copyWith(color: _txt(context))),
           const SizedBox(height: 3),
-          Text(desc, style: EvsType.caption.copyWith(color: _faint(context))),
+          Text(desc, style: AnimaType.caption.copyWith(color: _faint(context))),
           const SizedBox(height: 14),
           child,
         ],
@@ -1087,19 +1087,19 @@ class _CznPanelState extends State<CznPanel> {
         final diff = pack.diff.value;
         final busy = pack.running.value;
 
-        return evsCard(
+        return animaCard(
           context,
           icon: Icons.travel_explore_outlined,
           title: app.t('cznPackTitle'),
           rows: [
-            evsRow(
+            animaRow(
               context,
               label: app.t('cznPackCheck'),
               desc: pack.message.value.isNotEmpty
                   ? pack.message.value
                   : app.t('cznPackCheckDesc'),
               active: busy,
-              control: evsGhostButton(
+              control: animaGhostButton(
                 context,
                 busy ? app.t('cznStop') : app.t('cznPackRun'),
                 busy ? Icons.stop_outlined : Icons.search,
@@ -1114,18 +1114,18 @@ class _CznPanelState extends State<CznPanel> {
                   spacing: 26,
                   runSpacing: 14,
                   children: [
-                    _tile(context, evsThousands(diff.added),
+                    _tile(context, animaThousands(diff.added),
                         app.t('cznPackNew'), _success(context)),
-                    _tile(context, evsThousands(diff.changed),
+                    _tile(context, animaThousands(diff.changed),
                         app.t('cznPackChanged'), _warn(context)),
-                    _tile(context, evsThousands(diff.removed),
+                    _tile(context, animaThousands(diff.removed),
                         app.t('cznPackRemoved'), _sub(context)),
-                    _tile(context, evsThousands(diff.unchanged),
+                    _tile(context, animaThousands(diff.unchanged),
                         app.t('cznPackSame'), null),
                   ],
                 ),
               ),
-              evsRow(
+              animaRow(
                 context,
                 label: diff.pending > 0
                     ? app.t('cznPackQueue')
@@ -1137,7 +1137,7 @@ class _CznPanelState extends State<CznPanel> {
                         : app.t('cznPackNothingDesc')),
                 active: diff.pending > 0 && !diff.applied,
                 control: diff.pending > 0 && !diff.applied
-                    ? evsGhostButton(
+                    ? animaGhostButton(
                         context,
                         app.t('cznPackApply'),
                         Icons.playlist_add,
@@ -1160,19 +1160,19 @@ class _CznPanelState extends State<CznPanel> {
 
     return AnimatedBuilder(
       animation: Listenable.merge([fill.running, fill.progress, fill.message]),
-      builder: (context, _) => evsCard(
+      builder: (context, _) => animaCard(
         context,
         icon: Icons.playlist_add_check_outlined,
         title: app.t('cznFillTitle'),
         rows: [
-          evsRow(
+          animaRow(
             context,
             label: app.t('cznFillRun'),
             desc: fill.message.value.isNotEmpty
                 ? fill.message.value
                 : app.t('cznFillDesc'),
             active: fill.running.value,
-            control: evsGhostButton(
+            control: animaGhostButton(
               context,
               fill.running.value ? app.t('cznStop') : app.t('cznStart'),
               fill.running.value
@@ -1184,7 +1184,7 @@ class _CznPanelState extends State<CznPanel> {
             ),
           ),
           if (fill.running.value)
-            evsRow(
+            animaRow(
               context,
               label: app.t('cznFillProgress'),
               desc: '${(fill.progress.value * 100).toStringAsFixed(0)}%',
@@ -1216,12 +1216,12 @@ class _CznPanelState extends State<CznPanel> {
     final feather = cfg.get('overlay', 'backdropFeather', 0.22);
     final blur = cfg.get('overlay', 'backdropBlur', 8);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.layers_outlined,
       title: app.t('cznOverlayTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFontFamily'),
           desc: app.t('cznFontFamilyDesc'),
@@ -1231,11 +1231,11 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('overlay', 'fontFamily', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFontSize'),
           desc: app.t('cznFontSizeDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: size.clamp(10, 36),
             min: 10,
@@ -1245,11 +1245,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('overlay', 'fontSize', v.roundToDouble()),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznMinScale'),
           desc: app.t('cznMinScaleDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: scale.clamp(0.5, 1.0),
             min: 0.5,
@@ -1260,7 +1260,7 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('overlay', 'minFontScale', (v * 100).round() / 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznTextColor'),
           desc: app.t('cznTextColorDesc'),
@@ -1272,7 +1272,7 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('overlay', 'textColor', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznBackdropColor'),
           desc: app.t('cznBackdropColorDesc'),
@@ -1284,11 +1284,11 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('overlay', 'backdropColor', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznBackdrop'),
           desc: app.t('cznBackdropDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: opacity.clamp(0, 1),
             min: 0,
@@ -1299,11 +1299,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('overlay', 'backdropOpacity', (v * 100).round() / 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznBlur'),
           desc: app.t('cznBlurDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: blur.toDouble().clamp(4, 32),
             min: 4,
@@ -1313,11 +1313,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('overlay', 'backdropBlur', (v / 2).round() * 2),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFeather'),
           desc: app.t('cznFeatherDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: feather.clamp(0, 1.2),
             min: 0,
@@ -1328,21 +1328,21 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('overlay', 'backdropFeather', (v * 20).round() / 20),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFollowFocus'),
           desc: app.t('cznFollowFocusDesc'),
-          control: evsToggle(
+          control: animaToggle(
             context,
             cfg.get('overlay', 'followFocus', true),
             (v) => _edit('overlay', 'followFocus', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznDebug'),
           desc: app.t('cznDebugDesc'),
-          control: evsToggle(
+          control: animaToggle(
             context,
             cfg.get('overlay', 'debug', false),
             (v) => _edit('overlay', 'debug', v),
@@ -1356,12 +1356,12 @@ class _CznPanelState extends State<CznPanel> {
     final cfg = _cfg!;
     final scan = cfg.get('capture', 'windowSearchIntervalMs', 2000);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.crop_free,
       title: app.t('cznWindowTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznProcess'),
           desc: app.t('cznProcessDesc'),
@@ -1371,7 +1371,7 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('capture', 'processName', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznWindowName'),
           desc: app.t('cznWindowNameDesc'),
@@ -1381,7 +1381,7 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('capture', 'windowTitle', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznWindowClass'),
           desc: app.t('cznWindowClassDesc'),
@@ -1392,7 +1392,7 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('capture', 'windowClass', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznPackPath'),
@@ -1404,11 +1404,11 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('sync', 'packPath', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznScanInterval'),
           desc: app.t('cznScanIntervalDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: scan.toDouble().clamp(500, 10000),
             min: 500,
@@ -1431,16 +1431,16 @@ class _CznPanelState extends State<CznPanel> {
     final hold = cfg.get('detect', 'holdMs', 1200);
     final restless = cfg.get('detect', 'restlessMs', 700);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.speed_outlined,
       title: app.t('cznResponseTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznSettle'),
           desc: app.t('cznSettleDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: settle.toDouble().clamp(40, 300),
             min: 40,
@@ -1450,12 +1450,12 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('detect', 'settleMs', v.round()),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznPoll'),
           desc: app.t('cznPollDesc'),
-          control: evsSegmentedWide<int>(
+          control: animaSegmentedWide<int>(
             context,
             [
               (1, app.t('cznPollEvery')),
@@ -1466,11 +1466,11 @@ class _CznPanelState extends State<CznPanel> {
             (v) => _edit('detect', 'pollEveryNthFrame', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznRestless'),
           desc: app.t('cznRestlessDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: restless.toDouble().clamp(200, 3000),
             min: 200,
@@ -1480,11 +1480,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('detect', 'restlessMs', (v / 100).round() * 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznHold'),
           desc: app.t('cznHoldDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: hold.toDouble().clamp(0, 5000),
             min: 0,
@@ -1496,11 +1496,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('detect', 'holdMs', (v / 200).round() * 200),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznHashDistance'),
           desc: app.t('cznHashDistanceDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: distance.toDouble().clamp(1, 16),
             min: 1,
@@ -1524,17 +1524,17 @@ class _CznPanelState extends State<CznPanel> {
     final batch = cfg.get('ocr.rec', 'batchSize', 8);
     final adapter = cfg.get('ocr', 'adapterIndex', -1);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.text_fields_outlined,
       title: app.t('cznOcrTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznProvider'),
           desc: app.t('cznProviderDesc'),
-          control: evsSegmentedWide<String>(
+          control: animaSegmentedWide<String>(
             context,
             [
               ('Auto', app.t('cznProviderAuto')),
@@ -1545,11 +1545,11 @@ class _CznPanelState extends State<CznPanel> {
             (v) => _edit('ocr', 'provider', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznAdapter'),
           desc: app.t('cznAdapterDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: adapter.toDouble().clamp(-1, 3),
             min: -1,
@@ -1559,21 +1559,21 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('ocr', 'adapterIndex', v.round()),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznQuantized'),
           desc: app.t('cznQuantizedDesc'),
-          control: evsToggle(
+          control: animaToggle(
             context,
             cfg.get('ocr', 'quantized', false),
             (v) => _edit('ocr', 'quantized', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznDetSide'),
           desc: app.t('cznDetSideDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: side.toDouble().clamp(320, 1600),
             min: 320,
@@ -1584,11 +1584,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('ocr.det', 'limitSideLen', (v / 64).round() * 64),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznDetThreshold'),
           desc: app.t('cznDetThresholdDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: threshold.clamp(0.1, 0.7),
             min: 0.1,
@@ -1599,11 +1599,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('ocr.det', 'threshold', (v * 100).round() / 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznUnclip'),
           desc: app.t('cznUnclipDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: unclip.clamp(1.0, 3.0),
             min: 1.0,
@@ -1614,11 +1614,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('ocr.det', 'unclipRatio', (v * 10).round() / 10),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznMinArea'),
           desc: app.t('cznMinAreaDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: minArea.toDouble().clamp(4, 100),
             min: 4,
@@ -1628,11 +1628,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('ocr.det', 'minArea', (v / 4).round() * 4),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznRecBatch'),
           desc: app.t('cznRecBatchDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: batch.toDouble().clamp(1, 16),
             min: 1,
@@ -1655,16 +1655,16 @@ class _CznPanelState extends State<CznPanel> {
     final candidates = cfg.get('lookup', 'ftsCandidateLimit', 50);
     final cache = cfg.get('lookup', 'zoneCacheCapacity', 20000);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.manage_search_outlined,
       title: app.t('cznLookupTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFuzzy'),
           desc: app.t('cznFuzzyDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: fuzzy.clamp(0.6, 1.0),
             min: 0.6,
@@ -1675,11 +1675,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('lookup', 'fuzzyThreshold', (v * 100).round() / 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFuzzyLow'),
           desc: app.t('cznFuzzyLowDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: low.clamp(0.6, 1.0),
             min: 0.6,
@@ -1690,11 +1690,11 @@ class _CznPanelState extends State<CznPanel> {
                 (v * 100).round() / 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFuzzyMin'),
           desc: app.t('cznFuzzyMinDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: minLength.toDouble().clamp(0, 60),
             min: 0,
@@ -1705,11 +1705,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('lookup', 'fuzzyMinLength', (v / 3).round() * 3),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznLowConf'),
           desc: app.t('cznLowConfDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: cutoff.clamp(0.3, 1.0),
             min: 0.3,
@@ -1720,11 +1720,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('lookup', 'lowConfidenceCutoff', (v * 100).round() / 100),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznCandidates'),
           desc: app.t('cznCandidatesDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: candidates.toDouble().clamp(10, 200),
             min: 10,
@@ -1735,17 +1735,17 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('lookup', 'ftsCandidateLimit', (v / 10).round() * 10),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznZoneCache'),
           desc: app.t('cznZoneCacheDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: cache.toDouble().clamp(1000, 60000),
             min: 1000,
             max: 60000,
             divisions: 59,
-            label: evsThousands(cache),
+            label: animaThousands(cache),
             onChanged: (v) =>
                 _edit('lookup', 'zoneCacheCapacity', (v / 1000).round() * 1000),
           ),
@@ -1762,12 +1762,12 @@ class _CznPanelState extends State<CznPanel> {
     final threads = cfg.get('station', 'numThread', 0);
     final chunk = cfg.get('station', 'chunk', 100);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.dns_outlined,
       title: app.t('cznStationTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznStationEndpoint'),
@@ -1779,7 +1779,7 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('station', 'endpoint', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStationModel'),
           desc: app.t('cznStationModelDesc'),
@@ -1789,11 +1789,11 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('station', 'model', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStationBatch'),
           desc: app.t('cznStationBatchDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: batch.toDouble().clamp(3, 99),
             min: 3,
@@ -1803,11 +1803,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('station', 'batch', (v / 3).round() * 3),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStationTimeout'),
           desc: app.t('cznStationTimeoutDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: timeout.toDouble().clamp(30, 900),
             min: 30,
@@ -1818,11 +1818,11 @@ class _CznPanelState extends State<CznPanel> {
                 _edit('station', 'timeoutSeconds', (v / 30).round() * 30),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStationRetries'),
           desc: app.t('cznStationRetriesDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: retries.toDouble().clamp(0, 5),
             min: 0,
@@ -1832,11 +1832,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('station', 'retries', v.round()),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStationThreads'),
           desc: app.t('cznStationThreadsDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: threads.toDouble().clamp(0, 32),
             min: 0,
@@ -1846,11 +1846,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('station', 'numThread', (v / 2).round() * 2),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStationChunk'),
           desc: app.t('cznStationChunkDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: chunk.toDouble().clamp(20, 500),
             min: 20,
@@ -1870,23 +1870,23 @@ class _CznPanelState extends State<CznPanel> {
     final timeout = cfg.get('sync', 'timeoutSeconds', 3);
     final parallel = cfg.get('sync', 'maxParallelRequests', 2);
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.bolt_outlined,
       title: app.t('cznLiveTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznFallback'),
           desc: app.t('cznFallbackDesc'),
           active: on,
-          control: evsToggle(
+          control: animaToggle(
             context,
             on,
             (v) => _edit('sync', 'fallbackEnabled', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznLiveEndpoint'),
@@ -1898,7 +1898,7 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('sync', 'ollamaEndpoint', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznLiveModel'),
           desc: app.t('cznLiveModelDesc'),
@@ -1908,11 +1908,11 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('sync', 'model', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznLiveTimeout'),
           desc: app.t('cznLiveTimeoutDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: timeout.toDouble().clamp(1, 30),
             min: 1,
@@ -1922,11 +1922,11 @@ class _CznPanelState extends State<CznPanel> {
             onChanged: (v) => _edit('sync', 'timeoutSeconds', v.round()),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznLiveParallel'),
           desc: app.t('cznLiveParallelDesc'),
-          control: evsSlider(
+          control: animaSlider(
             context,
             value: parallel.toDouble().clamp(1, 8),
             min: 1,
@@ -1943,17 +1943,17 @@ class _CznPanelState extends State<CznPanel> {
   Widget _logCard(BuildContext context, AppState app) {
     final cfg = _cfg!;
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.article_outlined,
       title: app.t('cznLogTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznLogLevel'),
           desc: app.t('cznLogLevelDesc'),
-          control: evsSegmentedWide<String>(
+          control: animaSegmentedWide<String>(
             context,
             [
               ('Debug', app.t('cznLogDebug')),
@@ -1964,7 +1964,7 @@ class _CznPanelState extends State<CznPanel> {
             (v) => _edit('logging', 'level', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznLogDir'),
           desc: app.t('cznLogDirDesc'),
@@ -1974,12 +1974,12 @@ class _CznPanelState extends State<CznPanel> {
             onDone: (v) => _edit('logging', 'directory', v),
           ),
         ),
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznProfile'),
           desc: app.t('cznProfileDesc'),
-          control: evsSegmentedWide<String>(
+          control: animaSegmentedWide<String>(
             context,
             [
               ('default', app.t('cznProfileFull')),
@@ -2003,17 +2003,17 @@ class _CznPanelState extends State<CznPanel> {
     };
     final busy = s == CznState.starting;
 
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.translate_outlined,
       title: app.t('cznTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznStateLabel'),
           desc: _czn.problem.value.isNotEmpty ? _czn.problem.value : label,
           active: s == CznState.running,
-          control: evsGhostButton(
+          control: animaGhostButton(
             context,
             _czn.isRunning ? app.t('cznStop') : app.t('cznStart'),
             _czn.isRunning ? Icons.stop_outlined : Icons.play_arrow_outlined,
@@ -2028,23 +2028,23 @@ class _CznPanelState extends State<CznPanel> {
   }
 
   Widget _gameCard(BuildContext context, AppState app) {
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.sports_esports_outlined,
       title: app.t('cznGameTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznGameState'),
           desc: _gameUp ? app.t('cznGameUp') : app.t('cznGameDown'),
           active: _gameUp,
           control: const SizedBox.shrink(),
         ),
-        evsRow(
+        animaRow(
           context,
           label: app.t('cznAutoStart'),
           desc: app.t('cznAutoStartDesc'),
-          control: evsToggle(context, app.cznAutoStart, (v) {
+          control: animaToggle(context, app.cznAutoStart, (v) {
             app.setCznAutoStart(v);
             _czn.watchForGame(app);
           }),
@@ -2055,17 +2055,17 @@ class _CznPanelState extends State<CznPanel> {
 
   Widget _pathCard(BuildContext context, AppState app) {
     final resolved = _czn.resolveExe(app);
-    return evsCard(
+    return animaCard(
       context,
       icon: Icons.folder_outlined,
       title: app.t('cznPathTitle'),
       rows: [
-        evsRow(
+        animaRow(
           context,
           stacked: true,
           label: app.t('cznExeLabel'),
           desc: resolved ?? app.t('cznNoExe'),
-          control: evsGhostButton(
+          control: animaGhostButton(
             context,
             app.t('cznPick'),
             Icons.tune,
@@ -2148,11 +2148,11 @@ class _CznFieldState extends State<_CznField> {
       textAlign: widget.width == double.infinity
           ? TextAlign.left
           : TextAlign.right,
-      style: EvsType.body.copyWith(fontSize: 13, color: _txt(context)),
+      style: AnimaType.body.copyWith(fontSize: 13, color: _txt(context)),
       decoration: InputDecoration(
         isDense: true,
         hintText: widget.hint,
-        hintStyle: EvsType.body.copyWith(fontSize: 13, color: _faint(context)),
+        hintStyle: AnimaType.body.copyWith(fontSize: 13, color: _faint(context)),
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         filled: true,
         fillColor: _overlayFill(context, 0.05),

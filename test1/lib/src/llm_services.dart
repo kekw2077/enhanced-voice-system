@@ -190,7 +190,7 @@ class LocalLLMService implements ILLMService {
                       : effectivePersona.buildSystemPrompt()) +
                   conv.summaryBlock() +
                   conv.pinnedContextBlock() +
-                  evsNowBlock()) +
+                  animaNowBlock()) +
         app.pendingWebContext; // live web results for this turn (may be empty)
     final effectiveHistory = rpActive
         ? RPMemoryManager.trimForContext(
@@ -423,7 +423,7 @@ class RemoteLLMService implements ILLMService {
                   conv.pinnedContextBlock() +
                   // Часы компьютера. В ролевой игре их нет намеренно: там своё
                   // время и место, и настоящая дата ломает игру.
-                  evsNowBlock()) +
+                  animaNowBlock()) +
         app.pendingWebContext; // live web results for this turn (may be empty)
     final effectiveHistory = rpActive
         ? RPMemoryManager.trimForContext(

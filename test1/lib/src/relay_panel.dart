@@ -599,12 +599,12 @@ class _RelayStats extends StatelessWidget {
       _RelayStat(
         label: app.t('relaySpeed'),
         value: status.tunnelUp
-            ? evsFormatBps(status.rxBps + status.txBps)
+            ? animaFormatBps(status.rxBps + status.txBps)
             : '—',
         color: _txt(context),
         hint: status.tunnelUp
-            ? '${app.t('relayDown')} ${evsFormatBps(status.rxBps)} · '
-                '${app.t('relayUp')} ${evsFormatBps(status.txBps)}'
+            ? '${app.t('relayDown')} ${animaFormatBps(status.rxBps)} · '
+                '${app.t('relayUp')} ${animaFormatBps(status.txBps)}'
             : app.t('relaySpeedNoTunnel'),
       ),
     ];

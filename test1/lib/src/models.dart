@@ -157,7 +157,7 @@ class Conversation {
 ///
 /// Язык блока английский — как и вся остальная подсказка; ответ модель всё
 /// равно даёт на языке вопроса.
-String evsNowBlock() {
+String animaNowBlock() {
   final n = DateTime.now();
   const days = [
     'Monday',

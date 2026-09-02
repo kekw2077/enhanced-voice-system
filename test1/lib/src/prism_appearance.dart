@@ -7,7 +7,7 @@ part of '../main.dart';
    живым превью, акцент, анимация градиента, панели и сетка точек — пилюлями,
    под каждой группой строка-пояснение, что выбранный вариант делает.
 
-   Обычными строками (`evsRow`) это НЕ рисуется намеренно. Выбор оформления —
+   Обычными строками (`animaRow`) это НЕ рисуется намеренно. Выбор оформления —
    единственное место в настройках, где важно, как вариант ВЫГЛЯДИТ, а не как
    он называется: «Аврора» и «Шейдер» словами не различить, а превью различает
    их с одного взгляда. Поэтому здесь свои карточки, а не общая строка.
@@ -702,12 +702,12 @@ class PrismAppearanceCard extends StatelessWidget {
 
           // Галочка приветствия — обычной строкой: это переключатель, а не
           // выбор оформления, и превью ему не нужно.
-          evsRow(
+          animaRow(
             context,
             label: app.t('prismWelcomeSetting'),
             desc: app.t('prismWelcomeSettingDesc'),
             control:
-                evsToggle(context, app.prismWelcome, app.setPrismWelcome),
+                animaToggle(context, app.prismWelcome, app.setPrismWelcome),
           ),
 
           if (onWelcome != null)

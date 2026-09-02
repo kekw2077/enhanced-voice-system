@@ -20,7 +20,7 @@ part of '../main.dart';
      (Piper ru_RU отдаёт 22 кГц), поэтому подпись читает её у активного
      движка, а не повторяет число из макета.
 
-   • Волна. В макете она пляшет по таймеру. Здесь это [EvsLiveViz] на
+   • Волна. В макете она пляшет по таймеру. Здесь это [AnimaLiveViz] на
      настоящих уровнях синтеза — та же визуализация, что в шаре «Центра» и в
      плавающем виджете. Она движется, когда EVS ГОВОРИТ вслух; сохранение в
      файл идёт молча, и во время него волна честно стоит.
@@ -196,7 +196,7 @@ class PrismWavePanel extends StatelessWidget {
     // Подпись справа — активный движок и то, что он о себе сообщает. Числа
     // «48 кГц · 16 бит» из макета выдуманы: у Piper ru_RU частота 22 кГц, у
     // системного голоса своя, и вписывать одно число значило бы соврать.
-    final (engine, engineSub) = evsTtsEngineLabel(app);
+    final (engine, engineSub) = animaTtsEngineLabel(app);
     return PrismPanel(
       radius: 26,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
@@ -212,7 +212,7 @@ class PrismWavePanel extends StatelessWidget {
           const SizedBox(
             height: 96,
             child: Center(
-              child: EvsLiveViz(kind: 'lkbars', maxSize: 260),
+              child: AnimaLiveViz(kind: 'lkbars', maxSize: 260),
             ),
           ),
           const SizedBox(height: 15),

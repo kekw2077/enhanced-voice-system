@@ -11,16 +11,16 @@ part of '../main.dart';
 
    Здесь лежит единственный экземпляр каждой такой функции:
 
-   • `evsAppActions`   — список точек входа (новый чат · диалоги · архив ·
+   • `animaAppActions`   — список точек входа (новый чат · диалоги · архив ·
                           картинки · озвучка · модели · команды · журнал ·
                           настройки). Каждый стиль строит своё меню из НЕГО,
                           поэтому новая функция появляется сразу в трёх.
-   • `EvsMoreButton`   — кнопка «…», открывающая этот список одинаково везде.
-   • `EvsChatsDialog`  — единственный список диалогов с поиском и полным
+   • `AnimaMoreButton`   — кнопка «…», открывающая этот список одинаково везде.
+   • `AnimaChatsDialog`  — единственный список диалогов с поиском и полным
                           набором действий над строкой.
    • композер          — выбор модели, отправка/стоп, тумблер чата.
    • сообщение         — контекстное меню и полоса действий под ответом.
-   • `evsIconButton`   — одна кнопка-иконка: поведение одно (ripple, tooltip,
+   • `animaIconButton`   — одна кнопка-иконка: поведение одно (ripple, tooltip,
                           курсор-палец, состояние «выключена»), геометрия —
                           по стилю.
 
@@ -36,7 +36,7 @@ part of '../main.dart';
 // диалога) была на голом GestureDetector: ни отклика на нажатие, ни подсказки,
 // ни курсора-пальца.
 // --------------------------------------------------------------------------
-Widget evsIconButton(
+Widget animaIconButton(
   BuildContext context, {
   required IconData icon,
   required VoidCallback? onTap,
@@ -113,7 +113,7 @@ Widget evsIconButton(
 // --------------------------------------------------------------------------
 // Единый список функций приложения.
 // --------------------------------------------------------------------------
-enum EvsActionId {
+enum AnimaActionId {
   newChat,
   chats,
   archive,
@@ -127,12 +127,12 @@ enum EvsActionId {
   settings,
 }
 
-class EvsAction {
-  final EvsActionId id;
+class AnimaAction {
+  final AnimaActionId id;
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const EvsAction(this.id, this.icon, this.label, this.onTap);
+  const AnimaAction(this.id, this.icon, this.label, this.onTap);
 }
 
 /// Все точки входа приложения, в одном порядке для всех стилей.
@@ -141,7 +141,7 @@ class EvsAction {
 /// («Ноктюрн» открывает команды и журнал своими вкладками, а не страницей
 /// настроек). Функция при этом остаётся той же самой — меняется только то,
 /// куда ведёт нажатие.
-List<EvsAction> evsAppActions(
+List<AnimaAction> animaAppActions(
   BuildContext context, {
   VoidCallback? onChats,
   VoidCallback? onCommands,
@@ -159,73 +159,73 @@ List<EvsAction> evsAppActions(
     page == null ? const DesktopSettings() : DesktopSettings(initialPage: page),
   );
   return [
-    EvsAction(EvsActionId.newChat, Icons.add, app.t('newChat'), () {
+    AnimaAction(AnimaActionId.newChat, Icons.add, app.t('newChat'), () {
       app.buzz();
       app.newChat();
       // «Призма» держит диалог внутри оболочки: создав чат из любого её
       // экрана, надо на него же и перейти, иначе новый чат уходит в никуда.
       onNewChat?.call();
     }),
-    EvsAction(
-      EvsActionId.chats,
+    AnimaAction(
+      AnimaActionId.chats,
       Icons.forum_outlined,
       app.t('nxChats'),
       onChats ?? () => unawaited(showEvsChatsDialog(context, app)),
     ),
-    EvsAction(
-      EvsActionId.archive,
+    AnimaAction(
+      AnimaActionId.archive,
       Icons.inventory_2_outlined,
       app.t('archiveTitle'),
       () => unawaited(showChatArchive(context, app)),
     ),
-    EvsAction(
-      EvsActionId.images,
+    AnimaAction(
+      AnimaActionId.images,
       Icons.image_outlined,
       app.t('navImages'),
       onImages ?? () => push(const LuminaStudio()),
     ),
-    EvsAction(
-      EvsActionId.speech,
+    AnimaAction(
+      AnimaActionId.speech,
       Icons.record_voice_over_outlined,
       app.t('navSpeech'),
       onSpeech ?? () => push(const StudioPanel(mode: StudioMode.speech)),
     ),
     // «Сеть» — один и тот же экран во всех четырёх стилях. «Призма» держит его
     // вкладкой и передаёт onRelay, остальные открывают страницей.
-    EvsAction(
-      EvsActionId.relay,
+    AnimaAction(
+      AnimaActionId.relay,
       Icons.network_check_outlined,
       app.t('prismNavRelay'),
       onRelay ?? () => push(const RelayPanel()),
     ),
     // Переводчик игры — тот же экран во всех четырёх стилях, ровно как «Сеть».
     // Своих цветов у него нет, поэтому пятый стиль подхватит его без правок.
-    EvsAction(
-      EvsActionId.czn,
+    AnimaAction(
+      AnimaActionId.czn,
       Icons.translate_outlined,
       app.t('prismNavCzn'),
       onCzn ?? () => push(const CznPanel()),
     ),
-    EvsAction(
-      EvsActionId.models,
+    AnimaAction(
+      AnimaActionId.models,
       Icons.memory_outlined,
       app.t('nxNavModels'),
       () => settings(_Pages.llmConn),
     ),
-    EvsAction(
-      EvsActionId.commands,
+    AnimaAction(
+      AnimaActionId.commands,
       Icons.terminal_outlined,
       app.t('ncTabCommands'),
       onCommands ?? () => settings(_Pages.cmdExec),
     ),
-    EvsAction(
-      EvsActionId.log,
+    AnimaAction(
+      AnimaActionId.log,
       Icons.article_outlined,
       app.t('nxNavLog'),
       onLog ?? () => settings(_Pages.appLog),
     ),
-    EvsAction(
-      EvsActionId.settings,
+    AnimaAction(
+      AnimaActionId.settings,
       Icons.settings_outlined,
       app.t('settings'),
       () => settings(),
@@ -247,7 +247,7 @@ Future<void> showEvsActionsMenu(
   VoidCallback? onRelay,
   VoidCallback? onNewChat,
 }) async {
-  final actions = evsAppActions(
+  final actions = animaAppActions(
     context,
     onChats: onChats,
     onCommands: onCommands,
@@ -258,7 +258,7 @@ Future<void> showEvsActionsMenu(
     onNewChat: onNewChat,
   );
   final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-  final id = await showMenu<EvsActionId>(
+  final id = await showMenu<AnimaActionId>(
     context: context,
     color: _card(context),
     position: RelativeRect.fromRect(
@@ -288,10 +288,10 @@ Future<void> showEvsActionsMenu(
 }
 
 /// Кнопка «…». Своей геометрии не заводит: либо кнопка стиля
-/// (`evsIconButton`), либо чем стиль попросит через [builder] — «Ноктюрн»
+/// (`animaIconButton`), либо чем стиль попросит через [builder] — «Ноктюрн»
 /// рисует её текстом в ряду вкладок.
-class EvsMoreButton extends StatelessWidget {
-  const EvsMoreButton({
+class AnimaMoreButton extends StatelessWidget {
+  const AnimaMoreButton({
     super.key,
     this.onChats,
     this.onCommands,
@@ -329,10 +329,10 @@ class EvsMoreButton extends StatelessWidget {
 
         final b = builder;
         if (b != null) return b(btnCtx, open);
-        return evsIconButton(
+        return animaIconButton(
           btnCtx,
           icon: Icons.more_horiz,
-          tooltip: app.t('evsMore'),
+          tooltip: app.t('animaMore'),
           onTap: open,
         );
       },
@@ -347,7 +347,7 @@ class EvsMoreButton extends StatelessWidget {
 /// Кнопка «⋮» у строки диалога — видимый способ добраться до того же меню,
 /// что и правой кнопкой. Раньше она была только в классической рейке, и в
 /// «Ноктюрне» переименовать чат можно было, лишь угадав правый клик.
-Widget evsChatRowMenuButton(
+Widget animaChatRowMenuButton(
   BuildContext context,
   Conversation c,
   AppState app, {
@@ -355,7 +355,7 @@ Widget evsChatRowMenuButton(
 }) {
   return Builder(
     builder: (btnCtx) => Tooltip(
-      message: app.t('evsMore'),
+      message: app.t('animaMore'),
       child: InkResponse(
         radius: 16,
         onTap: () async {
@@ -383,18 +383,18 @@ Widget evsChatRowMenuButton(
 Future<void> showEvsChatsDialog(BuildContext context, AppState app) =>
     showDialog<void>(
       context: context,
-      builder: (_) => EvsChatsDialog(app: app),
+      builder: (_) => AnimaChatsDialog(app: app),
     );
 
-class EvsChatsDialog extends StatefulWidget {
-  const EvsChatsDialog({super.key, required this.app});
+class AnimaChatsDialog extends StatefulWidget {
+  const AnimaChatsDialog({super.key, required this.app});
   final AppState app;
 
   @override
-  State<EvsChatsDialog> createState() => _EvsChatsDialogState();
+  State<AnimaChatsDialog> createState() => _AnimaChatsDialogState();
 }
 
-class _EvsChatsDialogState extends State<EvsChatsDialog> {
+class _AnimaChatsDialogState extends State<AnimaChatsDialog> {
   final _search = TextEditingController();
   AppState get app => widget.app;
 
@@ -560,7 +560,7 @@ class _EvsChatsDialogState extends State<EvsChatsDialog> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            _evsRelTime(app, c.updatedAt),
+                            _animaRelTime(app, c.updatedAt),
                             style: TextStyle(
                               fontSize: 11,
                               color: _faint(context),
@@ -581,7 +581,7 @@ class _EvsChatsDialogState extends State<EvsChatsDialog> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                evsChatRowMenuButton(
+                animaChatRowMenuButton(
                   context,
                   c,
                   app,
@@ -645,7 +645,7 @@ void showEvsModelMenu(BuildContext context) {
 /// Пилюля с именем текущей модели. Нажатие — тот же список моделей.
 /// В ролевой игре модель диалога закреплена, и пилюля об этом говорит вместо
 /// того, чтобы молча ничего не делать.
-Widget evsModelPill(BuildContext context, {double fontSize = 13}) {
+Widget animaModelPill(BuildContext context, {double fontSize = 13}) {
   final app = context.watch<AppState>();
   final locked = app.current?.rpModeEnabled == true
       ? app.current?.rpConfig?.lockedModel
@@ -713,7 +713,7 @@ Widget evsModelPill(BuildContext context, {double fontSize = 13}) {
 // ==========================================================================
 
 /// (название движка, вторая строка).
-(String, String) evsTtsEngineLabel(AppState app) {
+(String, String) animaTtsEngineLabel(AppState app) {
   if (app.cloneEnabled) return (app.t('nxTtsClone'), 'XTTS');
   if (app.ttsEngineChoice == 'cosyvoice') {
     // Название берём у самого сервера: за этим адресом может стоять любая
@@ -727,11 +727,11 @@ Widget evsModelPill(BuildContext context, {double fontSize = 13}) {
     );
   }
   if (app.ttsPiperVoice.isEmpty) return (app.t('nxTtsSystem'), 'pyttsx3');
-  return ('Piper · ${evsVoiceName(app.ttsPiperVoice)}', 'ru_RU · 22 кГц');
+  return ('Piper · ${animaVoiceName(app.ttsPiperVoice)}', 'ru_RU · 22 кГц');
 }
 
 /// Человеческое имя голоса Piper по идентификатору файла.
-String evsVoiceName(String id) {
+String animaVoiceName(String id) {
   const m = {
     'irina': 'Ирина',
     'denis': 'Денис',
@@ -755,7 +755,7 @@ String evsVoiceName(String id) {
 /// в телеметрии «Ноктюрна», — и они успели разойтись: только одна резала путь
 /// по обратной черте, то есть локальная модель на Windows показывалась в двух
 /// стилях полным путём. Здесь объединение всех трёх.
-String evsShortModel(String m) {
+String animaShortModel(String m) {
   var s = m.replaceFirst('local:', '');
   if (s.contains('/')) s = s.split('/').last;
   if (s.contains('\\')) s = s.split('\\').last;
@@ -765,10 +765,10 @@ String evsShortModel(String m) {
 /// Чат включён / выключен — та же настройка, что «Команды → Разрешить чат».
 /// Была в Nexus и «Ноктюрне», но не в классическом стиле: выключив чат оттуда,
 /// вернуть его можно было только через настройки.
-Widget evsChatToggleButton(BuildContext context) {
+Widget animaChatToggleButton(BuildContext context) {
   final app = context.watch<AppState>();
   final on = app.chatEnabled;
-  return evsIconButton(
+  return animaIconButton(
     context,
     icon: on ? Icons.chat_bubble_outline_rounded : Icons.speaker_notes_off_outlined,
     tooltip: on ? app.t('chatToggleOff') : app.t('chatToggleOn'),
@@ -786,7 +786,7 @@ Widget evsChatToggleButton(BuildContext context) {
 /// «Остановить» доступно всякий раз, когда идёт генерация. В классическом
 /// стиле оно было заведено только для ролевой игры, хотя `cancelGeneration`
 /// одинаково работает для любого ответа.
-Widget evsSendButton(
+Widget animaSendButton(
   BuildContext context, {
   required bool hasContent,
   required bool busy,
@@ -794,7 +794,7 @@ Widget evsSendButton(
 }) {
   final app = context.watch<AppState>();
   if (app.isGenerating) {
-    return evsIconButton(
+    return animaIconButton(
       context,
       icon: Icons.stop_rounded,
       tooltip: app.t('stopGeneration'),
@@ -819,7 +819,7 @@ Widget evsSendButton(
       ),
     );
   }
-  return evsIconButton(
+  return animaIconButton(
     context,
     icon: Icons.arrow_upward_rounded,
     tooltip: app.t('send'),
@@ -837,7 +837,7 @@ Widget evsSendButton(
 // стиле.
 // ==========================================================================
 
-Future<void> evsCopyMessage(BuildContext context, ChatMessage m) async {
+Future<void> animaCopyMessage(BuildContext context, ChatMessage m) async {
   final app = context.read<AppState>();
   await Clipboard.setData(ClipboardData(text: m.content));
   if (!context.mounted) return;
@@ -846,7 +846,7 @@ Future<void> evsCopyMessage(BuildContext context, ChatMessage m) async {
 
 /// Удаление с возвратом — как у диалогов (`deleteChatWithUndo`): промахнуться
 /// по маленькой иконке легко, а переписка не восстанавливается.
-void evsDeleteMessage(
+void animaDeleteMessage(
   BuildContext context,
   Conversation conv,
   ChatMessage m,
@@ -984,7 +984,7 @@ Future<void> showEvsMessageMenu(
   String? toast;
   switch (selected) {
     case 'copy':
-      await evsCopyMessage(context, m);
+      await animaCopyMessage(context, m);
       return;
     case 'compose':
       onCompose?.call(m.content);
@@ -995,7 +995,7 @@ Future<void> showEvsMessageMenu(
     case 'remember':
       final persona = conv.persona ?? app.persona;
       if (persona.askBeforeRemembering) {
-        final confirmed = await evsPickMemoryCategory(context, app);
+        final confirmed = await animaPickMemoryCategory(context, app);
         if (confirmed != true || !context.mounted) return;
       }
       app.rememberMessageContent(m.content);
@@ -1007,7 +1007,7 @@ Future<void> showEvsMessageMenu(
       app.toggleMessagePin(conv, m);
       toast = isPinned ? app.t('msgUnpinned') : app.t('msgPinned');
     case 'delete':
-      evsDeleteMessage(context, conv, m);
+      animaDeleteMessage(context, conv, m);
       return;
   }
   if (toast != null && context.mounted) showAppSnackBar(context, toast);
@@ -1015,7 +1015,7 @@ Future<void> showEvsMessageMenu(
 
 /// Куда положить запомненное. Вынесено из `ChatScreen`, чтобы меню реплики
 /// работало одинаково во всех стилях.
-Future<bool?> evsPickMemoryCategory(BuildContext context, AppState app) {
+Future<bool?> animaPickMemoryCategory(BuildContext context, AppState app) {
   const categories = [
     'memCatPreference',
     'memCatProfile',
@@ -1074,8 +1074,8 @@ Future<bool?> evsPickMemoryCategory(BuildContext context, AppState app) {
 /// действий раньше жила в длинном нажатии — жесте, которого у мыши нет.
 /// «Перегенерировать» и «Продолжить» показываются только у последнего ответа:
 /// в середине переписки они переписали бы не то, на что нажали.
-class EvsMessageActions extends StatelessWidget {
-  const EvsMessageActions({
+class AnimaMessageActions extends StatelessWidget {
+  const AnimaMessageActions({
     super.key,
     required this.conversation,
     required this.message,
@@ -1133,7 +1133,7 @@ class EvsMessageActions extends StatelessWidget {
             alignEnd ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           btn(Icons.copy_outlined, app.t('msgCopy'),
-              () => unawaited(evsCopyMessage(context, message))),
+              () => unawaited(animaCopyMessage(context, message))),
           btn(Icons.edit_outlined, app.t('msgEdit'), () {
             final edit = onEdit;
             if (edit != null) {
@@ -1165,7 +1165,7 @@ class EvsMessageActions extends StatelessWidget {
           btn(
             Icons.delete_outline,
             app.t('msgDelete'),
-            () => evsDeleteMessage(context, conversation, message),
+            () => animaDeleteMessage(context, conversation, message),
             danger: true,
           ),
         ],
@@ -1177,8 +1177,8 @@ class EvsMessageActions extends StatelessWidget {
 /// Обёртка реплики: правый клик и долгое нажатие открывают меню, снизу —
 /// полоса действий. Три оболочки рисуют разные пузыри, но ведут себя так
 /// одинаково.
-class EvsMessageFrame extends StatelessWidget {
-  const EvsMessageFrame({
+class AnimaMessageFrame extends StatelessWidget {
+  const AnimaMessageFrame({
     super.key,
     required this.conversation,
     required this.message,
@@ -1227,7 +1227,7 @@ class EvsMessageFrame extends StatelessWidget {
           child: child,
         ),
         if (actions)
-          EvsMessageActions(
+          AnimaMessageActions(
             conversation: conversation,
             message: message,
             isLast: isLast,

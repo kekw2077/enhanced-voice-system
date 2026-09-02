@@ -38,7 +38,7 @@ Widget _wrap(String text) => Directionality(
       textDirection: TextDirection.ltr,
       // Цвет и размер заданы явно: иначе виджет полезет за палитрой в AppState,
       // а проверяем мы здесь появление текста, а не оформление.
-      child: EvsTypingText(text, style: _style),
+      child: AnimaTypingText(text, style: _style),
     );
 
 void main() {

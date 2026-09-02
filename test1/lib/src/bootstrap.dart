@@ -374,7 +374,7 @@ Future<void> _vizOverlayMain(List<String> args) async {
   const opts = WindowOptions(
     size: Size(260 * kWidgetWindowScale, 260 * kWidgetWindowScale),
     minimumSize: Size(120, 120),
-    title: 'EVS Widget',
+    title: 'Nexus Anima Widget',
     titleBarStyle: TitleBarStyle.hidden,
     skipTaskbar: true,
     alwaysOnTop: true,
@@ -416,7 +416,7 @@ class VizOverlayApp extends StatefulWidget {
 
 class _VizOverlayAppState extends State<VizOverlayApp> with WindowListener {
   // A bare AppState used purely as the config holder: the shared widgets
-  // (OverlayWidgetView, EvsLiveViz, …) read vizType/accent/… through the
+  // (OverlayWidgetView, AnimaLiveViz, …) read vizType/accent/… through the
   // provider, so mirroring the main process's settings into it makes them
   // work unchanged. load() is never called and no setter ever runs here, so
   // this process never writes shared_preferences.
@@ -709,12 +709,16 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
         if (DateTime.now().difference(_started) < const Duration(seconds: 15)) {
           return; // главное приложение может быть ещё в процессе выхода
         }
-        try {
-          final r = await io.Process.run(
-              'tasklist', ['/FI', 'IMAGENAME eq evs.exe', '/NH']);
-          final out = (r.stdout as String).toLowerCase();
-          if (out.contains('anima.exe') || out.contains('evs.exe')) io.exit(0);
-        } catch (_) {}
+        // Спрашивать надо про оба имени: фильтр tasklist отбирает строки
+        // ДО того, как мы их читаем, поэтому одного имени в нём достаточно,
+        // чтобы второе не появилось в выдаче никогда.
+        for (final exe in const ['anima.exe', 'evs.exe']) {
+          try {
+            final r = await io.Process.run(
+                'tasklist', ['/FI', 'IMAGENAME eq $exe', '/NH']);
+            if ((r.stdout as String).toLowerCase().contains(exe)) io.exit(0);
+          } catch (_) {}
+        }
       });
     }
     _watchdog = Timer(Duration(minutes: _boot ? 3 : 6), () => io.exit(0));

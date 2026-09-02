@@ -98,10 +98,10 @@ void main() {
 
   group('оформление чисел', () {
     test('разряды разделены неразрывным пробелом', () {
-      expect(evsThousands(73169), '73 169');
-      expect(evsThousands(999), '999');
-      expect(evsThousands(1000000), '1 000 000');
-      expect(evsThousands(0), '0');
+      expect(animaThousands(73169), '73 169');
+      expect(animaThousands(999), '999');
+      expect(animaThousands(1000000), '1 000 000');
+      expect(animaThousands(0), '0');
     });
 
     test('цвет подложки читается в обеих записях', () {

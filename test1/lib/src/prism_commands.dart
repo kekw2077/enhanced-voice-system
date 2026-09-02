@@ -426,7 +426,7 @@ class _PrismCommandRowState extends State<_PrismCommandRow> {
               Builder(
                 builder: (btnCtx) => PrismRoundIcon(
                   icon: Icons.more_horiz_rounded,
-                  tooltip: app.t('evsMore'),
+                  tooltip: app.t('animaMore'),
                   onTap: () {
                     final box = btnCtx.findRenderObject() as RenderBox?;
                     widget.onMenu(box == null

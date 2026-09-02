@@ -54,7 +54,7 @@ void main() {
 
   test('часы попадают в подсказку модели', () {
     final now = DateTime.now();
-    final block = evsNowBlock();
+    final block = animaNowBlock();
     expect(block, contains('${now.year}-'));
     expect(block, contains(now.hour.toString().padLeft(2, '0')));
     // Смысл блока в том, чтобы модель им пользовалась, а не пересказывала.

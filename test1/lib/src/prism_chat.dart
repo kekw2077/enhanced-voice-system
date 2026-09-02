@@ -226,7 +226,7 @@ class _PrismChatPaneState extends State<_PrismChatPane> {
         conv?.messages.where((m) => m.role != 'system').length ?? 0;
     final model = app.selectedModel.isEmpty
         ? app.t('statusNoModel')
-        : evsShortModel(app.selectedModel);
+        : animaShortModel(app.selectedModel);
     return Container(
       padding: const EdgeInsets.fromLTRB(22, 19, 16, 19),
       decoration: BoxDecoration(
@@ -263,7 +263,7 @@ class _PrismChatPaneState extends State<_PrismChatPane> {
             Builder(
               builder: (btnCtx) => PrismRoundIcon(
                 icon: Icons.more_vert_rounded,
-                tooltip: app.t('evsMore'),
+                tooltip: app.t('animaMore'),
                 onTap: () {
                   final box = btnCtx.findRenderObject() as RenderBox?;
                   final at = box == null
@@ -513,7 +513,7 @@ class _PrismMessageState extends State<_PrismMessage> {
             // Ход рассуждения — свёрнутым блоком над ответом, тем же виджетом,
             // что и в остальных стилях: это не часть ответа.
             if (ai && m.thinking.trim().isNotEmpty) ...[
-              EvsThinkingBlock(text: m.thinking, live: m.content.isEmpty),
+              AnimaThinkingBlock(text: m.thinking, live: m.content.isEmpty),
               const SizedBox(height: 8),
             ],
             SelectableText(
@@ -566,7 +566,7 @@ class _PrismMessageState extends State<_PrismMessage> {
                       icon: Icons.copy_rounded,
                       tooltip: app.t('msgCopy'),
                       size: 28,
-                      onTap: () => unawaited(evsCopyMessage(context, m)),
+                      onTap: () => unawaited(animaCopyMessage(context, m)),
                     ),
                     if (ai)
                       PrismRoundIcon(
@@ -591,7 +591,7 @@ class _PrismMessageState extends State<_PrismMessage> {
                       ),
                     PrismRoundIcon(
                       icon: Icons.more_horiz_rounded,
-                      tooltip: app.t('evsMore'),
+                      tooltip: app.t('animaMore'),
                       size: 28,
                       onTap: () {
                         final box =
@@ -618,7 +618,7 @@ class _PrismMessageState extends State<_PrismMessage> {
 /// «Думаю…» с бегущим бликом по надписи. Крутится под гейтом переднего плана:
 /// это не украшение фона, а единственный признак, что ответ идёт.
 /// Строка ожидания ответа. Значок — акцентная плитка макета, надпись — общая
-/// [EvsShimmerLabel], та же, что крутится в Nexus: пул фраз («Соображаю»,
+/// [AnimaShimmerLabel], та же, что крутится в Nexus: пул фраз («Соображаю»,
 /// «Подбираю слова», …) с бегущим бликом.
 ///
 /// Своя надпись здесь была, и она повторяла ту же мысль хуже: одно слово
@@ -665,7 +665,7 @@ class _PrismTypingRowState extends State<_PrismTypingRow>
           ),
         ),
         const SizedBox(width: 11),
-        const EvsShimmerLabel(),
+        const AnimaShimmerLabel(),
       ],
     );
   }
@@ -900,7 +900,7 @@ class _PrismThreadTileState extends State<_PrismThreadTile> {
                   child: Builder(
                     builder: (btnCtx) => PrismRoundIcon(
                       icon: Icons.more_vert_rounded,
-                      tooltip: app.t('evsMore'),
+                      tooltip: app.t('animaMore'),
                       size: 26,
                       onTap: () {
                         final box = btnCtx.findRenderObject() as RenderBox?;

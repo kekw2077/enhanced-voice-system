@@ -1018,18 +1018,18 @@ class _ChatScreenState extends State<ChatScreen> {
               if (app.vizType == 'prismorb')
                 const PrismOrb(size: 190, showMic: false)
               else if (app.vizType == 'bars')
-                const EvsBarsViz(width: 360, height: 150)
+                const AnimaBarsViz(width: 360, height: 150)
               else if (app.vizType == 'waves')
-                const EvsRingViz(size: 220)
+                const AnimaRingViz(size: 220)
               else if (app.vizType == 'orb')
-                const EvsLiveViz(kind: 'orb', maxSize: 320)
+                const AnimaLiveViz(kind: 'orb', maxSize: 320)
               else if (app.vizType == 'lkbars')
-                const EvsLiveViz(kind: 'lkbars', maxSize: 340)
+                const AnimaLiveViz(kind: 'lkbars', maxSize: 340)
               else if (app.vizType == 'wave3d')
-                const EvsWaveViz(
+                const AnimaWaveViz(
                     kind: 'wave3d', size: 320, fadeEdges: true, reactive: true)
               else if (app.vizType == 'waveflat')
-                const EvsWaveViz(
+                const AnimaWaveViz(
                     kind: 'waveflat', size: 320, fadeEdges: true, reactive: true)
               else
                 ParticleSphere(
@@ -1174,7 +1174,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           // Ход рассуждения — над ответом и свёрнутым.
           if (m.role == 'assistant' && m.thinking.trim().isNotEmpty)
-            EvsThinkingBlock(text: m.thinking, live: m.content.isEmpty),
+            AnimaThinkingBlock(text: m.thinking, live: m.content.isEmpty),
           if (thinking)
             const _ThinkingDots()
           else if (editing)
@@ -1182,7 +1182,7 @@ class _ChatScreenState extends State<ChatScreen> {
           else if (m.content.isNotEmpty)
             Text(
               m.content,
-              style: EvsType.body.copyWith(color: fg),
+              style: AnimaType.body.copyWith(color: fg),
             ),
         ],
       ),
@@ -1198,7 +1198,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // меню, снизу — та же полоса действий, что в Nexus и «Ноктюрне».
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: EvsMessageFrame(
+      child: AnimaMessageFrame(
         conversation: conv,
         message: m,
         isLast: identical(m, conv.messages.isEmpty ? null : conv.messages.last),
@@ -1226,7 +1226,7 @@ class _ChatScreenState extends State<ChatScreen> {
           autofocus: true,
           minLines: 1,
           maxLines: 12,
-          style: EvsType.body.copyWith(color: _onAccent(context)),
+          style: AnimaType.body.copyWith(color: _onAccent(context)),
           decoration: const InputDecoration(
             isDense: true,
             border: InputBorder.none,
@@ -1262,8 +1262,8 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   // Полоса действий под репликой, контекстное меню и выбор категории памяти
-  // переехали в shell_common.dart (`EvsMessageActions`, `showEvsMessageMenu`,
-  // `evsPickMemoryCategory`): три оболочки должны предлагать над сообщением
+  // переехали в shell_common.dart (`AnimaMessageActions`, `showEvsMessageMenu`,
+  // `animaPickMemoryCategory`): три оболочки должны предлагать над сообщением
   // одно и то же, а не каждая своё.
 
   Widget _promptChips(AppState app) {
@@ -1453,7 +1453,7 @@ class _ChatScreenState extends State<ChatScreen> {
               // Тумблер обязателен: без него выключенный чат из этого стиля
               // включался только через настройки, тогда как Nexus и «Ноктюрн»
               // держали кнопку прямо здесь.
-              evsChatToggleButton(context),
+              animaChatToggleButton(context),
               const SizedBox(width: 8),
             ],
           ),
@@ -1578,9 +1578,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   // Кольцо контекста — у кнопки отправки, как и в остальных
                   // стилях: решение «не пора ли сжать» принимается здесь.
                   const SizedBox(width: 8),
-                  evsContextGauge(context, app),
+                  animaContextGauge(context, app),
                   const SizedBox(width: 8),
-                  evsChatToggleButton(context),
+                  animaChatToggleButton(context),
                 ],
               ),
             ],
