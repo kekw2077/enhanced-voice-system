@@ -1,37 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Nexus Anima — основная иконка.
+       Без подложки: знак растянут до краёв, поля ~8%.
+       Читается и на светлых, и на тёмных обоях. -->
   <defs>
-    <radialGradient id="evsBg" cx="50%" cy="30%" r="90%">
-      <stop offset="0%" stop-color="#1B2048"/>
-      <stop offset="100%" stop-color="#0A0C1E"/>
-    </radialGradient>
-    <radialGradient id="evsHalo" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#3B82F6" stop-opacity="0.35"/>
-      <stop offset="65%" stop-color="#3B82F6" stop-opacity="0.12"/>
-      <stop offset="100%" stop-color="#3B82F6" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="evsCore" gradientUnits="userSpaceOnUse" x1="148" y1="148" x2="364" y2="364">
-      <stop offset="0%" stop-color="#22D3EE"/>
-      <stop offset="50%" stop-color="#3B82F6"/>
+    <linearGradient id="animaCore" gradientUnits="userSpaceOnUse"
+                    x1="132" y1="132" x2="380" y2="380">
+      <stop offset="0%"   stop-color="#22D3EE"/>
+      <stop offset="45%"  stop-color="#3B82F6"/>
       <stop offset="100%" stop-color="#8B5CF6"/>
     </linearGradient>
   </defs>
 
-  <!-- подложка -->
-  <rect width="512" height="512" rx="115" fill="url(#evsBg)"/>
-  <rect x="2" y="2" width="508" height="508" rx="113" fill="none"
-        stroke="#FFFFFF" stroke-opacity="0.07" stroke-width="4"/>
-  <ellipse cx="256" cy="256" rx="215" ry="185" fill="url(#evsHalo)"/>
-
   <!-- орбита -->
-  <circle cx="256" cy="256" r="182" fill="none"
-          stroke="#8B5CF6" stroke-opacity="0.55" stroke-width="10"/>
+  <circle cx="256" cy="256" r="200" fill="none" stroke="#A78BFA" stroke-width="28"/>
 
-  <!-- модули на орбите: -107.5°, 20°, 133° -->
-  <circle cx="201" cy="82"  r="23" fill="#FBBF24"/>
-  <circle cx="427" cy="318" r="23" fill="#FBBF24"/>
-  <circle cx="132" cy="389" r="23" fill="#FBBF24"/>
+  <!-- модули: -107.5°, 20°, 133° -->
+  <circle cx="196" cy="65"  r="38" fill="#FBBF24"/>
+  <circle cx="444" cy="324" r="38" fill="#FBBF24"/>
+  <circle cx="120" cy="402" r="38" fill="#FBBF24"/>
 
   <!-- ядро -->
-  <path d="M256 148 Q275 237 364 256 Q275 275 256 364 Q237 275 148 256 Q237 237 256 148 Z"
-        fill="url(#evsCore)"/>
+  <path d="M256 136 Q277 235 376 256 Q277 277 256 376 Q235 277 136 256 Q235 235 256 136 Z"
+        fill="url(#animaCore)"/>
 </svg>
