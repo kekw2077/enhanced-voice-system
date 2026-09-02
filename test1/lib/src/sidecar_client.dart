@@ -438,6 +438,38 @@ class SidecarClient {
               c.complete((m['text'] as String? ?? '').trim());
             }
             break;
+          case 'bus.ask':
+            // Вопрос от шины. Спрашивает голосом ассистент — у него есть и
+            // синтез, и микрофон, а у клиента ни того ни другого.
+            VoiceAssistant.instance.askFromBus(
+                m['id']?.toString() ?? '', m['text']?.toString() ?? '');
+            break;
+          case 'audio.devices.result':
+            final devs = ((m['devices'] as List?) ?? const [])
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList();
+            for (final c in _devWaiters) {
+              if (!c.isCompleted) c.complete(devs);
+            }
+            _devWaiters.clear();
+            break;
+          case 'audio.set_default.result':
+            for (final c in _setDevWaiters) {
+              if (!c.isCompleted) c.complete(m.cast<String, dynamic>());
+            }
+            _setDevWaiters.clear();
+            break;
+          case 'proc.windowed.result':
+            final apps = ((m['apps'] as List?) ?? const [])
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList();
+            for (final c in _appWaiters) {
+              if (!c.isCompleted) c.complete(apps);
+            }
+            _appWaiters.clear();
+            break;
           case 'bus.status.result':
             for (final c in _busStatusWaiters) {
               if (!c.isCompleted) c.complete(m.cast<String, dynamic>());
@@ -554,12 +586,24 @@ class SidecarClient {
         // может спрашивать чаще, чем требует эта настройка, но никогда реже.
         'confirm': _confirm,
         'enabled': _busEnabled,
+        // Списки игр, проигрыватель и устройства вывода. Правила на них
+        // ссылаются по имени (in:settings.games.switch), но называет их
+        // человек здесь — движок сам ничего этого знать не может.
+        'settings': _busSettings,
       });
     } catch (_) {}
   }
 
   String _confirm = 'risky';
   bool _busEnabled = true;
+  Map<String, dynamic> _busSettings = const {};
+
+  /// Отдать движку настройки шины. Уходят и сразу, и при переподключении —
+  /// связь рвётся чаще, чем меняются настройки.
+  void setBusSettings(Map<String, dynamic> s) {
+    _busSettings = s;
+    if (sidecarProtocol >= 1) unawaited(_pushJournal());
+  }
 
   /// Сообщить движку новый потолок подтверждений.
   ///
@@ -602,6 +646,43 @@ class SidecarClient {
     _busRecentWaiters.add(c);
     _send({'type': 'bus.recent', 'limit': limit});
     return c.future.timeout(const Duration(seconds: 4),
+        onTimeout: () => <Map<String, dynamic>>[]);
+  }
+
+  /// Ответить на заданный шиной вопрос. Молчание — тоже ответ, и его шлёт
+  /// вызывающая сторона по своему таймеру: движок ждать не умеет и не должен.
+  void answerBusAsk(String id, bool yes) =>
+      _send({'type': 'bus.answer', 'id': id, 'yes': yes});
+
+  final List<Completer<List<Map<String, dynamic>>>> _devWaiters = [];
+  final List<Completer<Map<String, dynamic>>> _setDevWaiters = [];
+  final List<Completer<List<Map<String, dynamic>>>> _appWaiters = [];
+
+  /// Выходы звука: все, включая невоткнутые. Невоткнутые нужны обязательно —
+  /// наушники называют один раз, а втыкают каждый день.
+  Future<List<Map<String, dynamic>>> audioDevices() {
+    final c = Completer<List<Map<String, dynamic>>>();
+    _devWaiters.add(c);
+    _send({'type': 'audio.devices'});
+    return c.future.timeout(const Duration(seconds: 6),
+        onTimeout: () => <Map<String, dynamic>>[]);
+  }
+
+  /// Переключить выход. Проверка «воткнуто ли» — на стороне движка.
+  Future<Map<String, dynamic>> setDefaultAudio(String deviceId) {
+    final c = Completer<Map<String, dynamic>>();
+    _setDevWaiters.add(c);
+    _send({'type': 'audio.set_default', 'device': deviceId});
+    return c.future.timeout(const Duration(seconds: 8),
+        onTimeout: () => <String, dynamic>{'ok': false, 'reason': 'timeout'});
+  }
+
+  /// Программы с видимым окном — то, из чего выбирают игру.
+  Future<List<Map<String, dynamic>>> windowedApps() {
+    final c = Completer<List<Map<String, dynamic>>>();
+    _appWaiters.add(c);
+    _send({'type': 'proc.windowed'});
+    return c.future.timeout(const Duration(seconds: 6),
         onTimeout: () => <Map<String, dynamic>>[]);
   }
 
@@ -1333,6 +1414,9 @@ class VoiceAssistant {
     // shown on the pill anymore (only the status is), kept for potential logs.
     lastHeard.value = raw;
 
+    // Ответ на вопрос шины — раньше разбора команд и слова-активатора.
+    if (_answerPendingAsk(raw)) return;
+
     String? command;
     if (app.listenMode == 'ptt') {
       // Микрофон открылся ровно потому, что пользователь зажал клавишу — вся
@@ -1706,6 +1790,79 @@ class VoiceAssistant {
       if (_stopFlag || say.trim().isEmpty) return;
       SidecarClient.instance.speak(say, rate: app.ttsRate, volume: app.ttsVolume);
     }).catchError((_) {});
+  }
+
+  // ---- вопрос от шины ------------------------------------------------------
+  //
+  // Шина спрашивает голосом, потому что спрашивает она чаще всего про игру, а
+  // игра занимает весь экран: диалога за ней не видно, плашку поверх
+  // эксклюзивного полноэкранного режима Windows не пускает. Голос проходит
+  // всегда.
+  String _askId = '';
+  Timer? _askTimer;
+
+  // Ответ ищется по началу фразы и только целым словом: «нет» в «нет, потом»
+  // — ответ, а «не» в «не выключай музыку» — начало другой фразы. Границу
+  // слова через  здесь ставить нельзя: в Dart она считается по латинице, и
+  // после кириллицы её попросту не существует.
+  static final RegExp _yesRe = RegExp(
+      r'^(да|ага|угу|давай|давайте|конечно|можно|нужно|ок|окей|хорошо|валяй|'
+      r'переключи|переключай|переключить)( |$)');
+  static final RegExp _noRe = RegExp(
+      r'^(нет|неа|не|не надо|не нужно|не сейчас|отмена|потом|оставь|'
+      r'оставим)( |$)');
+
+  /// Ответ в услышанной фразе: true — да, false — нет, null — это не ответ.
+  ///
+  /// Отдельно и публично ради проверки: разбор «да/нет» решает, переключать ли
+  /// звук, и ошибиться здесь — значит увести звук туда, куда не просили.
+  @visibleForTesting
+  static bool? busAnswerOf(String normalized) {
+    final t = normalized.trim();
+    if (t.isEmpty) return null;
+    if (_noRe.hasMatch(t)) return false;
+    if (_yesRe.hasMatch(t)) return true;
+    return null;
+  }
+
+  /// Задать вопрос вслух. Ответ придёт следующей фразой — [_answerPendingAsk].
+  void askFromBus(String id, String text) {
+    final app = _app;
+    if (app == null || id.isEmpty || text.trim().isEmpty) return;
+    _askTimer?.cancel();
+    _askId = id;
+    _speak(app, text);
+    VizOverlayServer.instance.note(text, kind: 'info');
+    unawaited(appendLog('commands', 'шина спрашивает: $text'));
+    // Молчание — это «нет», а не «спросим ещё раз». Вопрос уже прозвучал; если
+    // на него не ответили, человек занят ровно тем, ради чего всё затевалось.
+    _askTimer = Timer(const Duration(seconds: 20), () {
+      if (_askId != id) return;
+      _askId = '';
+      SidecarClient.instance.answerBusAsk(id, false);
+      unawaited(appendLog('commands', 'шина: ответа не было -> нет'));
+    });
+  }
+
+  /// Съесть фразу, если это ответ на заданный вопрос.
+  ///
+  /// Слово-активатор для ответа не нужно: ассистент только что спросил вслух, и
+  /// требовать его имени ради «да» — это не разговор, а заполнение формы. Зато
+  /// фраза, которая на ответ не похожа, отдаётся дальше как обычно: человек мог
+  /// и не услышать вопроса, а команду терять нельзя.
+  bool _answerPendingAsk(String raw) {
+    if (_askId.isEmpty) return false;
+    final t = _norm(raw);
+    if (t.isEmpty) return false;
+    final answer = busAnswerOf(t);
+    if (answer == null) return false;
+    final yes = answer;
+    final id = _askId;
+    _askId = '';
+    _askTimer?.cancel();
+    SidecarClient.instance.answerBusAsk(id, yes);
+    unawaited(appendLog('commands', 'шина: ответ «$t» -> ${yes ? "да" : "нет"}'));
+    return true;
   }
 
   Future<bool> _confirm(AppState app, VoiceCommand c) async {

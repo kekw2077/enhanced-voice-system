@@ -1041,6 +1041,50 @@ String formatBytes(int bytes) {
   return '${(bytes / mb).toStringAsFixed(0)} MB';
 }
 
+/// Зарегистрированная игра: что запускается и что делать со звуком.
+///
+/// Ключ — имя процесса: его видит движок, и только оно у игры постоянно.
+/// Заголовок хранится рядом ради списка на экране — «League of Legends»
+/// читается, «LeagueClientUx.exe» нет, — и брать его каждый раз заново нельзя:
+/// у закрытой игры окна не спросишь.
+class BusGame {
+  BusGame({required this.exe, required this.title, this.audio = 'ask'});
+
+  final String exe;
+  String title;
+
+  /// 'switch' — переключать звук молча, 'ask' — спросить, 'none' — не трогать.
+  String audio;
+
+  Map<String, dynamic> toJson() => {'exe': exe, 'title': title, 'audio': audio};
+
+  static BusGame fromJson(Map<String, dynamic> j) => BusGame(
+        exe: (j['exe'] ?? '').toString().toLowerCase(),
+        title: (j['title'] ?? '').toString(),
+        audio: (j['audio'] ?? 'ask').toString(),
+      );
+
+  /// Разбор сохранённого списка. Негодная строка даёт пустой список, а не
+  /// исключение: испорченная настройка не должна мешать программе запуститься.
+  static List<BusGame> listFrom(String raw) {
+    if (raw.trim().isEmpty) return [];
+    try {
+      final data = jsonDecode(raw);
+      if (data is! List) return [];
+      return [
+        for (final e in data)
+          if (e is Map && (e['exe'] ?? '').toString().trim().isNotEmpty)
+            BusGame.fromJson(e.cast<String, dynamic>())
+      ];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static String listTo(List<BusGame> games) =>
+      jsonEncode([for (final g in games) g.toJson()]);
+}
+
 /* ============================ ИСТОРИЯ ИЗМЕНЕНИЙ ============================ */
 // Keep in sync with CHANGELOG.md — this is the in-app copy shown on the
 // "About version" screen and in the post-update "what's new" dialog.

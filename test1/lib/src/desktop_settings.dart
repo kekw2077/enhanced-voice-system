@@ -1448,6 +1448,334 @@ class _AssistantVoiceCardState extends State<_AssistantVoiceCard> {
 // Журнал работы приложения (страница _Pages.appLog). Читает те же файлы и тем
 // же кодом, что вкладка «Журнал» в «Ноктюрне» — AnimaLogFeed; отличается только
 // подача: здесь она карточная, как остальные настройки.
+// Выбор из запущенного: и игры, и проигрыватель называются одинаково — тем,
+// что сейчас на экране. Список берётся у движка, потому что окна видит он.
+Future<Map<String, dynamic>?> _pickRunningApp(
+    BuildContext context, AppState app, Set<String> exclude) async {
+  if (SidecarClient.instance.status.value != SidecarStatus.connected) {
+    showAppSnackBar(context, app.t('busNoEngine'));
+    return null;
+  }
+  final apps = await SidecarClient.instance.windowedApps();
+  if (!context.mounted) return null;
+  final fresh = [
+    for (final a in apps)
+      if (!exclude.contains((a['exe'] ?? '').toString().toLowerCase())) a
+  ];
+  if (fresh.isEmpty) {
+    showAppSnackBar(context, app.t('busNoApps'));
+    return null;
+  }
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (dctx) => _AppDialog(
+      title: Text(app.t('busPickApp')),
+      content: SizedBox(
+        width: 380,
+        height: 360,
+        child: ListView.builder(
+          itemCount: fresh.length,
+          itemBuilder: (_, i) {
+            final a = fresh[i];
+            return ListTile(
+              dense: true,
+              title: Text((a['title'] ?? '').toString(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.5, color: _txt(dctx))),
+              subtitle: Text((a['exe'] ?? '').toString(),
+                  style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 11,
+                      color: _faint(dctx))),
+              onTap: () => Navigator.pop(dctx, a.cast<String, dynamic>()),
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(dctx, null),
+            child: Text(app.t('cancel'))),
+      ],
+    ),
+  );
+}
+
+/// Зарегистрированные игры и что делать со звуком при их запуске.
+class _BusGamesCard extends StatefulWidget {
+  const _BusGamesCard();
+  @override
+  State<_BusGamesCard> createState() => _BusGamesCardState();
+}
+
+class _BusGamesCardState extends State<_BusGamesCard> {
+  bool _busy = false;
+
+  Future<void> _add() async {
+    final app = context.read<AppState>();
+    setState(() => _busy = true);
+    final chosen = await _pickRunningApp(
+        context, app, {for (final g in app.busGames) g.exe});
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (chosen == null) return;
+    app.addBusGame((chosen['exe'] ?? '').toString(),
+        (chosen['title'] ?? '').toString());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(app.t('busGamesDesc'),
+            style: TextStyle(fontSize: 12.5, color: _sub(context))),
+        const SizedBox(height: 12),
+        if (app.busGames.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Text(app.t('busNoGames'),
+                style: TextStyle(fontSize: 12.5, color: _faint(context))),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: _card2(context),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _stroke(context)),
+            ),
+            child: Column(children: [
+              for (var i = 0; i < app.busGames.length; i++)
+                _gameRow(app, app.busGames[i], i == app.busGames.length - 1),
+            ]),
+          ),
+        const SizedBox(height: 12),
+        Row(children: [
+          animaAddButton(context, app.t('busAddGame'),
+              _busy ? () {} : () => unawaited(_add())),
+          const SizedBox(width: 10),
+          if (_busy)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: _accent(context)),
+            ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _gameRow(AppState app, BusGame g, bool last) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+        decoration: BoxDecoration(
+          border:
+              last ? null : Border(bottom: BorderSide(color: _stroke(context))),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(g.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _txt(context))),
+                Text(g.exe,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 11,
+                        color: _faint(context))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          animaSegmented<String>(
+            context,
+            [
+              ('switch', app.t('busModeSwitch')),
+              ('ask', app.t('busModeAsk')),
+              ('none', app.t('busModeNone')),
+            ],
+            g.audio,
+            (v) => app.setBusGameAudio(g.exe, v),
+          ),
+          IconButton(
+            tooltip: app.t('delete'),
+            icon: Icon(Icons.close, size: 16, color: _faint(context)),
+            onPressed: () => app.removeBusGame(g.exe),
+          ),
+        ]),
+      );
+}
+
+/// Устройства вывода и музыка: что считать наушниками, что колонками, чем
+/// играет музыка и до скольки её приглушать.
+class _BusAudioCard extends StatefulWidget {
+  const _BusAudioCard();
+  @override
+  State<_BusAudioCard> createState() => _BusAudioCardState();
+}
+
+class _BusAudioCardState extends State<_BusAudioCard> {
+  bool _busy = false;
+
+  Future<void> _pickDevice(String role) async {
+    final app = context.read<AppState>();
+    if (SidecarClient.instance.status.value != SidecarStatus.connected) {
+      showAppSnackBar(context, app.t('busNoEngine'));
+      return;
+    }
+    setState(() => _busy = true);
+    final devs = await SidecarClient.instance.audioDevices();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    // Невоткнутые остаются в списке: наушники называют один раз, а втыкают
+    // каждый день, и выбрать их надо заранее — когда джек ещё не в гнезде.
+    final usable = [
+      for (final d in devs)
+        if (d['state'] == 'active' || d['state'] == 'unplugged') d
+    ];
+    if (usable.isEmpty) {
+      showAppSnackBar(context, app.t('busNoDevices'));
+      return;
+    }
+    if (!mounted) return;
+    final chosen = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dctx) => _AppDialog(
+        title: Text(app.t(
+            role == 'headphones' ? 'busHeadphones' : 'busSpeakers')),
+        content: SizedBox(
+          width: 420,
+          height: 340,
+          child: ListView.builder(
+            itemCount: usable.length,
+            itemBuilder: (_, i) {
+              final d = usable[i];
+              final unplugged = d['state'] == 'unplugged';
+              return ListTile(
+                dense: true,
+                title: Text((d['name'] ?? '').toString(),
+                    maxLines: 2,
+                    style: TextStyle(fontSize: 13, color: _txt(dctx))),
+                subtitle: Text(
+                    [
+                      if (d['default'] == true) app.t('busDeviceCurrent'),
+                      if (unplugged) app.t('busDeviceUnplugged'),
+                    ].join(' · '),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: unplugged ? _warn(dctx) : _faint(dctx))),
+                onTap: () => Navigator.pop(dctx, d),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, null),
+              child: Text(app.t('cancel'))),
+        ],
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    app.setAudioDevice(role, (chosen['id'] ?? '').toString(),
+        (chosen['name'] ?? '').toString());
+  }
+
+  // Проверка ухом. Названия устройств у Windows такие, что выбрать наушники с
+  // первого раза нельзя: «Динамики (fifine Microphone)» — это, вообще-то,
+  // гнездо на микрофоне. Переключаемся и сразу говорим — если звука не слышно,
+  // выбрано не то.
+  Future<void> _test(String role) async {
+    final app = context.read<AppState>();
+    final id = role == 'headphones' ? app.devHeadphones : app.devSpeakers;
+    if (id.isEmpty) return;
+    setState(() => _busy = true);
+    final res = await SidecarClient.instance.setDefaultAudio(id);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (res['ok'] == true) {
+      SidecarClient.instance.speak(app.t('busTestPhrase'));
+      showAppSnackBar(context, app.t('busTestOk'));
+    } else {
+      final why = (res['reason'] ?? '').toString();
+      showAppSnackBar(context,
+          '${app.t('busTestFail')}${why.isEmpty ? '' : ' ($why)'}');
+    }
+  }
+
+  Future<void> _pickMusic() async {
+    final app = context.read<AppState>();
+    setState(() => _busy = true);
+    final chosen = await _pickRunningApp(context, app, const {});
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (chosen == null) return;
+    app.setMusicApp((chosen['exe'] ?? '').toString(),
+        (chosen['title'] ?? '').toString());
+  }
+
+  Widget _deviceRow(AppState app, String role) {
+    final id = role == 'headphones' ? app.devHeadphones : app.devSpeakers;
+    final name =
+        role == 'headphones' ? app.devHeadphonesName : app.devSpeakersName;
+    return animaRow(context,
+        label: app.t(role == 'headphones' ? 'busHeadphones' : 'busSpeakers'),
+        desc: name.isEmpty ? app.t('busNotSet') : name,
+        control: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (id.isNotEmpty) ...[
+            animaGhostButton(context, app.t('busTest'), Icons.volume_up_outlined,
+                onTap: _busy ? null : () => unawaited(_test(role))),
+            const SizedBox(width: 8),
+          ],
+          animaSelectButton(context, app.t('busPickDevice'),
+              minWidth: 120, onTap: () => unawaited(_pickDevice(role))),
+        ]));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Column(children: [
+      _deviceRow(app, 'headphones'),
+      _deviceRow(app, 'speakers'),
+      animaRow(context,
+          label: app.t('busMusicApp'),
+          desc: app.musicTitle.isEmpty
+              ? app.t('busMusicAppDesc')
+              : '${app.musicTitle} · ${app.musicApp}',
+          control: animaSelectButton(context, app.t('busPickDevice'),
+              minWidth: 120, onTap: () => unawaited(_pickMusic()))),
+      animaRow(context,
+          label: app.t('busDuck'),
+          desc: app.t('busDuckDesc'),
+          control: animaToggle(
+              context, app.busDuckMusic, (v) => app.setBusDuckMusic(v))),
+      if (app.busDuckMusic)
+        animaRow(context,
+            label: app.t('busDuckLevel'),
+            desc: app.t('busDuckLevelDesc'),
+            stacked: true,
+            control: animaSlider(context,
+                value: app.musicDuck.toDouble(),
+                min: 0,
+                max: 100,
+                divisions: 20,
+                label: '${app.musicDuck} %',
+                onChanged: (v) => app.setMusicDuck(v.round()))),
+    ]);
+  }
+}
+
 // Страница «События и реакции»: состояние шины, её правила и хвост журнала.
 //
 // Данные берутся у движка по запросу — при открытии и по кнопке. Таймера здесь
@@ -3689,6 +4017,11 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'closeToTray': _Pages.startup,
     'globalHotkey': _Pages.startup,
     'busEnabled': _Pages.eventBus,
+    'cardBusGames': _Pages.eventBus,
+    'busHeadphones': _Pages.eventBus,
+    'busSpeakers': _Pages.eventBus,
+    'busMusicApp': _Pages.eventBus,
+    'busDuck': _Pages.eventBus,
     'busRules': _Pages.eventBus,
     'busJournal': _Pages.eventBus,
     'cardInputDevice': _Pages.micDevice,
@@ -5724,6 +6057,20 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       context, app.t('busConfirmOpen'), Icons.north_east,
                       onTap: () => setState(() => _page = _Pages.cmdSecurity))),
             ]),
+      ),
+      _CardSpec(
+        animaCard(context,
+            icon: Icons.sports_esports_outlined,
+            title: app.t('cardBusGames'),
+            rows: [const _BusGamesCard()]),
+        full: true,
+      ),
+      _CardSpec(
+        animaCard(context,
+            icon: Icons.headphones_outlined,
+            title: app.t('cardBusAudio'),
+            rows: [const _BusAudioCard()]),
+        full: true,
       ),
       _CardSpec(
         animaCard(context,

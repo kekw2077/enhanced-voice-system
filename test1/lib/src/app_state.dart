@@ -398,6 +398,20 @@ class AppState extends ChangeNotifier {
   // Разбор фоновых событий. Включён: без него шина есть, но её не видно и не
   // слышно, а весь смысл в том, что она замечает происходящее сама.
   bool busEnabled = true;
+  // Зарегистрированные игры и звук вокруг них. Здесь только то, что называет
+  // человек: имена процессов, проигрыватель и устройства вывода. Что с этим
+  // делать, решают правила движка — они на эти списки ссылаются по имени.
+  List<BusGame> busGames = [];
+  bool busDuckMusic = true;
+  String musicApp = '';
+  String musicTitle = '';
+  int musicDuck = 20;
+  // Идентификаторы устройств вывода. Имя хранится рядом, чтобы список в
+  // настройках читался и при выключенном движке.
+  String devHeadphones = '';
+  String devHeadphonesName = '';
+  String devSpeakers = '';
+  String devSpeakersName = '';
   bool cmdEnabled = false; // allow command execution (off by default for safety)
   // Chat on/off. When false, EVS is a pure command assistant: voice that
   // doesn't match a command says "command not found" (never falls back to a
@@ -840,6 +854,19 @@ class AppState extends ChangeNotifier {
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
     busEnabled = prefs.getBool('busEnabled') ?? true;
+    busGames = BusGame.listFrom(prefs.getString('busGames') ?? '');
+    busDuckMusic = prefs.getBool('busDuckMusic') ?? true;
+    musicApp = prefs.getString('musicApp') ?? '';
+    musicTitle = prefs.getString('musicTitle') ?? '';
+    musicDuck = prefs.getInt('musicDuck') ?? 20;
+    devHeadphones = prefs.getString('devHeadphones') ?? '';
+    devHeadphonesName = prefs.getString('devHeadphonesName') ?? '';
+    devSpeakers = prefs.getString('devSpeakers') ?? '';
+    devSpeakersName = prefs.getString('devSpeakersName') ?? '';
+    // Движку списки нужны с первой секунды: без них сторож процессов не знает,
+    // за чем следить, и запуск игры проходит незамеченным. Если связи ещё нет,
+    // значение просто запомнится и уедет при подключении.
+    _pushBus();
     cmdEnabled = prefs.getBool('cmdEnabled') ?? false;
     chatEnabled = prefs.getBool('chatEnabled') ?? true;
     vizType = prefs.getString('vizType') ?? 'sphere';
@@ -999,8 +1026,9 @@ class AppState extends ChangeNotifier {
         sttSidecarEngine, sttRemoteUrl, sttRemoteModel, sttRemoteKey,
         sttLocalEngine,
         denoiseMode, sttDevice, cmdMode, wakeWord, stopWords.join(','),
-        cmdThreshold, cmdConfirm, busEnabled, cmdEnabled, chatEnabled, vizType,
-        showVizBg,
+        cmdThreshold, cmdConfirm, busEnabled, BusGame.listTo(busGames),
+        busDuckMusic, musicApp, musicDuck, devHeadphones, devSpeakers,
+        cmdEnabled, chatEnabled, vizType, showVizBg,
         showPartial, overlayMode, startupShowWindow, overlaySize, vizAccent,
         orbSize, orbSpeed,
         barCount, autoUpdateCheck, webSearchEnabled, tavilyKey, braveKey,
@@ -1146,6 +1174,15 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble('cmdThreshold', cmdThreshold);
     await prefs.setString('cmdConfirm', cmdConfirm);
     await prefs.setBool('busEnabled', busEnabled);
+    await prefs.setString('busGames', BusGame.listTo(busGames));
+    await prefs.setBool('busDuckMusic', busDuckMusic);
+    await prefs.setString('musicApp', musicApp);
+    await prefs.setString('musicTitle', musicTitle);
+    await prefs.setInt('musicDuck', musicDuck);
+    await prefs.setString('devHeadphones', devHeadphones);
+    await prefs.setString('devHeadphonesName', devHeadphonesName);
+    await prefs.setString('devSpeakers', devSpeakers);
+    await prefs.setString('devSpeakersName', devSpeakersName);
     await prefs.setBool('cmdEnabled', cmdEnabled);
     await prefs.setBool('chatEnabled', chatEnabled);
     await prefs.setString('vizType', vizType);
@@ -1316,9 +1353,10 @@ class AppState extends ChangeNotifier {
       await DesktopIntegration.instance.applyAutostart(autostart);
     } catch (_) {}
     try {
-      // Отмена настроек должна доезжать и до движка: выключатель живёт там, а
-      // в приложении хранится только его последнее сохранённое значение.
+      // Отмена настроек должна доезжать и до движка: и выключатель, и списки
+      // игр живут там, а в приложении хранится только последнее сохранённое.
       SidecarClient.instance.setBusEnabled(busEnabled);
+      SidecarClient.instance.setBusSettings(busSettings());
     } catch (_) {}
   }
 
@@ -1433,6 +1471,19 @@ class AppState extends ChangeNotifier {
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
     busEnabled = prefs.getBool('busEnabled') ?? true;
+    busGames = BusGame.listFrom(prefs.getString('busGames') ?? '');
+    busDuckMusic = prefs.getBool('busDuckMusic') ?? true;
+    musicApp = prefs.getString('musicApp') ?? '';
+    musicTitle = prefs.getString('musicTitle') ?? '';
+    musicDuck = prefs.getInt('musicDuck') ?? 20;
+    devHeadphones = prefs.getString('devHeadphones') ?? '';
+    devHeadphonesName = prefs.getString('devHeadphonesName') ?? '';
+    devSpeakers = prefs.getString('devSpeakers') ?? '';
+    devSpeakersName = prefs.getString('devSpeakersName') ?? '';
+    // Движку списки нужны с первой секунды: без них сторож процессов не знает,
+    // за чем следить, и запуск игры проходит незамеченным. Если связи ещё нет,
+    // значение просто запомнится и уедет при подключении.
+    _pushBus();
     cmdEnabled = prefs.getBool('cmdEnabled') ?? false;
     chatEnabled = prefs.getBool('chatEnabled') ?? true;
     vizType = prefs.getString('vizType') ?? 'sphere';
@@ -2838,6 +2889,104 @@ class AppState extends ChangeNotifier {
   void setCmdConfirm(String v) {
     cmdConfirm = v;
     SidecarClient.instance.setConfirmPolicy(v);
+    _save();
+    notifyListeners();
+  }
+
+  /// Настройки шины в том виде, в каком их читают правила движка.
+  ///
+  /// Три списка вместо одного с пометками: правило умеет спросить «есть ли имя
+  /// в списке», и это всё. Разложить игры по спискам здесь дешевле, чем учить
+  /// движок разбирать наши структуры, — и правила остаются читаемыми.
+  Map<String, dynamic> busSettings() {
+    final all = <String>[];
+    final sw = <String>[];
+    final ask = <String>[];
+    for (final g in busGames) {
+      final e = g.exe.trim().toLowerCase();
+      if (e.isEmpty) continue;
+      all.add(e);
+      if (g.audio == 'switch') sw.add(e);
+      if (g.audio == 'ask') ask.add(e);
+    }
+    return {
+      'games': {
+        'list': all,
+        'switch': sw,
+        'ask': ask,
+        // Приглушение — одно на все игры: его включают один раз, а не
+        // вспоминают про каждую новую игру заново.
+        'duck': busDuckMusic ? all : const <String>[],
+      },
+      'music': {'app': musicApp, 'duck': musicDuck},
+      'devices': {'headphones': devHeadphones, 'speakers': devSpeakers},
+    };
+  }
+
+  void _pushBus() {
+    try {
+      SidecarClient.instance.setBusSettings(busSettings());
+    } catch (_) {}
+  }
+
+  void addBusGame(String exe, String title) {
+    final e = exe.trim().toLowerCase();
+    if (e.isEmpty) return;
+    if (busGames.any((g) => g.exe == e)) return;
+    busGames.add(BusGame(exe: e, title: title.trim().isEmpty ? e : title.trim()));
+    _pushBus();
+    _save();
+    notifyListeners();
+  }
+
+  void removeBusGame(String exe) {
+    busGames.removeWhere((g) => g.exe == exe);
+    _pushBus();
+    _save();
+    notifyListeners();
+  }
+
+  void setBusGameAudio(String exe, String mode) {
+    for (final g in busGames) {
+      if (g.exe == exe) g.audio = mode;
+    }
+    _pushBus();
+    _save();
+    notifyListeners();
+  }
+
+  void setBusDuckMusic(bool v) {
+    busDuckMusic = v;
+    _pushBus();
+    _save();
+    notifyListeners();
+  }
+
+  void setMusicApp(String exe, String title) {
+    musicApp = exe.trim();
+    musicTitle = title.trim();
+    _pushBus();
+    _save();
+    notifyListeners();
+  }
+
+  void setMusicDuck(int pct) {
+    musicDuck = pct.clamp(0, 100);
+    _pushBus();
+    _save();
+    notifyListeners();
+  }
+
+  /// [role] — 'headphones' или 'speakers'.
+  void setAudioDevice(String role, String id, String name) {
+    if (role == 'headphones') {
+      devHeadphones = id;
+      devHeadphonesName = name;
+    } else {
+      devSpeakers = id;
+      devSpeakersName = name;
+    }
+    _pushBus();
     _save();
     notifyListeners();
   }
