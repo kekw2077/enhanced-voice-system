@@ -4609,7 +4609,15 @@ class AppState extends ChangeNotifier {
       if (ctx != null) showAppSnackBar(ctx, t('webSearching'));
     }
     final hits = await WebSearchService.instance.search(q, app: this);
-    pendingWebContext = WebSearchService.instance.contextBlock(hits);
+    // Без этой записи неудачный поиск неотличим от несостоявшегося: ошибок он
+    // не даёт, в журнал не попадал, а на экране разница только в том, что
+    // ответ вышел бодрее. Число находок — единственное, чем эти два случая
+    // различаются снаружи.
+    unawaited(appendLog('model',
+        'веб-поиск «$q» -> находок: ${hits.length}'));
+    pendingWebContext = hits.isEmpty
+        ? WebSearchService.instance.emptyBlock
+        : WebSearchService.instance.contextBlock(hits);
   }
 
   Future<String> _generateAssistantReply(
