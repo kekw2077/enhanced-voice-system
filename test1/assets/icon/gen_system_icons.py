@@ -1,4 +1,4 @@
-"""Пересобрать СИСТЕМНЫЕ иконки EVS (ярлык/exe/установщик и трей).
+"""Пересобрать СИСТЕМНЫЕ иконки Nexus Anima (ярлык/exe/установщик и трей).
 
 Системные иконки — это отдельный знак (эквалайзер), он намеренно не совпадает
 со знаком Genesis внутри приложения: тот рисуется кодом (lib/src/genesis_logo.dart)
@@ -6,11 +6,11 @@
 Genesis отвечает gen_evs_icon.py, за системные — этот скрипт.
 
 Источники (обе прорисовки одного знака, присланы автором):
-  * evs_shortcut.ico — детальная (градиентная подложка, ореол, тонкая рамка).
+  * anima_shortcut.ico — детальная (градиентная подложка, ореол, тонкая рамка).
     Готовый многоразмерный .ico, идёт в exe/установщик/ярлык как есть.
-    Рядом лежит её исходник evs_shortcut.svg — этот скрипт его не использует,
+    Рядом лежит её исходник anima_shortcut.svg — этот скрипт его не использует,
     он нужен, если рисунок понадобится править.
-  * evs_tray.svg     — упрощённая прорисовка того же знака под мелкие размеры:
+  * anima_tray.svg     — упрощённая прорисовка того же знака под мелкие размеры:
     полосы на 31 % шире, разлёт шире, плоская подложка без ореола и рамки.
     Из неё собирается .ico для трея.
 
@@ -33,6 +33,7 @@ Genesis отвечает gen_evs_icon.py, за системные — этот �
 (`windows: generate: false`), иначе `dart run flutter_launcher_icons`
 переписал бы runner/resources/app_icon.ico знаком Genesis из icon.png.
 """
+import io
 import os
 import re
 import shutil
@@ -42,8 +43,8 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
-TRAY_SVG = os.path.join(HERE, "evs_tray.svg")
-SHORTCUT_ICO = os.path.join(HERE, "evs_shortcut.ico")
+TRAY_SVG = os.path.join(HERE, "anima_tray.svg")
+SHORTCUT_ICO = os.path.join(HERE, "anima_shortcut.ico")
 
 # Трей Windows берёт 16 px при 100 %, 20 при 125 %, 24 при 150 %, 32 при 200 %;
 # крупные кадры нужны Проводнику, если этот .ico где-то покажут как файл.
@@ -54,7 +55,7 @@ SS = 8  # супersampling для «честных» кадров
 
 
 # --------------------------- разбор SVG ---------------------------
-# Понимает ровно форму evs_tray.svg: фон-скруглённый прямоугольник, один
+# Понимает ровно форму anima_tray.svg: фон-скруглённый прямоугольник, один
 # линейный градиент и четыре скруглённых полосы. Это не универсальный парсер —
 # при смене SVG проверить здесь.
 def parse_tray_svg(path):
@@ -213,7 +214,34 @@ def write_ico(path, frames):
     open(path, "wb").write(bytes(out))
 
 
+_WRONG_ARTWORK = """gen_system_icons.py умеет только прежний знак — четыре полосы эквалайзера.
+
+Сейчас в {name} лежит знак Nexus Anima: кольцо, три спутника и
+четырёхконечная звезда. Парсер под него не написан, и на нём он не падает, а
+тихо рисует бессмыслицу либо прежнюю форму — то есть незаметно откатывает
+переименование.
+
+Пересобирать ничего не нужно, обе иконки уже на месте:
+  * трей — assets/icon/app_icon.ico, собран из anima-tray-{{16,20,24,32}}.png;
+  * exe и установщик — windows/runner/resources/app_icon.ico.
+
+Чтобы скрипт снова заработал, парсер parse_tray_svg надо переписать под
+новую форму."""
+
+
+def _check_artwork():
+    """Отказаться, если знак больше не той формы, что понимает парсер ниже.
+
+    Разбор написан под одну конкретную картинку и не универсален; сам он об
+    этом сказать не может, поэтому проверка стоит здесь."""
+    with io.open(TRAY_SVG, encoding="utf-8") as f:
+        svg = f.read()
+    if svg.count("<rect") < 4:
+        raise SystemExit(_WRONG_ARTWORK.format(name=os.path.basename(TRAY_SVG)))
+
+
 def main():
+    _check_artwork()
     svg = parse_tray_svg(TRAY_SVG)
     frames = [(s, frame_hinted(s, svg) if s <= HINT_UPTO else frame_true(s, svg))
               for s in TRAY_SIZES]
@@ -225,7 +253,7 @@ def main():
 
     hinted = [s for s in TRAY_SIZES if s <= HINT_UPTO]
     print(f"tray  -> {tray} ({len(frames)} кадров, по сетке: {hinted})")
-    print(f"exe   -> {exe_icon} (копия evs_shortcut.ico)")
+    print(f"exe   -> {exe_icon} (копия anima_shortcut.ico)")
 
 
 if __name__ == "__main__":

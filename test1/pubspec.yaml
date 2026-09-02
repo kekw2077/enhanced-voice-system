@@ -131,7 +131,7 @@ flutter_launcher_icons:
     generate: true
   # Windows-иконка НЕ генерируется отсюда. Системные иконки (exe/ярлык/установщик
   # и трей) — отдельный знак, он собирается скриптом assets/icon/gen_system_icons.py
-  # из assets/icon/evs_shortcut.ico и assets/icon/evs_tray.svg. Если включить
+  # из assets/icon/anima_shortcut.ico и assets/icon/anima_tray.svg. Если включить
   # generate обратно, `dart run flutter_launcher_icons` перезапишет
   # windows/runner/resources/app_icon.ico знаком Genesis из icon.png.
   windows:
