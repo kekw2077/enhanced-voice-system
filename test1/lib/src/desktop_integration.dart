@@ -1407,6 +1407,12 @@ class DesktopIntegration with WindowListener, TrayListener {
       return;
     }
     try {
+      // Свёрнутое окно для Windows остаётся показанным — просто свёрнутым, и
+      // SW_SHOW его не разворачивает. Пока окно пряталось в трей, разницы не
+      // было: спрятанное окно показывалось. Теперь сворачивание обычное, и без
+      // этой строки трей, горячая клавиша и повторный запуск выглядели бы
+      // мёртвыми — команда проходит, а окно остаётся свёрнутым.
+      if (await windowManager.isMinimized()) await windowManager.restore();
       await windowManager.show();
       await windowManager.focus();
     } catch (_) {}

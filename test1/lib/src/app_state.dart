@@ -307,7 +307,11 @@ class AppState extends ChangeNotifier {
   bool commandOnboardingSeen = false;
   // Desktop window/tray/startup preferences (applied by DesktopIntegration).
   bool autostart = false;
-  bool minimizeToTray = true;
+  // Сворачивание ведёт себя как у обычной программы: окно уходит на панель
+  // задач и оттуда разворачивается. Прятать его в значок — отдельный режим,
+  // который надо включить; закрытие в трей остаётся умолчанием, потому что
+  // ассистент должен слушать и с закрытым окном.
+  bool minimizeToTray = false;
   bool closeToTray = true;
   // Voice input preferences.
   String inputDeviceId = ''; // '' = system default microphone
@@ -767,7 +771,16 @@ class AppState extends ChangeNotifier {
       selectedModel = remote.isNotEmpty ? remote.first : '';
     }
     autostart = prefs.getBool('autostart') ?? false;
-    minimizeToTray = prefs.getBool('minimizeToTray') ?? true;
+    minimizeToTray = prefs.getBool('minimizeToTray') ?? false;
+    // Прежним умолчанием было «в трей», и у всех установок оно уже записано в
+    // настройках — сменой фолбэка их не достать. Поэтому один раз снимаем флаг
+    // явно. Маркер нужен, чтобы это случилось ровно один раз: тот, кто вернёт
+    // трей обратно, не должен получать его снятым при каждом запуске.
+    if (!(prefs.getBool('minimizeToTrayDefaultDropped') ?? false)) {
+      minimizeToTray = false;
+      await prefs.setBool('minimizeToTray', false);
+      await prefs.setBool('minimizeToTrayDefaultDropped', true);
+    }
     closeToTray = prefs.getBool('closeToTray') ?? true;
     inputDeviceId = prefs.getString('inputDeviceId') ?? '';
     extraMicIds = prefs.getStringList('extraMicIds') ?? <String>[];
@@ -1363,7 +1376,7 @@ class AppState extends ChangeNotifier {
     inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
     if (inferenceMode == 'local') inferenceMode = 'localServer';
     autostart = prefs.getBool('autostart') ?? false;
-    minimizeToTray = prefs.getBool('minimizeToTray') ?? true;
+    minimizeToTray = prefs.getBool('minimizeToTray') ?? false;
     closeToTray = prefs.getBool('closeToTray') ?? true;
     inputDeviceId = prefs.getString('inputDeviceId') ?? '';
     extraMicIds = prefs.getStringList('extraMicIds') ?? <String>[];

@@ -576,7 +576,12 @@ class AppUpdater {
       // the window is actually up (onWindowFocus → promptIfPending).
       var visible = true;
       try {
-        visible = await windowManager.isVisible();
+        // Свёрнутое окно тоже никто не видит, а isVisible про свёрнутое врёт:
+        // WS_VISIBLE со свёрнутого окна не снимается. Без второй проверки
+        // предложение обновиться показалось бы в свёрнутом окне и пропало бы
+        // совсем — повторно оно не приходит.
+        visible = await windowManager.isVisible() &&
+            !await windowManager.isMinimized();
       } catch (_) {}
       if (!visible) {
         _promptPending = true;

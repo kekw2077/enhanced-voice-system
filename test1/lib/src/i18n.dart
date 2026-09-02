@@ -57,7 +57,8 @@ const Map<String, Map<String, String>> _i18n = {
     'autostart': 'Автозапуск с Windows',
     'autostartDesc': 'Запускать Anima при входе в систему',
     'minimizeToTray': 'Сворачивать в трей',
-    'minimizeToTrayDesc': 'Убирать в значок при сворачивании',
+    'minimizeToTrayDesc':
+        'Прятать окно в значок вместо кнопки на панели задач',
     'closeToTray': 'Закрывать в трей',
     'closeToTrayDesc': 'При закрытии окна сворачивать в трей, а не выходить',
     'globalHotkey': 'Глобальная горячая клавиша',
@@ -2104,7 +2105,7 @@ const Map<String, Map<String, String>> _i18n = {
     'autostart': 'Launch at startup',
     'autostartDesc': 'Start Anima when you sign in',
     'minimizeToTray': 'Minimize to tray',
-    'minimizeToTrayDesc': 'Hide to the tray icon when minimized',
+    'minimizeToTrayDesc': 'Hide to the tray icon instead of the taskbar',
     'closeToTray': 'Close to tray',
     'closeToTrayDesc': 'Closing the window hides to tray instead of quitting',
     'globalHotkey': 'Global hotkey',
