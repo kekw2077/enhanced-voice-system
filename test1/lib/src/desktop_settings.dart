@@ -3310,6 +3310,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'startupView': _Pages.startup,
     'autostart': _Pages.startup,
     'minimizeToTray': _Pages.startup,
+    'closeToTray': _Pages.startup,
     'globalHotkey': _Pages.startup,
     'cardInputDevice': _Pages.micDevice,
     'extraMics': _Pages.micDevice,
