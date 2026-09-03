@@ -2,7 +2,7 @@
 
 Replaces the removed CPU XTTS cloner. Runs in YOUR python venv (not frozen into
 the sidecar) so the heavy CUDA/torch stack stays out of the installer, and speaks
-the SAME zero-shot HTTP contract EVS already implements (`CosyVoiceEngine` in
+the SAME zero-shot HTTP contract EVS already implements (`CloneHttpEngine` in
 tts_engine.py) — so EVS needs no new engine to talk to it:
 
     GET  /                        -> {ok, loaded, paused, vram_used_mb, ...}
@@ -53,6 +53,52 @@ DEFAULT_PORT = 8760
 
 def _log(msg: str) -> None:
     print(f"[qwen-tts] {msg}", file=sys.stderr, flush=True)
+
+
+# Сколько видеопамяти позволено остаться за процессом после выгрузки. Ноль
+# недостижим: контекст HIP/CUDA и служебные буферы живут, пока жив процесс.
+# Замерено на станции: сразу после выгрузки остаётся 318 МБ, а застрявшая
+# модель — это 3.7 ГБ. Гигабайт лежит далеко от обеих величин, поэтому ложных
+# перезапусков не будет, а настоящий застой не проскочит.
+STUCK_VRAM = int(os.environ.get("EVS_TTS_STUCK_MB", "1024")) << 20
+
+
+def _supervised() -> bool:
+    """Есть ли кому поднять сервер обратно, если он сейчас уйдёт.
+
+    В контейнере это Docker (`--restart unless-stopped`), под systemd — сам
+    systemd. На компьютере пользователя сервер запускает EVS, и уход в
+    перезапуск там означал бы немой ассистент до перезапуска руками, поэтому
+    там мы только жалуемся в журнал. Признак берётся из окружения, а не из
+    флага запуска: тот же файл работает в обоих местах, и знать, где он
+    оказался, он должен сам."""
+    flag = os.environ.get("EVS_TTS_RESTART_ON_STUCK", "").strip().lower()
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    return os.path.exists("/.dockerenv") or bool(os.environ.get("INVOCATION_ID"))
+
+
+def _restart_soon(why: str) -> None:
+    """Уйти на перезапуск: крайняя мера и единственная надёжная.
+
+    Живые тензоры изнутри процесса не отнять: `empty_cache` отдаёт кэш, а их
+    нет. Тот же приём и по той же причине уже стоит в сервере картинок —
+    вторую выдумку заводить не за что. Секунды на перезапуск дешевле занятой
+    карты, которую держит сервер, считающий себя пустым."""
+    if not _supervised():
+        _log(f"ВНИМАНИЕ: {why}; перезапустить некому — карта останется занятой")
+        return
+    _log("перезапускаюсь: " + why)
+
+    def _boom() -> None:
+        # Дать ответу дойти до клиента, потом уходить: выгрузку просит сосед,
+        # и оборванное соединение он прочитает как отказ отдать карту.
+        time.sleep(1.0)
+        os._exit(1)
+
+    threading.Thread(target=_boom, daemon=True).start()
 
 
 def resolve_cache_dir(explicit: str = "") -> str:
@@ -282,15 +328,27 @@ class QwenTtsEngine:
             # карте формально не было.
             self._clone_prompt = None
             self._clone_key = ''
+            left = 0
             try:
                 import gc
                 import torch
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+                    left = torch.cuda.memory_reserved(0)
             except Exception:
                 pass
             _log("unloaded (VRAM released)")
+            # Проверяем не «позвали empty_cache», а вернулась ли память. Замерено
+            # на станции: после выгрузки за процессом оставалось 3.7 ГБ — кэш
+            # аллокатора, приколотый мелкими живыми тензорами где-то внутри
+            # библиотеки синтеза. Сервер при этом отчитывался «выгружен», а
+            # соседи по карте видят не наш флаг, а занятое место: языковая
+            # модель и картинки упирались в потолок карты и уходили вытеснять
+            # буферы в оперативную память — оттуда станция и вставала колом.
+            if left > STUCK_VRAM:
+                _restart_soon(
+                    f"после выгрузки на карте осталось {left / 2 ** 20:.0f} МБ")
 
     def _idle_loop(self) -> None:
         while not self._stop.wait(5.0):
@@ -427,7 +485,7 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---- routes ---------------------------------------------------------
     def do_GET(self):
-        # EVS probes the endpoint root for reachability (checkCosyvoice).
+        # EVS probes the endpoint root for reachability (checkQwen3-TTS).
         if self.path in ("/", "/health", "/status"):
             self._json(ENGINE.status())
         else:

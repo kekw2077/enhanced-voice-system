@@ -1481,11 +1481,11 @@ class _NexusSubsystemCards extends StatelessWidget {
       BuildContext c, AppState app, SidecarClient sc, NexusPipeline pipe) {
     final (engine, sub) = animaTtsEngineLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
-    // Cosyvoice health only gates the dot when cosyvoice is the engine actually
-    // in use — a clone (XTTS) override makes cosyvoice reachability irrelevant.
+    // Qwen3-TTS health only gates the dot when clone is the engine actually
+    // in use — a clone (XTTS) override makes clone reachability irrelevant.
     final cosyOk = app.cloneEnabled ||
-        app.ttsEngineChoice != 'cosyvoice' ||
-        (app.cosyvoiceOnline ?? false);
+        app.ttsEngineChoice != 'clone' ||
+        (app.qwenOnline ?? false);
     final dot = (!connected || !sc.ttsAvailable)
         ? _danger(c)
         : (cosyOk ? _success(c) : _warn(c));

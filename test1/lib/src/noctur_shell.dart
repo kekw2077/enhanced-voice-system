@@ -423,12 +423,12 @@ class NocturStatusStrip extends StatelessWidget {
           if (app.cloneEnabled) {
             tts = app.t('nxTtsClone');
             ttsWhere = 'XTTS';
-          } else if (app.ttsEngineChoice == 'cosyvoice') {
+          } else if (app.ttsEngineChoice == 'clone') {
             // Название берём у самого сервера, а не из кода.
             tts = app.cloneServerModel.isNotEmpty
                 ? app.cloneServerModel
                 : app.t('nxTtsClone');
-            ttsWhere = (app.cosyvoiceOnline ?? false)
+            ttsWhere = (app.qwenOnline ?? false)
                 ? app.t('nxOnline')
                 : app.t('nxOffline');
           } else if (app.ttsPiperVoice.isEmpty) {

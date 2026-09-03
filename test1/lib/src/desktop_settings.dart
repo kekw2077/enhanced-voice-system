@@ -3935,9 +3935,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
 
         String voice;
         bool voiceOk;
-        if (app.ttsEngineChoice == 'cosyvoice') {
+        if (app.ttsEngineChoice == 'clone') {
           voice = app.t('ttsEngineCosy');
-          voiceOk = app.cosyvoiceOnline == true;
+          voiceOk = app.qwenOnline == true;
           // Offline is not "dead": pre-rendered phrases still play from the
           // cache in the cloned voice, so say that instead of just "не отвечает".
           if (!voiceOk) voice = '$voice — ${app.t('voiceStatusCache')}';
@@ -6859,10 +6859,10 @@ class _ConnCheckRow extends StatelessWidget {
   }
 }
 
-// TTS engine selector (settings TZ §3.2): Piper (offline, active) vs CosyVoice
-// (GPU HTTP server). CosyVoice is only selectable once its endpoint answers a
+// TTS engine selector (settings TZ §3.2): Piper (offline, active) vs Qwen3-TTS
+// (GPU HTTP server). Qwen3-TTS is only selectable once its endpoint answers a
 // probe; the server isn't deployed yet, so it stays greyed with a note. The
-// deeper CosyVoice controls (voice cloning, speed, emotion) come once the server
+// deeper Qwen3-TTS controls (voice cloning, speed, emotion) come once the server
 // exists and its API is known.
 class _TtsEngineCard extends StatefulWidget {
   const _TtsEngineCard(this.app);
@@ -6873,7 +6873,13 @@ class _TtsEngineCard extends StatefulWidget {
 
 class _TtsEngineCardState extends State<_TtsEngineCard> {
   late final TextEditingController _ep =
-      TextEditingController(text: widget.app.cosyvoiceEndpoint);
+      TextEditingController(text: widget.app.qwenEndpoint);
+
+  /// Адрес сервера живого голоса. Отдельное поле, а не второе значение в том
+  /// же: серверы разные и по модели, и по железу — MOSS считает на процессоре
+  /// постоянно, Qwen поднимается на видеокарте под открытую студию.
+  late final TextEditingController _moss =
+      TextEditingController(text: widget.app.mossEndpoint);
   bool _checking = false;
 
   AppState get app => widget.app;
@@ -6881,6 +6887,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
   @override
   void dispose() {
     _ep.dispose();
+    _moss.dispose();
     super.dispose();
   }
 
@@ -6928,14 +6935,14 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
     // Watch directly (this card sits inside a LayoutBuilder) so the online
     // status refreshes on every change.
     context.watch<AppState>();
-    final cosyOnline = app.cosyvoiceOnline == true;
+    final cosyOnline = app.qwenOnline == true;
     // Selectable as soon as an endpoint AND a voice sample exist — being
     // reachable RIGHT NOW is not a requirement. Gating on the live probe was a
     // dead end: the pre-rendered phrase cache only plays while a cloning engine
     // is selected, so a stopped server made its own cache unreachable and left
     // no way back in the UI.
-    final cosyConfigured = app.cosyvoiceEndpoint.trim().isNotEmpty &&
-        app.cosyvoiceClonePath.trim().isNotEmpty;
+    final cosyConfigured = app.qwenEndpoint.trim().isNotEmpty &&
+        app.voiceSamplePath.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -6945,7 +6952,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
             _engineChip('piper', 'ttsEnginePiper', 'ttsEnginePiperHint',
                 enabled: true),
             const SizedBox(width: 8),
-            _engineChip('cosyvoice', 'ttsEngineCosy', 'ttsEngineCosyHint',
+            _engineChip('clone', 'ttsEngineCosy', 'ttsEngineCosyHint',
                 enabled: cosyConfigured),
           ]),
         ),
@@ -6961,6 +6968,24 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
             child: Text(app.t('ttsCosyFellBack'),
                 style: TextStyle(fontSize: 11.5, color: _warn(context))),
           ),
+        // Живой голос: свой сервер, свой адрес, и он выше студийного —
+        // разговор случается каждый день, студия куда реже.
+        animaRow(context,
+          stacked: true,
+          label: app.t('ttsMossEndpoint'),
+          control: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _RemoteField(
+                controller: _moss,
+                onChanged: app.setMossEndpoint,
+              ),
+              const SizedBox(height: 5),
+              Text(app.t('ttsMossHint'),
+                  style: TextStyle(fontSize: 11, color: _faint(context))),
+            ],
+          ),
+        ),
         // Endpoint + check.
         animaRow(context,
           stacked: true,
@@ -6970,7 +6995,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
             children: [
               _RemoteField(
                 controller: _ep,
-                onChanged: app.setCosyvoiceEndpoint,
+                onChanged: app.setQwenEndpoint,
               ),
               const SizedBox(height: 8),
               Row(children: [
@@ -6980,7 +7005,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                       ? null
                       : () async {
                           setState(() => _checking = true);
-                          await app.checkCosyvoice();
+                          await app.checkQwenServer();
                           if (mounted) setState(() => _checking = false);
                         },
                   child: Container(
@@ -7000,7 +7025,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                if (app.cosyvoiceOnline != null)
+                if (app.qwenOnline != null)
                   Row(mainAxisSize: MainAxisSize.min, children: [
                     Container(
                         width: 7,
@@ -7155,16 +7180,16 @@ class _TtsCloneCard extends StatefulWidget {
 }
 
 class _TtsCloneCardState extends State<_TtsCloneCard> {
-  // CosyVoice deep-control text fields (§3.2).
+  // Qwen3-TTS deep-control text fields (§3.2).
   late final TextEditingController _clonePrompt =
-      TextEditingController(text: widget.app.cosyvoiceClonePromptText);
+      TextEditingController(text: widget.app.voiceSampleText);
 
   AppState get app => widget.app;
 
   Future<void> _pickCloneSample() async {
     final res = await FilePicker.pickFiles();
     final p = res?.files.single.path;
-    if (p != null && p.isNotEmpty) app.setCosyvoiceClonePath(p);
+    if (p != null && p.isNotEmpty) app.setVoiceSamplePath(p);
   }
 
   @override
@@ -7221,7 +7246,7 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
 
   List<Widget> _cosyDeepControls() {
     return [
-      // Scope header: everything below belongs to the REMOTE CosyVoice server
+      // Scope header: everything below belongs to the REMOTE Qwen3-TTS server
       // (including its own clone sample) — not to the local XTTS clone card.
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
@@ -7268,9 +7293,9 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  app.cosyvoiceClonePath.isEmpty
+                  app.voiceSamplePath.isEmpty
                       ? app.t('ttsCosyCloneNone')
-                      : app.cosyvoiceClonePath
+                      : app.voiceSamplePath
                           .split(io.Platform.pathSeparator)
                           .last,
                   overflow: TextOverflow.ellipsis,
@@ -7282,7 +7307,7 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
             const SizedBox(height: 8),
             _RemoteField(
                 controller: _clonePrompt,
-                onChanged: app.setCosyvoiceClonePromptText),
+                onChanged: app.setVoiceSampleText),
             const SizedBox(height: 4),
             Text(app.t('ttsCosyClonePromptHint'),
                 style: TextStyle(fontSize: 11, color: _faint(context))),
@@ -7292,12 +7317,12 @@ class _TtsCloneCardState extends State<_TtsCloneCard> {
       animaRow(context, 
         label: app.t('ttsCosySpeed'),
         control: animaSlider(context, 
-          value: app.cosyvoiceSpeed.clamp(0.5, 2.0),
+          value: app.qwenSpeed.clamp(0.5, 2.0),
           min: 0.5,
           max: 2.0,
           divisions: 15,
-          label: '${app.cosyvoiceSpeed.toStringAsFixed(1)}x',
-          onChanged: app.setCosyvoiceSpeed,
+          label: '${app.qwenSpeed.toStringAsFixed(1)}x',
+          onChanged: app.setQwenSpeed,
         ),
       ),
       animaRow(context,
@@ -7458,9 +7483,9 @@ class _PresetEditDialogState extends State<_PresetEditDialog> {
 }
 
 // Voice clone (XTTS · CPU) — a self-contained section, deliberately SEPARATE
-// from the CosyVoice controls above: both offer "clone from a WAV sample", but
+// from the Qwen3-TTS controls above: both offer "clone from a WAV sample", but
 // this one is the local CPU cloner (its own component + phrase cache) while
-// CosyVoice's sample belongs to its remote GPU server. Keeping them in one card
+// Qwen3-TTS's sample belongs to its remote GPU server. Keeping them in one card
 // made the two sets of settings read as one and confused which was which.
 //
 // Currently NOT shown (CPU build was unintelligible) — kept for the GPU-render
@@ -8262,8 +8287,8 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
       TextEditingController(text: widget.app.llmNumPredict?.toString() ?? '');
   late final TextEditingController _temp =
       TextEditingController(text: widget.app.llmTemperature?.toString() ?? '');
-  late final TextEditingController _ka =
-      TextEditingController(text: widget.app.llmKeepAlive);
+  late final TextEditingController _ka = TextEditingController(
+      text: widget.app.llmKeepAliveMinutes.toString());
   String? _ctxErr;
   String? _predErr;
   String? _tempErr;
@@ -8424,11 +8449,59 @@ class _LlmAdvancedCardState extends State<_LlmAdvancedCard> {
             ),
           ),
           animaRow(context,
+            stacked: true,
             label: app.t('llmKeepAlive'),
             desc: app.t('llmKeepAliveDesc'),
-            control: SizedBox(
-              width: 120,
-              child: _field(_ka, (v) => app.setLlmKeepAlive(v.trim())),
+            control: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Готовые сроки. Гаснут, пока в силе своё значение: два
+                // включённых органа, задающих одно и то же, читаются как
+                // «какой из них сейчас главный?».
+                Opacity(
+                  opacity: app.llmKeepAliveCustom ? 0.38 : 1,
+                  child: IgnorePointer(
+                    ignoring: app.llmKeepAliveCustom,
+                    child: animaSegmentedWide<String>(context, [
+                      ('15m', app.t('kaMin15')),
+                      ('30m', app.t('kaMin30')),
+                      ('1h', app.t('kaHour1')),
+                      ('-1', app.t('kaAlways')),
+                    ], app.llmKeepAlivePreset, app.setLlmKeepAlivePreset),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  animaToggle(context, app.llmKeepAliveCustom, (v) {
+                    app.setLlmKeepAliveCustom(v);
+                    setState(() {});
+                  }),
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Text(app.t('kaCustom'),
+                        style: TextStyle(
+                            fontSize: 12.5, color: _body(context))),
+                  ),
+                  const SizedBox(width: 10),
+                  Opacity(
+                    opacity: app.llmKeepAliveCustom ? 1 : 0.38,
+                    child: IgnorePointer(
+                      ignoring: !app.llmKeepAliveCustom,
+                      child: SizedBox(
+                        width: 92,
+                        child: _field(_ka, (v) {
+                          final n = int.tryParse(v.trim());
+                          if (n != null) app.setLlmKeepAliveMinutes(n);
+                        }),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(app.t('minShort'),
+                      style:
+                          TextStyle(fontSize: 12.5, color: _sub(context))),
+                ]),
+              ],
             ),
           ),
         ],
@@ -8677,8 +8750,8 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
     // Prepared phrases only replace normal speech while a CLONING engine is the
     // selected one. Picking Piper silently turned the whole cache off, which
     // reads as "the clone stopped working" — so say it, and offer the switch.
-    final cloneOff = app.ttsEngineChoice != 'cosyvoice' &&
-        app.cosyvoiceClonePath.trim().isNotEmpty;
+    final cloneOff = app.ttsEngineChoice != 'clone' &&
+        app.voiceSamplePath.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -8709,7 +8782,7 @@ class _ClonePhrasesCardState extends State<_ClonePhrasesCard> {
               const SizedBox(width: 10),
               animaGhostButton(
                   context, app.t('clonePhr2Enable'), Icons.record_voice_over,
-                  onTap: () => app.setTtsEngineChoice('cosyvoice')),
+                  onTap: () => app.setTtsEngineChoice('clone')),
             ]),
           ),
         Padding(

@@ -512,7 +512,7 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                     if vdir is not None or voice is not None:
                         tts.set_voice(str(vdir) if vdir else "",
                                       str(voice) if voice else "")
-                    # Cloning config (set BEFORE engine so a switch to xtts/cosyvoice
+                    # Cloning config (set BEFORE engine so a switch to xtts/clone
                     # loads with the sample/exe already in place). Cache is shared.
                     if ("cache_dir" in data or "voice_fp" in data
                             or "cache_engine" in data):

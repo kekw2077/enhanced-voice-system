@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ffi' hide Size;
 import 'dart:io' as io;
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' show ImageFilter, FragmentProgram, FragmentShader, PointMode;
 
 import 'package:ffi/ffi.dart';
@@ -78,6 +79,7 @@ part 'src/prism_orb.dart';
 part 'src/remote_input.dart';
 part 'src/voice_viz.dart';
 part 'src/desktop_settings.dart';
+part 'src/speech_chunks.dart';
 part 'src/studio_panel.dart';
 part 'src/lumina_studio.dart';
 part 'src/chat_screen.dart';

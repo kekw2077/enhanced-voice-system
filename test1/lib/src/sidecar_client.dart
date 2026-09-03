@@ -329,7 +329,7 @@ class SidecarClient {
                 'pyttsx3': te['pyttsx3'] == true,
                 'piper': te['piper'] == true,
                 'xtts': te['xtts'] == true,
-                'cosyvoice': te['cosyvoice'] == true,
+                'clone': te['clone'] == true,
               };
             }
             break;
@@ -796,9 +796,9 @@ class SidecarClient {
   }
 
   // ---- Voice clone (XTTS) — engine-agnostic phrase cache, shared with
-  // CosyVoice. State is retained so a reconnect re-applies it. -------------
+  // Qwen3-TTS. State is retained so a reconnect re-applies it. -------------
   bool _cloneEnabled = false;
-  // Clone-server (GPU, Qwen3-TTS / CosyVoice contract) state — retained so a
+  // Clone-server (GPU, Qwen3-TTS / Qwen3-TTS contract) state — retained so a
   // reconnected sidecar gets it again, exactly like the clone above.
   bool _cosyEnabled = false;
   String _cosyEndpoint = '';
@@ -873,10 +873,10 @@ class SidecarClient {
     }
   }
 
-  // Configure a CosyVoice HTTP server as a cloning engine sharing the SAME
+  // Configure a Qwen3-TTS HTTP server as a cloning engine sharing the SAME
   // phrase cache. Untested until a GPU server is up; a no-op without an
   // endpoint, so it's safe to call unconditionally.
-  Future<void> applyCosy({
+  Future<void> applyCloneVoice({
     required bool enabled,
     String endpoint = '',
     String ref = '',
@@ -901,7 +901,7 @@ class SidecarClient {
         'type': 'tts.config',
         'cache_dir': cacheDir,
         'voice_fp': fp,
-        'cache_engine': 'cosyvoice',
+        'cache_engine': 'clone',
         'cosy': {
           'endpoint': _cosyEndpoint,
           'ref': _cosyRef,
@@ -911,7 +911,7 @@ class SidecarClient {
           // и на коротких фразах ошибается.
           'language': _cosyLanguage,
         },
-        'engine': 'cosyvoice',
+        'engine': 'clone',
       });
     } else {
       // Hand the engine back to Piper. Also the cure for the sidecar's
@@ -923,7 +923,7 @@ class SidecarClient {
       if (_cosyRef.isNotEmpty) {
         msg['cache_dir'] = await _cloneCacheDir();
         msg['voice_fp'] = await _voiceFingerprint(_cosyRef);
-        msg['cache_engine'] = 'cosyvoice';
+        msg['cache_engine'] = 'clone';
       }
       _send(msg);
     }
@@ -1019,6 +1019,11 @@ class SidecarClient {
   ///
   /// [voiceId] пустой — говорит текущий голос ассистента; иначе поднимается
   /// временный движок Piper под конкретный голос, не меняя настроек.
+  /// Сколько ждут синтез в файл. Не внутреннее число: студия показывает этот
+  /// же срок под полем ввода и по нему объясняет предел длины текста —
+  /// разойтись им нельзя, иначе сноска начнёт врать.
+  static const Duration ttsRenderWait = Duration(seconds: 120);
+
   Future<String> renderTtsToFile(String text, String path,
       {String voiceId = '', String voiceDir = '', double rate = 1.0}) async {
     final id = '${++_renderSeq}';
@@ -1033,7 +1038,7 @@ class SidecarClient {
       'voice_dir': voiceDir,
       'rate': rate,
     });
-    return c.future.timeout(const Duration(seconds: 120), onTimeout: () {
+    return c.future.timeout(ttsRenderWait, onTimeout: () {
       _renderWaiters.remove(id);
       return '';
     });
@@ -1617,8 +1622,8 @@ class VoiceAssistant {
   /// Попросить сервер клон-голоса поднять модель заранее. Пусто — тихо выходим:
   /// сервер не настроен, прогревать нечего.
   Future<void> warmCloneServer(AppState app) async {
-    if (app.ttsEngineChoice != 'cosyvoice') return;
-    final base = app.cosyvoiceEndpoint.trim();
+    if (app.ttsEngineChoice != 'clone') return;
+    final base = app.qwenEndpoint.trim();
     if (base.isEmpty) return;
     final url = base.replaceAll(RegExp(r'/+$'), '');
     try {

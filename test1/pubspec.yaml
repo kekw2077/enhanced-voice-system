@@ -1,7 +1,7 @@
 name: anima
 description: "Nexus Anima — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 3.2.3+113
+version: 3.2.4+114
 
 environment:
   sdk: ">=3.10.0 <4.0.0"

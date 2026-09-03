@@ -441,18 +441,18 @@ class CloneWorkerEngine(BaseTtsEngine):
                 return None
 
 
-class CosyVoiceEngine(BaseTtsEngine):
-    """Voice clone via an external CosyVoice HTTP server (GPU workstation). No
+class CloneHttpEngine(BaseTtsEngine):
+    """Voice clone via an external Qwen3-TTS HTTP server (GPU workstation). No
     local model — synthesis is a POST to `endpoint` returning WAV bytes. Shares
     the manager's phrase cache exactly like the XTTS engine, so pre-rendered
     phrases play instantly regardless of which cloning engine is active.
 
-    Expected zero-shot contract (official CosyVoice FastAPI, adjust per server):
+    Expected zero-shot contract (official Qwen3-TTS FastAPI, adjust per server):
       POST {endpoint}/inference_zero_shot
       form: tts_text, prompt_text, prompt_wav=@sample.wav  -> audio/wav stream.
     Best-effort: any failure returns None so the manager falls back."""
 
-    name = "cosyvoice"
+    name = "clone"
 
     def __init__(self, endpoint: str = "", ref: str = "",
                  prompt_text: str = "", speed: float = 1.0,
@@ -476,7 +476,7 @@ class CosyVoiceEngine(BaseTtsEngine):
 
     def unavailable_reason(self) -> str:
         if not self._endpoint:
-            return "CosyVoice server endpoint not set"
+            return "Qwen3-TTS server endpoint not set"
         if not self._ref or not os.path.isfile(self._ref):
             return "no voice sample selected"
         return ""
@@ -576,7 +576,7 @@ class TtsEngine:
 
     Keeps the original public API (`available`, `speak`, `stop`) so main.py is
     unchanged; adds engine/voice selection with hot-swap and pyttsx3 fallback.
-    Cloning engines (xtts, cosyvoice) share an engine-agnostic phrase cache:
+    Cloning engines (xtts, clone) share an engine-agnostic phrase cache:
     pre-rendered / previously-spoken phrases play instantly from disk."""
 
     def __init__(self, engine: str = "piper", voice: str = "",
@@ -584,18 +584,18 @@ class TtsEngine:
         self._pyttsx3 = Pyttsx3Engine()
         self._piper = PiperEngine(voice_dir, voice)
         self._clone = CloneWorkerEngine()      # xtts (external worker)
-        self._cosy = CosyVoiceEngine()         # cosyvoice (external HTTP server)
+        self._cosy = CloneHttpEngine()         # clone (external HTTP server)
         self._engines = {"piper": self._piper, "pyttsx3": self._pyttsx3,
-                         "xtts": self._clone, "cosyvoice": self._cosy}
+                         "xtts": self._clone, "clone": self._cosy}
         self._desired = engine if engine in self._engines else "piper"
         self._voice = voice or ""
-        # Engine-agnostic phrase cache (shared by xtts + cosyvoice).
+        # Engine-agnostic phrase cache (shared by xtts + clone).
         self._cache_dir = ""
         self._voice_fp = ""
-        # Which cache folder holds the rendered phrases ("cosyvoice" / "xtts").
+        # Which cache folder holds the rendered phrases ("clone" / "xtts").
         # Kept even while Piper is the selected engine so the prepared-phrases
         # preview can still find them.
-        self._cache_engine = "cosyvoice"
+        self._cache_engine = "clone"
         # Resolve the real starting engine: Piper only when a voice is present,
         # otherwise the always-available system voice.
         self._active: BaseTtsEngine = self._pyttsx3
@@ -620,7 +620,7 @@ class TtsEngine:
 
     def capabilities(self) -> dict:
         return {"pyttsx3": self._pyttsx3.available, "piper": self._piper.deps,
-                "xtts": self._clone.available, "cosyvoice": self._cosy.available}
+                "xtts": self._clone.available, "clone": self._cosy.available}
 
     @property
     def engine_name(self) -> str:
@@ -668,7 +668,7 @@ class TtsEngine:
                               prompt_text=prompt_text, speed=speed,
                               language=language)
         self._clone_retry_at = 0.0
-        if self._desired == "cosyvoice":
+        if self._desired == "clone":
             threading.Thread(target=self._apply_blocking, daemon=True).start()
 
     def set_cache(self, cache_dir=None, voice_fp=None, engine=None) -> None:
@@ -679,7 +679,7 @@ class TtsEngine:
         if voice_fp is not None:
             self._voice_fp = voice_fp or ""
         if engine is not None:
-            self._cache_engine = engine or "cosyvoice"
+            self._cache_engine = engine or "clone"
 
     def set_voice(self, voice_dir: str | None, voice_id: str | None) -> None:
         self._voice = voice_id or ""
@@ -695,9 +695,9 @@ class TtsEngine:
             self._active_name = "pyttsx3"
             self._emit_status("pyttsx3", "", "ready")
             return
-        # Cloning engines (xtts worker / cosyvoice HTTP): load with fallback to
+        # Cloning engines (xtts worker / clone HTTP): load with fallback to
         # the system voice, same shape as Piper below.
-        if want in ("xtts", "cosyvoice"):
+        if want in ("xtts", "clone"):
             eng = self._engines[want]
             if not eng.available:
                 _log(f"apply: '{want}' unavailable "
@@ -877,7 +877,7 @@ class TtsEngine:
                 except Exception:
                     pass
 
-    # ---- shared phrase cache (xtts / cosyvoice) -----------------------
+    # ---- shared phrase cache (xtts / clone) -----------------------
 
     def _is_clone(self, engine) -> bool:
         return engine is self._clone or engine is self._cosy
@@ -890,7 +890,7 @@ class TtsEngine:
         unreachable: the manager had already fallen back, `_is_clone(active)`
         was false, and 21 phrases rendered in the user's own voice sat on disk
         while Windows SAPI did the talking."""
-        if self._desired in ("xtts", "cosyvoice"):
+        if self._desired in ("xtts", "clone"):
             return self._engines[self._desired], self._desired
         return None, ""
 

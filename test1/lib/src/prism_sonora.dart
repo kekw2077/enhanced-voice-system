@@ -183,12 +183,21 @@ class _PrismPickPillState extends State<PrismPickPill> {
 
 /// Панель «Волна»: живая визуализация синтеза и подпись под ней.
 class PrismWavePanel extends StatelessWidget {
-  const PrismWavePanel({super.key, required this.rendering});
+  const PrismWavePanel({
+    super.key,
+    required this.rendering,
+    this.preparing = false,
+  });
 
   /// Идёт ли сейчас сохранение в файл. Оно молчит: волна во время него стоит,
   /// и подпись обязана сказать почему, иначе неподвижная волна читается как
   /// поломка.
   final bool rendering;
+
+  /// Нажали «Озвучить», а звук ещё не пошёл: движок грузится, клон считает на
+  /// сервере. Волна в эти секунды тоже стоит, и «тишина» под ней — прямая
+  /// неправда: ждут как раз её.
+  final bool preparing;
 
   @override
   Widget build(BuildContext context) {
@@ -223,7 +232,9 @@ class PrismWavePanel extends StatelessWidget {
                   ? app.t('prismStateSpeaking')
                   : rendering
                       ? app.t('prismStateRendering')
-                      : app.t('prismStateSilent');
+                      : preparing
+                          ? app.t('prismStatePreparing')
+                          : app.t('prismStateSilent');
               return Row(
                 children: [
                   Text(state,
@@ -243,6 +254,267 @@ class PrismWavePanel extends StatelessWidget {
                 ],
               );
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ход озвучки: бегущая полоса, прошедшее время и срок ожидания.
+///
+/// Доли пути здесь нет, и взяться ей неоткуда: сайдкар синтезирует текст
+/// одним вызовом (`tts_engine.render` → `synthesize`) и о середине не
+/// сообщает — ни шагов, ни процентов в протоколе синтеза не заведено.
+/// Выдуманный процент был бы хуже отсутствующего, поэтому полоса бежит без
+/// доли, а рядом стоит то, что известно точно: сколько уже ждём и сколько
+/// ждать осталось. На единственный вопрос, который тут задают, — «оно ещё
+/// живо?» — этого хватает.
+///
+/// Часы свои: виджет живёт ровно столько, сколько идёт работа, и секунду
+/// отсчитывает сам. Считай их экран — он перерисовывался бы целиком раз в
+/// секунду, вместе с волной и списком озвучек.
+class PrismSpeechProgress extends StatefulWidget {
+  const PrismSpeechProgress({
+    super.key,
+    required this.label,
+    required this.limit,
+    this.value,
+  });
+
+  /// Что именно идёт: синтез в файл или подготовка к речи вслух.
+  final String label;
+
+  /// Доля сделанного — но только там, где её есть чем подтвердить. Нарезка её
+  /// даёт: куски пересчитаны, готовые лежат на диске. Внутри одного куска
+  /// доли нет, и тогда полоса честно бежит без неё.
+  final double? value;
+
+  /// Сколько ждут ответа. По истечении срока ожидание обрывается, и человек
+  /// вправе видеть, сколько у него осталось, а не узнавать это по ошибке.
+  final Duration limit;
+
+  @override
+  State<PrismSpeechProgress> createState() => _PrismSpeechProgressState();
+}
+
+class _PrismSpeechProgressState extends State<PrismSpeechProgress> {
+  final DateTime _from = DateTime.now();
+  Timer? _tick;
+  Duration _gone = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _gone = DateTime.now().difference(_from));
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Срок вышел, а ответа нет. Цифры краснеют раньше, чем придёт ошибка: с
+    // этой секунды ждать уже нечего, и сказать это лучше сразу.
+    final over = _gone >= widget.limit;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: PrismType.caption
+                    .copyWith(fontSize: 11.5, color: _sub(context)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${prismClock(_gone)} / ${prismClock(widget.limit)}',
+              style: PrismType.numeric.copyWith(
+                fontSize: 11,
+                color: over ? _warn(context) : _faint(context),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 9),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: widget.value,
+            minHeight: 4,
+            backgroundColor: _stroke(context),
+            valueColor: AlwaysStoppedAnimation<Color>(
+                over ? _warn(context) : _ramp(context).a2),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// «0:07», «2:00» — минуты и секунды для часов ожидания.
+String prismClock(Duration d) =>
+    '${d.inMinutes}:${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+/// Список кусков: что сделано, что идёт сейчас, что сорвалось.
+///
+/// Это и есть «видно, что происходит». До нарезки ход работы был одним словом
+/// «сохраняю» на полчаса; теперь это восемнадцать строк, в которых семь с
+/// галочкой, одна крутится, и у каждой видно начало её текста — так понятно
+/// не только «сколько осталось», но и «на чём именно оно споткнулось».
+///
+/// Сорвавшийся кусок остаётся на месте со своей ошибкой: продолжить можно с
+/// него, не пересчитывая готовое.
+class PrismChunkList extends StatelessWidget {
+  const PrismChunkList({
+    super.key,
+    required this.chunks,
+    required this.busy,
+    this.onCancel,
+    this.onResume,
+  });
+
+  final List<SpeechChunk> chunks;
+
+  /// Идёт ли партия прямо сейчас: от этого зависит, что предложить — остановку
+  /// или продолжение.
+  final bool busy;
+
+  final VoidCallback? onCancel, onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final done = chunks.where((c) => c.state == SpeechChunkState.done).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Text(
+              app.t('prismChunksDone').replaceAll('{done}', '$done')
+                  .replaceAll('{total}', '${chunks.length}'),
+              style: PrismType.numeric
+                  .copyWith(fontSize: 11.5, color: _sub(context)),
+            ),
+            const Spacer(),
+            // Остановка — после текущего куска, а не мгновенная: синтез уже
+            // отдан движку, и оборвать его на середине нечем. Подпись говорит
+            // ровно это, чтобы нажавший не решил, что кнопка не сработала.
+            if (busy && onCancel != null)
+              _PrismGhostButton(
+                label: app.t('prismChunksStop'),
+                d: PrismIcons.stop,
+                onTap: onCancel,
+              )
+            // Продолжить предлагаем не только после ошибки: остановленная
+            // партия — тот же случай, куски на диске те же, и заново считать
+            // их незачем.
+            else if (onResume != null &&
+                chunks.any((c) => c.state != SpeechChunkState.done))
+              _PrismGhostButton(
+                label: app.t('prismChunksResume'),
+                d: PrismIcons.play,
+                onTap: onResume,
+              ),
+          ],
+        ),
+        const SizedBox(height: 11),
+        for (final c in chunks) ...[
+          _PrismChunkRow(chunk: c),
+          const SizedBox(height: 6),
+        ],
+      ],
+    );
+  }
+}
+
+class _PrismChunkRow extends StatelessWidget {
+  const _PrismChunkRow({required this.chunk});
+  final SpeechChunk chunk;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = chunk;
+    final failed = c.state == SpeechChunkState.failed;
+    final running = c.state == SpeechChunkState.running;
+    final done = c.state == SpeechChunkState.done;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: running ? _prismHover(context) : _prismField(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: failed ? _danger(context) : _stroke(context)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            child: Text(
+              '${c.index + 1}',
+              style: PrismType.numeric
+                  .copyWith(fontSize: 10.5, color: _faint(context)),
+            ),
+          ),
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: running
+                ? CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(_ramp(context).a2),
+                  )
+                : done
+                    ? PrismIcon(PrismIcons.check,
+                        size: 13, stroke: 2.4, color: _success(context))
+                    : failed
+                        ? PrismIcon(PrismIcons.info,
+                            size: 13, stroke: 2, color: _danger(context))
+                        : Center(
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: _stroke(context),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              c.error ?? c.text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: PrismType.caption.copyWith(
+                fontSize: 11.5,
+                color: failed ? _danger(context) : _sub(context),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            done && c.took > Duration.zero
+                ? prismClock(c.took)
+                : '${c.text.characters.length}',
+            style: PrismType.numeric
+                .copyWith(fontSize: 10, color: _faint(context)),
           ),
         ],
       ),

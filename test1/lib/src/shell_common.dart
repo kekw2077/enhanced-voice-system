@@ -715,7 +715,7 @@ Widget animaModelPill(BuildContext context, {double fontSize = 13}) {
 /// (название движка, вторая строка).
 (String, String) animaTtsEngineLabel(AppState app) {
   if (app.cloneEnabled) return (app.t('nxTtsClone'), 'XTTS');
-  if (app.ttsEngineChoice == 'cosyvoice') {
+  if (app.ttsEngineChoice == 'clone') {
     // Название берём у самого сервера: за этим адресом может стоять любая
     // модель, и вписанное в код имя устаревает молча.
     final name = app.cloneServerModel.isNotEmpty
@@ -723,7 +723,7 @@ Widget animaModelPill(BuildContext context, {double fontSize = 13}) {
         : app.t('nxTtsClone');
     return (
       name,
-      (app.cosyvoiceOnline ?? false) ? app.t('nxOnline') : app.t('nxOffline'),
+      (app.qwenOnline ?? false) ? app.t('nxOnline') : app.t('nxOffline'),
     );
   }
   if (app.ttsPiperVoice.isEmpty) return (app.t('nxTtsSystem'), 'pyttsx3');

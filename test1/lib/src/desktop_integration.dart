@@ -864,6 +864,11 @@ class GpuArbiter {
   final ValueNotifier<String?> notice = ValueNotifier(null);
 
   bool _held = false;
+  // Студия голоса держит карту своим счётом, а не общим с картинками: экраны
+  // разные, закрывают их по отдельности, и языковую модель возвращает тот, кто
+  // ушёл с карты последним. С одним флагом на двоих закрытая студия голоса
+  // выгоняла бы картинки, открытые рядом.
+  bool _voice = false;
   AppState? _app;
 
   /// Освободить карту под картинки. Идемпотентно: повторный вызов ничего не
@@ -891,7 +896,7 @@ class GpuArbiter {
     if (!_held) return;
     _held = false;
     final app = _app;
-    _app = null;
+    if (!_voice) _app = null;
     if (app == null) {
       notice.value = null;
       return;
@@ -900,10 +905,109 @@ class GpuArbiter {
     await _post(app.imageServerUrl, '/unload');
     // Прогрев короткой генерацией: Ollama грузит модель на первом же запросе,
     // и лучше заплатить эту паузу здесь, чем на первой команде голосом.
-    await _warmLlm(app);
-    notice.value = null;
+    //
+    // Но только если карта больше никому не нужна: вернуть модель под открытой
+    // студией голоса — значит выгнать с карты синтез, ради которого её и
+    // освобождали.
+    if (!_voice) await _warmLlm(app);
+    notice.value = _voice ? _voiceBanner(app) : null;
     unawaited(appendLog('sidecar', 'GPU: возвращена языковой модели'));
   }
+
+  /// Держит ли карту студия голоса прямо сейчас. Наружу это нужно затем, что
+  /// клон-сервер стоит на паузе ВСЁ остальное время, и решение «ставить или
+  /// не ставить» принимается по этому признаку в нескольких местах.
+  bool get voiceHeld => _voice;
+
+  /// Поставить клон-сервер на паузу или снять с неё.
+  ///
+  /// Пауза у него — не просто отказ отвечать: он тут же отдаёт видеопамять, а
+  /// на запросы синтеза возвращает 503. Сайдкар по 503 сам переходит на
+  /// заготовленные фразы и Piper (`TtsManager._play_one`: кэш проверяется
+  /// первым, до всякого движка), так что доучивать для этого нечего.
+  ///
+  /// Почему пауза, а не простая выгрузка: выгруженный сервер поднимет модель
+  /// обратно на первом же запросе синтеза — и окажется на карте рядом с
+  /// геммой, ради чего всё и затевалось. Пауза и память отдаёт, и вернуться
+  /// не даёт.
+  Future<void> setVoicePaused(AppState app, bool paused) async {
+    final url = _base(app.qwenEndpoint);
+    if (url.isEmpty) return;
+    await _postJson(
+        url, '/config', {'paused': paused}, const Duration(seconds: 20));
+    unawaited(appendLog('sidecar',
+        paused ? 'GPU: клон-голос на паузе' : 'GPU: клон-голос разбужен'));
+  }
+
+  /// Освободить карту под синтез голоса. Зеркало [takeForImages] и по той же
+  /// причине: на станции карта одна, языковая модель занимает на ней восемь
+  /// гигабайт, и синтезу рядом с ней тесно.
+  ///
+  /// Молча уходит, когда голос считается не на станции: у Piper и системного
+  /// голоса видеокарты нет, и выгружать под них языковую модель — вред без
+  /// причины.
+  Future<void> takeForVoice(AppState app) async {
+    if (_voice || !app.cloneServerOn) return;
+    _voice = true;
+    _app = app;
+    notice.value = _voiceBanner(app);
+    unawaited(appendLog('sidecar', 'GPU: освобождаю под синтез голоса'));
+    await _unloadLlm(app);
+    // Картинки — тоже сосед по карте, и семь гигабайт рядом с синтезом на неё
+    // не влезут. Зеркало настройки «выгружать голос ради картинок»: там она
+    // включена по умолчанию, здесь спрашивать нечего — студия голоса открыта
+    // человеком, а генератор картинок в этот момент ничей.
+    //
+    // Не трогаем, пока картой владеет студия картинок: выдёргивать модель
+    // из-под открытого экрана нельзя. Сам сервер картинок ждёт конца кадра и
+    // не рвёт счёт на середине.
+    if (!_held) await _post(app.imageServerUrl, '/unload');
+    // Будим клон ТОЛЬКО здесь и только после того, как гемма ушла с карты.
+    // Порядок не косметика: под нагрузкой синтез занимает шесть гигабайт,
+    // гемма — девять, вместе это пятнадцать из шестнадцати, и на этой карте
+    // перерасход не даёт честную ошибку, а вешает станцию через своп.
+    await setVoicePaused(app, false);
+    // Модель голоса поднимается сразу, а не на первой реплике: пауза в
+    // пятнадцать секунд посреди проверки голоса читается как поломка.
+    await _post(app.qwenEndpoint, '/load');
+    // Раз сервер всё равно поднят — самое время дозаготовить фразы. Вне
+    // студии он на паузе, и другого случая наполнить кэш не представится, а
+    // именно из кэша ассистент говорит вашим голосом всё остальное время.
+    try {
+      SidecarClient.instance.prerender(app.clonePhrasesToRender());
+    } catch (_) {}
+  }
+
+  /// Вернуть карту языковой модели после студии голоса. Зовётся из `dispose()`
+  /// студии — как и у картинок, потому что экран закрывают по-разному.
+  Future<void> releaseVoice() async {
+    if (!_voice) return;
+    _voice = false;
+    final app = _app;
+    if (!_held) _app = null;
+    if (app == null) {
+      notice.value = null;
+      return;
+    }
+    notice.value = app.t('gpuBusyRestoring');
+    // Пауза, а не просто выгрузка: см. [setVoicePaused]. После неё сервер
+    // синтеза обязан оставить карту пустой — если память не вернулась, он
+    // уходит на перезапуск сам.
+    await setVoicePaused(app, true);
+    if (!_held) await _warmLlm(app);
+    notice.value = _held
+        ? (app.appStyle == AppStyle.prism
+            ? app.t('gpuBusyBannerTab')
+            : app.t('gpuBusyBanner'))
+        : null;
+    unawaited(appendLog('sidecar', 'GPU: возвращена языковой модели'));
+  }
+
+  /// «Призма» держит студию вкладкой, а не окном: обещание «вернутся, когда
+  /// закроете окно» там было бы неправдой.
+  String _voiceBanner(AppState app) => app.appStyle == AppStyle.prism
+      ? app.t('gpuBusyBannerVoiceTab')
+      : app.t('gpuBusyBannerVoice');
 
   // --- разговор против картинок --------------------------------------------
   //
@@ -1107,7 +1211,7 @@ class GpuArbiter {
   /// Голос выгружается тем же вызовом, что уже используется при остановке
   /// клон-сервера (`CloneServer.stop`) — второй реализации не заводим.
   Future<void> _unloadVoice(AppState app) async {
-    await _post(app.cosyvoiceEndpoint, '/unload');
+    await _post(app.qwenEndpoint, '/unload');
   }
 }
 
@@ -1226,10 +1330,10 @@ class DesktopIntegration with WindowListener, TrayListener {
       });
       AppUpdater.instance.start(app);
 
-      // Verify CosyVoice reachability once at launch; an unavailable server
+      // Verify Qwen3-TTS reachability once at launch; an unavailable server
       // auto-reverts the TTS engine to Piper (§3.2) so speech never silently
       // breaks and the app doesn't stay stuck on an unreachable engine.
-      unawaited(app.checkCosyvoiceOnStartup());
+      unawaited(app.checkQwenOnStartup());
 
       // Floating widget: separate process, fed over a localhost WebSocket.
       // Spawns immediately when enabled (the chat window itself may stay
@@ -1587,7 +1691,7 @@ class DesktopIntegration with WindowListener, TrayListener {
 // Кнопка «запустить/остановить» для sidecar/qwen_tts_server.py — того самого
 // сервера клон-голоса на видеокарте, который до сих пор поднимали руками из
 // консоли. Приложение с ним и так умеет разговаривать (движок озвучки
-// «Клон (сервер)» шлёт HTTP на cosyvoiceEndpoint) — здесь добавляется только
+// «Клон (сервер)» шлёт HTTP на qwenEndpoint) — здесь добавляется только
 // управление его жизненным циклом, без единого нового протокола.
 //
 // Почему не просто Process.start: сервер держит модель в VRAM, и осиротевший
@@ -1687,7 +1791,7 @@ class CloneServer {
         state.value = CloneServerState.failed;
         return;
       }
-      final port = portOf(app.cosyvoiceEndpoint);
+      final port = portOf(app.qwenEndpoint);
       // Веса (~4 ГБ) кладём в общий кэш на диске установки, а не в профиль
       // пользователя на C: — сервер уважает ANIMA_QWEN_CACHE.
       //
@@ -1733,10 +1837,10 @@ class CloneServer {
       // Импорт torch на холодную занимает десятки секунд — таймаут щедрый.
       await up.future.timeout(const Duration(seconds: 180));
       state.value = CloneServerState.running;
-      if (app.cosyvoiceEndpoint.trim().isEmpty) {
-        app.setCosyvoiceEndpoint('http://127.0.0.1:$port');
+      if (app.qwenEndpoint.trim().isEmpty) {
+        app.setQwenEndpoint('http://127.0.0.1:$port');
       }
-      unawaited(app.checkCosyvoice());
+      unawaited(app.checkQwenServer());
     } catch (e) {
       unawaited(appendLog('errors', 'CloneServer start: $e'));
       if (state.value != CloneServerState.failed) {
@@ -1758,7 +1862,7 @@ class CloneServer {
     try {
       // Сначала попросить освободить VRAM штатно: /unload сервер умеет, а
       // при kill его finally уже не отработает.
-      final ep = app.cosyvoiceEndpoint.trim();
+      final ep = app.qwenEndpoint.trim();
       if (ep.isNotEmpty) {
         try {
           await http

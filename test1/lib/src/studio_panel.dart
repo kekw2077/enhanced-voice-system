@@ -51,11 +51,25 @@ class StudioPanel extends StatefulWidget {
   State<StudioPanel> createState() => _StudioPanelState();
 }
 
-/// Предел длины текста для озвучки. Не украшение: синтез в файл ждёт ответа
-/// сайдкара не дольше 120 секунд (`renderTtsToFile`), и текст, который не
-/// успевает синтезироваться, возвращается пустой строкой без объяснения.
-/// Пять тысяч знаков — примерно полчаса речи, дальше упирается уже движок.
-const int _kPrismSpeechLimit = 5000;
+/// Потолок длины текста. Раньше здесь стояло пять тысяч знаков — предел под
+/// срок ожидания: один запрос синтеза ждали не дольше
+/// [SidecarClient.ttsRenderWait], и всё, что не успевало, пропадало.
+///
+/// С нарезкой ([splitSpeechText]) срок стерегёт КУСОК, а не текст целиком, и
+/// прежний предел потерял смысл: хоть час речи, лишь бы каждый кусок
+/// укладывался в свои две минуты. Двести тысяч знаков — это уже не про синтез,
+/// а про поле ввода: столько текста разбирать на каждое нажатие клавиши
+/// незачем. Сторож, а не потолок.
+const int _kPrismSpeechLimit = 200000;
+
+/// Сколько ждут клон-сервер. Он считает медленнее сайдкара — своя очередь и
+/// своя видеокарта, — и пять минут здесь не запас, а потолок ожидания.
+const Duration _kPrismCloneWait = Duration(minutes: 5);
+
+/// Сколько ждут первого звука после «Озвучить». Ответа у `tts.speak` нет:
+/// сайдкар либо начинает говорить, либо молчит, и без этого срока надпись
+/// «Готовлю…» осталась бы на кнопке навсегда.
+const Duration _kPrismSpeakWait = Duration(seconds: 90);
 
 // Одна карточка в ленте: что просили, что получилось, и файл на диске.
 class _StudioItem {
@@ -80,7 +94,7 @@ class _StudioPanelState extends State<StudioPanel> {
   bool _busy = false;
 
   // Озвучка: чем говорить. 'assistant' — текущий голос ассистента (что выбрано
-  // в настройках), 'clone' — клон через CosyVoice, остальное — id Piper-голоса.
+  // в настройках), 'clone' — клон через Qwen3-TTS, остальное — id Piper-голоса.
   String _voice = 'assistant';
 
   // Картинки: размер кадра и число шагов. Размеры — родные для SDXL: сеть
@@ -136,6 +150,59 @@ class _StudioPanelState extends State<StudioPanel> {
   // ожидание неотличимо от зависания — поэтому спрашиваем сервер, где он.
   (int, int) _progress = (0, 0);
   Timer? _progressTimer;
+
+  /// Нажали «Озвучить», а звука ещё нет: движок грузится, клон считает на
+  /// сервере. Между нажатием и первым уровнем проходят секунды, а на клоне и
+  /// десятки — и всё это время кнопка выглядела нетронутой, неотличимо от
+  /// «не сработало».
+  bool _speakPending = false;
+
+  /// Срок на [_speakPending]. Синтез вслух молчит и об удаче, и о неудаче;
+  /// признак удачи — первый уровень звука, признак неудачи — только время.
+  Timer? _speakGuard;
+
+  // ---- Нарезка -----------------------------------------------------------
+
+  /// Куски текущей партии: что готово, что идёт, что сорвалось. Переживают
+  /// неудачу — иначе «продолжить» было бы неоткуда начинать.
+  List<SpeechChunk> _chunks = const [];
+
+  /// Папка кусков и имя склейки. Живут в полях, потому что нужны и первому
+  /// проходу, и продолжению после обрыва.
+  String _partsDir = '';
+  String _batchOut = '';
+  bool _cancelBatch = false;
+
+  /// Карточка в ленте, к которой относится партия: продолжение дописывает
+  /// результат в неё, а не заводит вторую строку про ту же работу.
+  _StudioItem? _batchItem;
+
+  /// Предпросмотр разреза. Считается не на каждый кадр, а когда меняется текст
+  /// или длина куска: на пятнадцати тысячах знаков разбор — заметная работа, а
+  /// экран перерисовывается куда чаще, чем печатают.
+  List<SpeechChunk> _preview = const [];
+  String _previewOf = '';
+  int _previewChars = -1;
+
+  /// Знает ли сервер клона отпечаток нашего образца — см. [_renderClone].
+  bool _cloneRefKnown = false;
+
+  /// Расшифровка образца, выбранного на этот сеанс. Настроечная к нему не
+  /// относится: она про другой файл.
+  String _cloneOverridePrompt = '';
+
+  /// Поле расшифровки. Одно на два назначения: пока свой образец не выбран,
+  /// оно правит настроечную расшифровку, а с ним — сеансовую.
+  final _clonePromptCtl = TextEditingController();
+
+  void _refreshPreview(AppState app) {
+    if (_input.text == _previewOf && app.speechChunkChars == _previewChars) {
+      return;
+    }
+    _previewOf = _input.text;
+    _previewChars = app.speechChunkChars;
+    _preview = splitSpeechText(_input.text, target: app.speechChunkChars);
+  }
 
   void _watchProgress(AppState app) {
     _progressTimer?.cancel();
@@ -209,7 +276,49 @@ class _StudioPanelState extends State<StudioPanel> {
       _loras = decodeLoraPicks(app.imageLoras);
       _face = app.imageFacePass;
       unawaited(_loadModels());
+    } else {
+      // Синтез на станции живёт на той же карте, что и языковая модель, и
+      // вдвоём они на неё не помещаются: карта уходила в вытеснение, а станция
+      // — в зависание. Освобождаем её на время студии голоса; возврат — в
+      // dispose(). На местном голосе арбитр промолчит сам: там карты нет.
+      unawaited(GpuArbiter.instance.takeForVoice(context.read<AppState>()));
+      VoiceLevels.instance.tts.addListener(_onTtsLevel);
+      _clonePromptCtl.text = context.read<AppState>().voiceSampleText;
     }
+  }
+
+  /// Первый звук — единственный признак, что синтез кончился и пошла речь:
+  /// у `tts.speak` ответа нет. По нему и гаснет «Готовлю…».
+  void _onTtsLevel() {
+    if (!_speakPending || VoiceLevels.instance.tts.value <= 0.001) return;
+    _speakGuard?.cancel();
+    if (mounted) setState(() => _speakPending = false);
+  }
+
+  /// Сказать вслух прямо сейчас. От [_submit] отличается тем, что файла после
+  /// себя не оставляет: звук уходит в колонки через сайдкар.
+  void _speakNow(AppState app, String text) {
+    // Вслух длинный текст тоже идёт кусками, но иначе, чем в файл: их просто
+    // кладут в очередь сайдкара, и он проговаривает их подряд. Выигрыш двойной
+    // — речь начинается после первого куска, а не после всего текста, и движок
+    // не держит во внимании пятнадцать минут разом.
+    final pieces = splitSpeechText(text, target: app.speechChunkChars);
+    if (pieces.isEmpty) return;
+    for (final c in pieces) {
+      SidecarClient.instance
+          .speak(c.text, rate: app.ttsRate, volume: app.ttsVolume);
+    }
+    _speakGuard?.cancel();
+    _speakGuard = Timer(_kPrismSpeakWait, () {
+      if (mounted) setState(() => _speakPending = false);
+    });
+    setState(() => _speakPending = true);
+  }
+
+  void _stopSpeaking() {
+    SidecarClient.instance.stopSpeaking();
+    _speakGuard?.cancel();
+    if (mounted) setState(() => _speakPending = false);
   }
 
   /// Какая модель стоит на сервере. Спрашиваем сервер, а не верим настройке:
@@ -251,6 +360,11 @@ class _StudioPanelState extends State<StudioPanel> {
   @override
   void dispose() {
     _progressTimer?.cancel();
+    _speakGuard?.cancel();
+    if (widget.mode == StudioMode.speech) {
+      VoiceLevels.instance.tts.removeListener(_onTtsLevel);
+    }
+    _clonePromptCtl.dispose();
     _input.dispose();
     _negative.dispose();
     _scroll.dispose();
@@ -259,6 +373,8 @@ class _StudioPanelState extends State<StudioPanel> {
       // и крестиком, и переключением стиля — во всех случаях модели должны
       // вернуться, иначе ассистент останется немым до перезапуска.
       unawaited(GpuArbiter.instance.release());
+    } else {
+      unawaited(GpuArbiter.instance.releaseVoice());
     }
     super.dispose();
   }
@@ -278,6 +394,34 @@ class _StudioPanelState extends State<StudioPanel> {
     });
   }
 
+  /// Общая обвязка для всего, что кладёт результат в ленту: занятость, ошибка,
+  /// путь, прокрутка. И новая работа, и продолжение оборванной партии идут
+  /// через неё — два места по-разному врали бы о состоянии.
+  Future<void> _runInto(
+      _StudioItem item, Future<String?> Function() work) async {
+    setState(() {
+      item.busy = true;
+      item.error = null;
+      _busy = true;
+    });
+    _scrollDown();
+    try {
+      item.path = await work();
+    } catch (e) {
+      item.error = '$e';
+    } finally {
+      item.busy = false;
+      _progressTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _progress = (0, 0);
+        });
+      }
+      _scrollDown();
+    }
+  }
+
   Future<void> _submit() async {
     final app = context.read<AppState>();
     final text = _input.text.trim();
@@ -292,30 +436,28 @@ class _StudioPanelState extends State<StudioPanel> {
               .$2,
       busy: true,
     );
+    _batchItem = item;
     setState(() {
       _items.add(item);
-      _busy = true;
       _input.clear();
     });
-    _scrollDown();
-    try {
-      final path = widget.mode == StudioMode.image
-          ? await (() { _watchProgress(app); return _generateImage(app, text); })()
-          : await _renderSpeech(app, text);
-      item.path = path;
-    } catch (e) {
-      item.error = '$e';
-    } finally {
-      item.busy = false;
-      _progressTimer?.cancel();
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _progress = (0, 0);
-        });
-      }
-      _scrollDown();
-    }
+    await _runInto(
+        item,
+        () => widget.mode == StudioMode.image
+            ? (() {
+                _watchProgress(app);
+                return _generateImage(app, text);
+              })()
+            : _renderSpeech(app, text));
+  }
+
+  /// Продолжить партию с куска, на котором она оборвалась. Готовые куски лежат
+  /// на диске и второй раз не считаются.
+  Future<void> _resumeSpeech() async {
+    final app = context.read<AppState>();
+    final item = _batchItem;
+    if (item == null || _busy) return;
+    await _runInto(item, () => _runChunks(app));
   }
 
   Future<String> _generateImage(AppState app, String prompt) async {
@@ -363,18 +505,53 @@ class _StudioPanelState extends State<StudioPanel> {
   Future<void> _pickCloneSample() async {
     final res = await FilePicker.pickFiles();
     final p = res?.files.single.path;
-    if (p != null && p.isNotEmpty) setState(() => _cloneOverride = p);
+    if (p == null || p.isEmpty) return;
+    setState(() {
+      _cloneOverride = p;
+      // Новый образец — прежняя расшифровка к нему не относится. Чужая тут
+      // хуже, чем никакой: по ней сервер считает, что в записи сказано это, и
+      // строит отпечаток голоса на неправде.
+      _cloneOverridePrompt = '';
+      _clonePromptCtl.text = '';
+      _cloneRefKnown = false;
+    });
   }
 
-  Future<String?> _renderSpeech(AppState app, String text) async {
-    if (_voice == 'clone') return _renderClone(app, text);
-    final dir = await _studioDir();
-    final path =
-        '$dir${io.Platform.pathSeparator}voice-${DateTime.now().millisecondsSinceEpoch}.wav';
-    // Синтезируем в ФАЙЛ, а не проговариваем. Раньше здесь звук уходил прямо
-    // в колонки и исчезал: студия писала «проговорено вслух», сохранять было
-    // нечего, и кнопке «показать в папке» нечего было показывать. Теперь любой
-    // голос — и ассистента, и Piper — оставляет файл, как и клон.
+  /// Вернуться к образцу из настроек.
+  void _resetCloneSample(AppState app) {
+    setState(() {
+      _cloneOverride = '';
+      _cloneOverridePrompt = '';
+      _clonePromptCtl.text = app.voiceSampleText;
+      _cloneRefKnown = false;
+    });
+  }
+
+  /// Расшифровка того образца, который сейчас в силе.
+  String _clonePrompt(AppState app) => _cloneOverride.isNotEmpty
+      ? _cloneOverridePrompt
+      : app.voiceSampleText;
+
+  void _setClonePrompt(AppState app, String v) {
+    if (_cloneOverride.isNotEmpty) {
+      _cloneOverridePrompt = v;
+    } else {
+      app.setVoiceSampleText(v);
+    }
+    // Отпечаток на сервере строится по паре «образец + его расшифровка».
+    // Изменили текст — пусть построит заново.
+    _cloneRefKnown = false;
+  }
+
+  /// Синтез ОДНОГО куска в указанный файл. Выбор голоса тот же, что был;
+  /// новое здесь только то, что путь приходит снаружи — нарезке нужно класть
+  /// куски рядом друг с другом и под своими номерами.
+  ///
+  /// Синтезируем в ФАЙЛ, а не проговариваем. Раньше звук уходил прямо в
+  /// колонки и исчезал: студия писала «проговорено вслух», сохранять было
+  /// нечего, и кнопке «показать в папке» нечего было показывать.
+  Future<String> _renderPiece(AppState app, String text, String path) async {
+    if (_voice == 'clone') return _renderClone(app, text, path);
     if (_voice == 'assistant') {
       final out = await SidecarClient.instance
           .renderTtsToFile(text, path, rate: app.ttsRate);
@@ -392,53 +569,157 @@ class _StudioPanelState extends State<StudioPanel> {
     return out;
   }
 
-  Future<String> _renderClone(AppState app, String text) async {
-    final ep = app.cosyvoiceEndpoint.trim();
+  /// Озвучка целиком: разрезать, посчитать по кускам, склеить.
+  ///
+  /// Один кусок — прежний прямой путь: папку кусков не заводим, склеивать
+  /// нечего, файл называется как раньше.
+  Future<String?> _renderSpeech(AppState app, String text) async {
+    final dir = await _studioDir();
+    final sep = io.Platform.pathSeparator;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final chunks = splitSpeechText(text, target: app.speechChunkChars);
+    if (chunks.length <= 1) {
+      if (mounted) setState(() => _chunks = const []);
+      return _renderPiece(app, text, '$dir${sep}voice-$stamp.wav');
+    }
+    _partsDir = '$dir${sep}parts-$stamp';
+    _batchOut = '$dir${sep}voice-$stamp.wav';
+    await io.Directory(_partsDir).create(recursive: true);
+    if (mounted) setState(() => _chunks = chunks);
+    return _runChunks(app);
+  }
+
+  /// Прогон кусков. Отдельно от [_renderSpeech], потому что зовётся дважды:
+  /// сначала с начала, потом — «продолжить», когда кусок посреди партии
+  /// сорвался. Готовые куски во второй раз пропускаются: их файлы на месте, и
+  /// платить за них ещё раз незачем.
+  Future<String> _runChunks(AppState app) async {
+    final sep = io.Platform.pathSeparator;
+    _cancelBatch = false;
+    for (final c in _chunks) {
+      if (c.state == SpeechChunkState.done && c.path != null) continue;
+      if (_cancelBatch) throw Exception(app.t('speechCancelled'));
+      if (mounted) {
+        setState(() {
+          c.state = SpeechChunkState.running;
+          c.error = null;
+        });
+      }
+      final at = DateTime.now();
+      final path = '$_partsDir${sep}part-'
+          '${(c.index + 1).toString().padLeft(3, '0')}.wav';
+      try {
+        c.path = await _renderPiece(app, c.text, path);
+      } catch (_) {
+        // Одна повторная попытка. Клон-сервер выгружает модель по простою и на
+        // первом запросе после этого успевает не всегда; терять из-за одной
+        // осечки всю партию — расточительно.
+        try {
+          c.path = await _renderPiece(app, c.text, path);
+        } catch (e2) {
+          c.state = SpeechChunkState.failed;
+          c.error = '$e2';
+          if (mounted) setState(() {});
+          rethrow;
+        }
+      }
+      c.took = DateTime.now().difference(at);
+      c.state = SpeechChunkState.done;
+      if (mounted) setState(() {});
+    }
+    await joinSpeechWavs(_chunks, _batchOut,
+        paragraphGap: Duration(milliseconds: app.speechGapMs));
+    if (!app.speechKeepParts) {
+      try {
+        await io.Directory(_partsDir).delete(recursive: true);
+      } catch (_) {
+        // Файл мог остаться занят проводником. Мусор в папке — не повод
+        // объявлять неудачей готовую и уже склеенную озвучку.
+      }
+      for (final c in _chunks) {
+        c.path = null;
+      }
+    }
+    return _batchOut;
+  }
+
+  /// Один запрос синтеза к серверу клона; [path] — куда положить полученный
+  /// WAV (при нарезке это кусок, иначе весь файл).
+  ///
+  /// Запрос тот же, что шлёт сайдкар (`CloneHttpEngine._request`) — сервер
+  /// один и тот же, второй диалект заводить незачем. Три поля, которых тут
+  /// раньше не хватало, и все три взяты оттуда же:
+  ///
+  ///  • `language`. Без него сервер берёт свой умолчательный язык, а он
+  ///    настраивается отдельно от нашего `cloneLanguage` — и русская фраза
+  ///    могла прочитаться как английская.
+  ///  • `prompt_wav_sha` вместо самого образца. Сервер держит разобранный
+  ///    отпечаток и по сумме узнаёт его; полмегабайта на КАЖДЫЙ кусок — это
+  ///    лишние секунды на каждом из полутора десятков запросов. Файл едет
+  ///    только когда сервер отвечает 409 «такого отпечатка нет»: после его
+  ///    перезапуска или смены образца.
+  ///  • Расшифровка ТОГО образца, который сейчас в силе — своего на сеанс или
+  ///    настроечного. Раньше сюда всегда шла настроечная, и выбор своего
+  ///    образца оставлял её при нём: сервер строил отпечаток по чужому тексту,
+  ///    то есть по неправде. Это хуже, чем совсем без расшифровки.
+  Future<String> _renderClone(AppState app, String text, String path) async {
+    final ep = app.qwenEndpoint.trim();
     if (ep.isEmpty) throw Exception(app.t('studioNoClone'));
     final ref = _cloneOverride.isNotEmpty
         ? _cloneOverride
-        : app.cosyvoiceClonePath.trim();
+        : app.voiceSamplePath.trim();
     if (ref.isEmpty || !await io.File(ref).exists()) {
       throw Exception(app.t('studioNoSample'));
     }
-    // Тот же запрос, что шлёт сайдкар (CosyVoiceEngine): те же поля и тот же
-    // порядок — сервер один и тот же, второй диалект заводить незачем.
-    final boundary = '----animaStudio${DateTime.now().microsecondsSinceEpoch}';
-    final parts = <List<int>>[];
-    void field(String name, String value) {
-      parts.add(utf8.encode('--$boundary'));
-      parts.add(utf8.encode('Content-Disposition: form-data; name="$name"\r\n'));
-      parts.add(utf8.encode(value));
+    final wav = await io.File(ref).readAsBytes();
+    final sha = sha256.convert(wav).toString();
+
+    Future<http.Response> send(bool withWav) {
+      final boundary =
+          '----animaStudio${DateTime.now().microsecondsSinceEpoch}';
+      final parts = <List<int>>[];
+      void field(String name, String value) {
+        parts.add(utf8.encode('--$boundary'));
+        parts.add(
+            utf8.encode('Content-Disposition: form-data; name="$name"\r\n'));
+        parts.add(utf8.encode(value));
+      }
+
+      field('tts_text', text);
+      field('prompt_text', _clonePrompt(app));
+      field('speed', app.qwenSpeed.toString());
+      field('language', app.cloneLanguage);
+      field('prompt_wav_sha', sha);
+      if (withWav) {
+        parts.add(utf8.encode('--$boundary'));
+        parts.add(
+            utf8.encode('Content-Disposition: form-data; name="prompt_wav"; '
+                'filename="ref.wav"\r\nContent-Type: audio/wav\r\n'));
+        parts.add(wav);
+      }
+      parts.add(utf8.encode('--$boundary--'));
+      final body = <int>[];
+      for (var i = 0; i < parts.length; i++) {
+        if (i > 0) body.addAll(utf8.encode('\r\n'));
+        body.addAll(parts[i]);
+      }
+      body.addAll(utf8.encode('\r\n'));
+      return http
+          .post(Uri.parse('$ep/inference_zero_shot'),
+              headers: {
+                'Content-Type': 'multipart/form-data; boundary=$boundary'
+              },
+              body: body)
+          .timeout(_kPrismCloneWait);
     }
 
-    field('tts_text', text);
-    field('prompt_text', app.cosyvoiceClonePromptText);
-    field('speed', app.cosyvoiceSpeed.toString());
-    parts.add(utf8.encode('--$boundary'));
-    parts.add(utf8.encode('Content-Disposition: form-data; name="prompt_wav"; '
-        'filename="ref.wav"\r\nContent-Type: audio/wav\r\n'));
-    parts.add(await io.File(ref).readAsBytes());
-    parts.add(utf8.encode('--$boundary--'));
-    final body = <int>[];
-    for (var i = 0; i < parts.length; i++) {
-      if (i > 0) body.addAll(utf8.encode('\r\n'));
-      body.addAll(parts[i]);
-    }
-    body.addAll(utf8.encode('\r\n'));
-
-    final res = await http
-        .post(Uri.parse('$ep/inference_zero_shot'),
-            headers: {
-              'Content-Type': 'multipart/form-data; boundary=$boundary'
-            },
-            body: body)
-        .timeout(const Duration(minutes: 5));
+    var res = await send(!_cloneRefKnown);
+    if (res.statusCode == 409) res = await send(true);
     if (res.statusCode != 200) {
       throw Exception('HTTP ${res.statusCode}');
     }
-    final dir = await _studioDir();
-    final name = 'voice-${DateTime.now().millisecondsSinceEpoch}.wav';
-    final file = io.File('$dir${io.Platform.pathSeparator}$name');
+    _cloneRefKnown = true;
+    final file = io.File(path);
     await file.writeAsBytes(res.bodyBytes);
     return file.path;
   }
@@ -455,7 +736,7 @@ class _StudioPanelState extends State<StudioPanel> {
   /// которого у студии не было: «Озвучить» — сказать вслух прямо сейчас.
   /// Без него панель «Волна» была бы мёртвой: сохранение в файл идёт молча.
   Widget _prismSonora(AppState app) {
-    final cloneReady = app.cosyvoiceEndpoint.trim().isNotEmpty;
+    final cloneReady = app.qwenEndpoint.trim().isNotEmpty;
     final onSystem = _voice != 'clone';
     final voices = _voices(app);
     final voiceLabel = voices
@@ -463,6 +744,21 @@ class _StudioPanelState extends State<StudioPanel> {
             orElse: () => ('assistant', app.t('studioVoiceAssistant')))
         .$2;
     final text = _input.text.trim();
+    final typed = _input.text.characters.length;
+    // За двести знаков до потолка счётчик желтеет. Отсечка на вставке молчит,
+    // и предупредить надо ДО неё, а не показывать обрезок после.
+    final nearLimit = typed >= _kPrismSpeechLimit - 200;
+    // Сколько ждут ОДИН кусок. Клон считает на своём сервере и по своему
+    // сроку; шкала обязана называть тот, что сейчас в силе.
+    final renderWait =
+        _voice == 'clone' ? _kPrismCloneWait : SidecarClient.ttsRenderWait;
+    _refreshPreview(app);
+    final pieces = _preview.length;
+    final estimate = speechDurationEstimate(typed);
+    // Доля пути. Пока партия идёт — по готовым кускам; на одном куске делить
+    // нечего, и полоса бежит без доли.
+    final chunkDone =
+        _chunks.where((c) => c.state == SpeechChunkState.done).length;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -499,10 +795,16 @@ class _StudioPanelState extends State<StudioPanel> {
                         children: [
                           PrismSectionLabel(app.t('prismVoice')),
                           const Spacer(),
+                          // Builder нужен, чтобы взять прямоугольник САМОЙ
+                          // пилюли: без него меню открывалось от контекста
+                          // всего экрана и уезжало на правый столбец.
                           Flexible(
-                            child: PrismPickPill(
-                              label: voiceLabel,
-                              onTap: () => unawaited(_prismPickVoice(app)),
+                            child: Builder(
+                              builder: (pillContext) => PrismPickPill(
+                                label: voiceLabel,
+                                onTap: () => unawaited(
+                                    _prismPickVoice(app, pillContext)),
+                              ),
                             ),
                           ),
                         ],
@@ -539,9 +841,9 @@ class _StudioPanelState extends State<StudioPanel> {
                             Expanded(
                               child: Text(
                                 _cloneOverride.isEmpty
-                                    ? (app.cosyvoiceClonePath.trim().isEmpty
+                                    ? (app.voiceSamplePath.trim().isEmpty
                                         ? app.t('studioNoSample')
-                                        : app.cosyvoiceClonePath
+                                        : app.voiceSamplePath
                                             .split(io.Platform.pathSeparator)
                                             .last)
                                     : _cloneOverride
@@ -564,11 +866,41 @@ class _StudioPanelState extends State<StudioPanel> {
                               _PrismGhostButton(
                                 label: app.t('studioSampleReset'),
                                 d: PrismIcons.remove,
-                                onTap: () =>
-                                    setState(() => _cloneOverride = ''),
+                                onTap: () => _resetCloneSample(app),
                               ),
                             ],
                           ],
+                        ),
+                        // Расшифровка образца. Не украшение и не подпись к
+                        // файлу: по её наличию сервер ВЫБИРАЕТ РЕЖИМ. Без неё
+                        // он копирует только тембр (x-vector), с ней — берёт
+                        // запись как пример речи целиком, вместе с манерой.
+                        // Поле стояло только в настройках, и о том, что оно
+                        // делает, там сказано не было.
+                        const SizedBox(height: 15),
+                        PrismSectionLabel(app.t('ttsCosyClonePrompt'),
+                            size: 10.5),
+                        const SizedBox(height: 9),
+                        PrismField(
+                          controller: _clonePromptCtl,
+                          hint: app.t('prismClonePromptHint'),
+                          lines: 2,
+                          radius: 14,
+                          fontSize: 12.5,
+                          onChanged: (v) => _setClonePrompt(app, v),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _clonePrompt(app).trim().isEmpty
+                              ? app.t('prismClonePromptOff')
+                              : app.t('prismClonePromptOn'),
+                          style: PrismType.caption.copyWith(
+                            fontSize: 11,
+                            height: 1.45,
+                            color: _clonePrompt(app).trim().isEmpty
+                                ? _faint(context)
+                                : _success(context),
+                          ),
                         ),
                       ],
                     ],
@@ -598,11 +930,26 @@ class _StudioPanelState extends State<StudioPanel> {
                       const SizedBox(height: 14),
                       Row(
                         children: [
-                          Text(
-                            '${_input.text.characters.length} / '
-                            '$_kPrismSpeechLimit',
-                            style: PrismType.numeric.copyWith(
-                                color: _faint(context), fontSize: 11.5),
+                          // Знаки сами по себе ничего не говорят: «13 480» —
+                          // это много или мало? Рядом то, что человек и хотел
+                          // знать — сколько это минут речи и на сколько
+                          // кусков разойдётся.
+                          Flexible(
+                            child: Text(
+                              typed == 0
+                                  ? '0'
+                                  : '$typed · ≈${prismClock(estimate)} · '
+                                      '${app.t('prismChunksN')
+                                          .replaceAll('{n}', '$pieces')}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: PrismType.numeric.copyWith(
+                                color: nearLimit
+                                    ? _warn(context)
+                                    : _faint(context),
+                                fontSize: 11.5,
+                              ),
+                            ),
                           ),
                           const Spacer(),
                           // Сохранение в файл — то, ради чего студия и есть:
@@ -619,33 +966,60 @@ class _StudioPanelState extends State<StudioPanel> {
                             valueListenable: VoiceLevels.instance.tts,
                             builder: (context, level, _) {
                               final speaking = level > 0.001;
+                              // Три состояния, а не два: до звука есть ещё
+                              // «Готовлю…». Нажатие в нём обрывает синтез —
+                              // кнопка, которая на полминуты перестаёт
+                              // слушаться, читается как зависшая.
+                              final live = speaking || _speakPending;
                               return PrismGradientButton(
                                 label: speaking
                                     ? app.t('prismSpeakStop')
-                                    : app.t('prismSpeakNow'),
-                                d: speaking
-                                    ? PrismIcons.stop
-                                    : PrismIcons.play,
+                                    : _speakPending
+                                        ? app.t('prismSpeakPreparing')
+                                        : app.t('prismSpeakNow'),
+                                d: live ? PrismIcons.stop : PrismIcons.play,
                                 fontSize: 13.5,
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 22, vertical: 12),
-                                onTap: speaking
-                                    ? SidecarClient.instance.stopSpeaking
+                                onTap: live
+                                    ? _stopSpeaking
                                     : (text.isEmpty
                                         ? null
-                                        : () => SidecarClient.instance.speak(
-                                              text,
-                                              rate: app.ttsRate,
-                                              volume: app.ttsVolume,
-                                            )),
+                                        : () => _speakNow(app, text)),
                               );
                             },
                           ),
                         ],
                       ),
+                      // Ход работы — только пока она идёт: пустая шкала в
+                      // покое не сведения, а шум.
+                      if (_busy || _speakPending) ...[
+                        const SizedBox(height: 15),
+                        PrismSpeechProgress(
+                          label: _busy
+                              ? (_chunks.isEmpty
+                                  ? app.t('prismProgressRender')
+                                  : app
+                                      .t('prismProgressChunk')
+                                      .replaceAll('{n}',
+                                          '${chunkDone + 1}')
+                                      .replaceAll(
+                                          '{total}', '${_chunks.length}'))
+                              : app.t('prismProgressSpeak'),
+                          // Срок стережёт кусок, а не весь текст: партия из
+                          // восемнадцати кусков идёт хоть полчаса, и часы,
+                          // отсчитывающие до двух минут, врали бы про неё.
+                          limit: _busy ? renderWait : _kPrismSpeakWait,
+                          value: _busy && _chunks.isNotEmpty
+                              ? chunkDone / _chunks.length
+                              : null,
+                        ),
+                      ],
                     ],
                   ),
                 ),
+                const SizedBox(height: 16),
+                _prismChunkCard(app),
               ],
             ),
           ),
@@ -658,7 +1032,7 @@ class _StudioPanelState extends State<StudioPanel> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                PrismWavePanel(rendering: _busy),
+                PrismWavePanel(rendering: _busy, preparing: _speakPending),
                 const SizedBox(height: 16),
                 PrismPanel(
                   radius: 26,
@@ -709,19 +1083,109 @@ class _StudioPanelState extends State<StudioPanel> {
     );
   }
 
-  /// Выбор голоса из того же списка, что и чипы в остальных стилях.
-  Future<void> _prismPickVoice(AppState app) async {
-    final box = context.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final origin = box.localToGlobal(Offset.zero);
-    final picked = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromLTRB(
-        origin.dx + box.size.width - 320,
-        origin.dy + 150,
-        16,
-        0,
+  /// «Нарезка»: чем режем длинный текст и что из этого выходит.
+  ///
+  /// Карточка стоит под полем ввода, а не в настройках, потому что подбирают
+  /// её глядя на текст: сдвинул ползунок — тут же видно, на сколько кусков
+  /// разойдётся именно этот текст. В настройках это была бы цифра без ответа.
+  Widget _prismChunkCard(AppState app) {
+    return PrismPanel(
+      radius: 26,
+      padding: const EdgeInsets.all(22),
+      shadow: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PrismSectionLabel(app.t('prismChunking')),
+          const SizedBox(height: 15),
+          PrismLabeledSlider(
+            label: app.t('prismChunkSize'),
+            display: '${app.speechChunkChars}',
+            value: app.speechChunkChars.toDouble(),
+            min: kSpeechChunkMin.toDouble(),
+            max: kSpeechChunkMax.toDouble(),
+            step: 50,
+            onChanged: (v) => app.setSpeechChunkChars(v.round()),
+          ),
+          const SizedBox(height: 17),
+          PrismLabeledSlider(
+            label: app.t('prismChunkGap'),
+            display: '${app.speechGapMs} ${app.t('msShort')}',
+            value: app.speechGapMs.toDouble(),
+            min: 0,
+            max: 1000,
+            step: 50,
+            onChanged: (v) => app.setSpeechGapMs(v.round()),
+          ),
+          const SizedBox(height: 17),
+          Row(
+            children: [
+              Expanded(
+                child: Text(app.t('prismKeepParts'),
+                    style: PrismType.body
+                        .copyWith(color: _body(context), fontSize: 12.5)),
+              ),
+              const SizedBox(width: 12),
+              PrismToggle(
+                value: app.speechKeepParts,
+                onChanged: app.setSpeechKeepParts,
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Text(
+            app.t('prismChunkHint'),
+            style: PrismType.caption.copyWith(
+                fontSize: 11, color: _faint(context), height: 1.45),
+          ),
+          // Список кусков — только когда есть о чём говорить: до первой
+          // озвучки он был бы пустой рамкой.
+          if (_chunks.isNotEmpty) ...[
+            const SizedBox(height: 17),
+            Container(height: 1, color: _stroke(context)),
+            const SizedBox(height: 15),
+            PrismChunkList(
+              chunks: _chunks,
+              busy: _busy,
+              onCancel: () => setState(() => _cancelBatch = true),
+              onResume: () => unawaited(_resumeSpeech()),
+            ),
+          ],
+        ],
       ),
+    );
+  }
+
+  /// Выбор голоса из того же списка, что и чипы в остальных стилях.
+  ///
+  /// [anchor] — контекст САМОЙ пилюли. Раньше здесь стоял контекст всего
+  /// экрана, а к нему приписывались «минус 320 по ширине, плюс 150 по высоте»
+  /// — угаданные числа: список вылезал поверх правого столбца и не совпадал с
+  /// пилюлей, из которой открылся. Прямоугольник пилюли известен точно, и
+  /// showMenu сам прижмёт список к её краю — тем же приёмом, каким
+  /// открывается меню сообщения в чате «Призмы».
+  Future<void> _prismPickVoice(AppState app, BuildContext anchor) async {
+    final box = anchor.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(anchor).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    final picked = await showMenu<String>(
+      context: anchor,
+      color: _card(context),
+      // Нижний край пилюли целиком, а не точка: showMenu разворачивает список
+      // от того края прямоугольника, который ближе к краю окна, — и у правого
+      // края окна он никуда не полезет.
+      position: RelativeRect.fromRect(
+        Rect.fromPoints(
+          box.localToGlobal(box.size.bottomLeft(Offset.zero),
+              ancestor: overlay),
+          box.localToGlobal(box.size.bottomRight(Offset.zero),
+              ancestor: overlay),
+        ),
+        Offset.zero & overlay.size,
+      ),
+      constraints: BoxConstraints(minWidth: box.size.width),
       items: [
         for (final v in _voices(app))
           PopupMenuItem<String>(
@@ -746,7 +1210,7 @@ class _StudioPanelState extends State<StudioPanel> {
   List<(String id, String label)> _voices(AppState app) {
     final out = <(String, String)>[
       ('assistant', app.t('studioVoiceAssistant')),
-      if (app.cosyvoiceEndpoint.trim().isNotEmpty)
+      if (app.qwenEndpoint.trim().isNotEmpty)
         ('clone', app.t('studioVoiceClone')),
     ];
     for (final s in kAssetModels) {
@@ -1127,10 +1591,10 @@ class _StudioPanelState extends State<StudioPanel> {
               Expanded(
                 child: Text(
                   _cloneOverride.isEmpty
-                      ? (app.cosyvoiceClonePath.trim().isEmpty
+                      ? (app.voiceSamplePath.trim().isEmpty
                           ? app.t('studioNoSample')
                           : '${app.t('studioSampleFromSettings')}: '
-                              '${app.cosyvoiceClonePath.split(io.Platform.pathSeparator).last}')
+                              '${app.voiceSamplePath.split(io.Platform.pathSeparator).last}')
                       : _cloneOverride.split(io.Platform.pathSeparator).last,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

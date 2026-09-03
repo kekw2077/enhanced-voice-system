@@ -219,7 +219,30 @@ class AppState extends ChangeNotifier {
   int? llmTopK;
   double? llmRepeatPenalty;
   double? llmMinP;
-  String llmKeepAlive = '';
+  /// Что уходит Ollama в поле `keep_alive`. Значение ВЫЧИСЛЯЕМОЕ: его
+  /// собирают [llmKeepAlivePreset] и [llmKeepAliveCustom], а сюда оно кладётся
+  /// уже готовым, чтобы отправляющей стороне не пришлось знать про интерфейс.
+  String llmKeepAlive = '30m';
+
+  /// Один из четырёх готовых сроков: 15m, 30m, 1h, -1 (не выгружать).
+  String llmKeepAlivePreset = '30m';
+
+  /// Свой срок вместо готового. Отдельный признак, а не «значение не из
+  /// списка»: выключив переключатель, человек должен вернуться к прежнему
+  /// выбору, а не потерять его.
+  bool llmKeepAliveCustom = false;
+
+  /// Свой срок в минутах. Хранится, даже когда переключатель выключен, —
+  /// иначе набранное пропадало бы при каждом переключении туда-обратно.
+  int llmKeepAliveMinutes = 30;
+
+  /// Собрать [llmKeepAlive] из выбора. Зовётся из всех трёх сеттеров: два
+  /// места, считающие одно и то же по-своему, рано или поздно разойдутся.
+  void _syncKeepAlive() {
+    llmKeepAlive = llmKeepAliveCustom
+        ? '${llmKeepAliveMinutes}m'
+        : llmKeepAlivePreset;
+  }
   // Размышление вслух у моделей вроде Qwen3. Ollama кладёт рассуждения в
   // отдельное поле, до пользователя они не доходят — но время съедают целиком.
   // Замер на станции, один и тот же вопрос: 27,7 с с размышлением против 2,3 с
@@ -235,7 +258,7 @@ class AppState extends ChangeNotifier {
   // `imageFreeVoiceToo` — выгружать ли ради картинок ещё и синтез голоса.
   // По умолчанию да, и вот арифметика: языковая модель 8 ГБ, синтез 4,4,
   // картинки 7 — на карте в 16 ГБ втроём они не помещаются никак. Пока
-  // голосом была CosyVoice на три гигабайта, а контекст языковой модели
+  // голосом была Qwen3-TTS на три гигабайта, а контекст языковой модели
   // был вдвое меньше, всё сходилось — отсюда прежнее «нет». Теперь
   // невыгруженный голос означает отказ генерации с нехваткой памяти.
   String imageServerUrl = '';
@@ -285,6 +308,22 @@ class AppState extends ChangeNotifier {
   // в новые пиксели то, чего в маленьком кадре не помещалось.
   double imageHires = 0;
   bool imageFreeVoiceToo = true;
+
+  // ---- Нарезка длинного текста для озвучки -------------------------------
+  // Живут в настройках, а не в окне студии: человек подбирает их один раз под
+  // свой голос и текст, и терять подбор при закрытии окна незачем.
+
+  /// Сколько знаков класть в один кусок. Короче — ровнее держится голос, но
+  /// больше швов; длиннее — наоборот. См. [splitSpeechText].
+  int speechChunkChars = kSpeechChunkDefault;
+
+  /// Тишина перед куском, открывающим новый абзац, в миллисекундах. Ноль —
+  /// сплошная дорожка без пауз, тоже законный выбор.
+  int speechGapMs = 300;
+
+  /// Оставлять ли куски отдельными файлами рядом со склейкой. Обычно они
+  /// мусор, но при монтаже видео резать готовый файл заново — лишняя работа.
+  bool speechKeepParts = false;
   // Optional per-mode model overrides. Empty means "use whatever is selected
   // globally", which keeps the existing single-model behaviour intact — the
   // point is to let a RAG-tuned model answer search turns without changing what
@@ -483,42 +522,50 @@ class AppState extends ChangeNotifier {
   String ttsInterpModel = '';
   bool _ttsInterpFellBack = false; // one-shot "fell back to rules" notice guard
   // TTS engine choice (settings TZ §3.2). Piper is the built-in offline engine;
-  // CosyVoice is a separate HTTP server (GPU) — selectable only once its
+  // Qwen3-TTS is a separate HTTP server (GPU) — selectable only once its
   // endpoint responds. The server isn't deployed yet, so it stays unavailable.
-  String ttsEngineChoice = 'piper'; // 'piper' | 'cosyvoice'
-  String cosyvoiceEndpoint = '';
+  String ttsEngineChoice = 'piper'; // 'piper' | 'clone'
+  String qwenEndpoint = '';
+
+  /// Адрес сервера живого клон-голоса — MOSS-TTS-Nano, считает на процессоре.
+  ///
+  /// Отдельный от [qwenEndpoint] намеренно, и это главная развязка всей схемы:
+  /// Qwen живёт на видеокарте и поднимается только под открытую студию, а
+  /// живые ответы ассистента идут сюда и карту не занимают вовсе. Раньше
+  /// сервер был один на обе роли, и языковой модели не оставалось места.
+  String mossEndpoint = '';
   // Интерпретатор для локального сервера синтеза (sidecar/qwen_tts_server.py).
   // Пусто — искать самим: серверу нужен python с torch+CUDA, а он живёт в
   // отдельном venv и в установочный пакет не попадает (torch ~5 ГБ).
   String cloneServerPython = '';
   // Transient (not persisted): null = unknown, true/false = last check result.
-  bool? cosyvoiceOnline;
+  bool? qwenOnline;
 
   /// Как сервер клон-голоса называет свою модель. Берётся из его же ответа на
   /// проверку связи, а не пишется в коде: сервер один, а модель за ним может
-  /// смениться — и подпись «CosyVoice» осталась бы висеть над Qwen3-TTS.
+  /// смениться — и подпись «Qwen3-TTS» осталась бы висеть над Qwen3-TTS.
   String cloneServerModel = '';
-  // CosyVoice deep controls (settings TZ §3.2). UI + persisted state only for
+  // Qwen3-TTS deep controls (settings TZ §3.2). UI + persisted state only for
   // now — synthesis routing to the server is wired once it's deployed and its
   // API confirmed (the app currently synthesizes only through Piper/pyttsx3).
-  // `cosyvoiceVoice` — optional preset / spk_id for SFT-style models.
-  // `cosyvoiceClonePath` + `cosyvoiceClonePromptText` — a WAV sample and the
-  // text spoken in it, for zero-shot voice cloning. `cosyvoiceSpeed` — 0.5..2.0.
-  // `cosyvoiceEmotion` — a preset that maps to an instruct phrase later;
-  // `cosyvoiceInstruct` — optional free-text instruct override.
-  // `cosyvoiceDevice` — 'cpu' | 'cuda' (RTX 3060).
-  String cosyvoiceVoice = '';
-  String cosyvoiceClonePath = '';
-  String cosyvoiceClonePromptText = '';
-  double cosyvoiceSpeed = 1.0;
+  // `qwenVoice` — optional preset / spk_id for SFT-style models.
+  // `voiceSamplePath` + `voiceSampleText` — a WAV sample and the
+  // text spoken in it, for zero-shot voice cloning. `qwenSpeed` — 0.5..2.0.
+  // `qwenEmotion` — a preset that maps to an instruct phrase later;
+  // `qwenInstruct` — optional free-text instruct override.
+  // `qwenDevice` — 'cpu' | 'cuda' (RTX 3060).
+  String qwenVoice = '';
+  String voiceSamplePath = '';
+  String voiceSampleText = '';
+  double qwenSpeed = 1.0;
 
   /// Язык, на котором сервер клон-голоса должен говорить. Qwen3-TTS обучена
   /// десяти языкам и берёт его отдельным полем запроса; без него модель
   /// угадывает по тексту и на коротких фразах ошибается.
   String cloneLanguage = 'Russian';
-  String cosyvoiceEmotion = 'neutral';
-  String cosyvoiceInstruct = '';
-  String cosyvoiceDevice = 'cuda'; // 'cpu' | 'cuda'
+  String qwenEmotion = 'neutral';
+  String qwenInstruct = '';
+  String qwenDevice = 'cuda'; // 'cpu' | 'cuda'
 
   // ---- GPU load control for the clone server (Qwen3-TTS) -----------------
   // There is no driver-level "use N% of the GPU" knob, so load is shaped by
@@ -529,13 +576,13 @@ class AppState extends ChangeNotifier {
   // Piper voices the user imported themselves (see importCustomVoice).
   List<CustomVoice> customVoices = [];
 
-  // Voice clone (XTTS-v2 on CPU) — a temporary local stand-in for GPU CosyVoice
+  // Voice clone (XTTS-v2 on CPU) — a temporary local stand-in for GPU Qwen3-TTS
   // while a graphics card is awaited. The engine ships as a separate downloaded
   // component (`clone`); `cloneSamplePath` is any WAV 6–10 s of the target
   // voice. Fixed phrases (system notifications, command speak-phrases, the
   // acknowledgement library) are pre-rendered into a cache so they play
   // instantly; novel text is synthesized on the fly (~2× on CPU). The cache is
-  // engine-agnostic, so it serves CosyVoice too once its server is up.
+  // engine-agnostic, so it serves Qwen3-TTS too once its server is up.
   bool cloneEnabled = false;
   String cloneSamplePath = '';
   // User-editable extra phrases to pre-render (on top of the built-ins).
@@ -726,7 +773,7 @@ class AppState extends ChangeNotifier {
     llmTopK = prefs.getInt('llmTopK');
     llmRepeatPenalty = prefs.getDouble('llmRepeatPenalty');
     llmMinP = prefs.getDouble('llmMinP');
-    llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
+    _loadKeepAlive();
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     imageServerUrl = prefs.getString('imageServerUrl') ?? '';
@@ -740,6 +787,10 @@ class AppState extends ChangeNotifier {
     imageFacePass = prefs.getDouble('imageFacePass') ?? 0.4;
     imageHires = prefs.getDouble('imageHires') ?? 0;
     imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? true;
+    speechChunkChars =
+        prefs.getInt('speechChunkChars') ?? kSpeechChunkDefault;
+    speechGapMs = prefs.getInt('speechGapMs') ?? 300;
+    speechKeepParts = prefs.getBool('speechKeepParts') ?? false;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     // Migrate away placeholder values that earlier versions persisted as if
@@ -898,18 +949,20 @@ class AppState extends ChangeNotifier {
     ttsInterpEnabled = prefs.getBool('ttsInterpEnabled') ?? true;
     ttsInterpMode = prefs.getString('ttsInterpMode') ?? 'rules';
     ttsInterpModel = prefs.getString('ttsInterpModel') ?? '';
+    _migrateCosyKeys();
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
-    cosyvoiceEndpoint = prefs.getString('cosyvoiceEndpoint') ?? '';
+    qwenEndpoint = prefs.getString('qwenEndpoint') ?? '';
     cloneServerPython = prefs.getString('cloneServerPython') ?? '';
-    cosyvoiceVoice = prefs.getString('cosyvoiceVoice') ?? '';
-    cosyvoiceClonePath = prefs.getString('cosyvoiceClonePath') ?? '';
-    cosyvoiceClonePromptText =
-        prefs.getString('cosyvoiceClonePromptText') ?? '';
-    cosyvoiceSpeed = prefs.getDouble('cosyvoiceSpeed') ?? 1.0;
+    qwenVoice = prefs.getString('qwenVoice') ?? '';
+    voiceSamplePath = prefs.getString('voiceSamplePath') ?? '';
+    mossEndpoint = prefs.getString('mossEndpoint') ?? '';
+    voiceSampleText =
+        prefs.getString('voiceSampleText') ?? '';
+    qwenSpeed = prefs.getDouble('qwenSpeed') ?? 1.0;
     cloneLanguage = prefs.getString('cloneLanguage') ?? 'Russian';
-    cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
-    cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
-    cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
+    qwenEmotion = prefs.getString('qwenEmotion') ?? 'neutral';
+    qwenInstruct = prefs.getString('qwenInstruct') ?? '';
+    qwenDevice = prefs.getString('qwenDevice') ?? 'cuda';
     final cvRaw = prefs.getString('customVoices');
     if (cvRaw != null) {
       try {
@@ -998,6 +1051,15 @@ class AppState extends ChangeNotifier {
     // SidecarClient sends nothing, and the voice plays with no effects until
     // settings are opened — the "FX resets to normal after restart" bug.
     unawaited(SidecarClient.instance.setTtsFx(ttsFxConfig()));
+    // Клон-голос держим на паузе с самого запуска: разбудить его вправе только
+    // студия голоса (`GpuArbiter.takeForVoice`). Сервер живёт отдельно от
+    // приложения — на станции, в своём контейнере — и вполне мог остаться
+    // разбуженным с прошлого раза: например, если окно закрыли аварийно с
+    // открытой студией. Тогда он занял бы карту рядом с геммой, а это ровно
+    // то, ради чего вся эта развязка и заведена.
+    if (cloneServerOn) {
+      unawaited(GpuArbiter.instance.setVoicePaused(this, true));
+    }
     notifyListeners();
     fetchModels();
   }
@@ -1035,11 +1097,11 @@ class AppState extends ChangeNotifier {
         googleKey, googleCx, yandexKey, yandexFolder, searchProvider,
         voiceResponses, announceReady, ttsPiperVoice, ttsRate, ttsVolume,
         ttsInterpEnabled, ttsInterpMode, ttsInterpModel, ttsEngineChoice,
-        cosyvoiceEndpoint, cosyvoiceVoice, cosyvoiceClonePath,
+        qwenEndpoint, qwenVoice, voiceSamplePath,
         cloneServerPython,
-        cosyvoiceClonePromptText, cosyvoiceSpeed, cloneLanguage,
-        cosyvoiceEmotion,
-        cosyvoiceInstruct, cosyvoiceDevice,
+        voiceSampleText, qwenSpeed, cloneLanguage,
+        qwenEmotion,
+        qwenInstruct, qwenDevice,
         // Every field _restoreSettingsFields() re-reads MUST appear here: a
         // field that restores but isn't snapshotted never flags the draft
         // dirty, so its edits silently revert when the screen closes (that was
@@ -1116,6 +1178,9 @@ class AppState extends ChangeNotifier {
       }
     }
     await prefs.setString('llmKeepAlive', llmKeepAlive);
+    await prefs.setString('llmKeepAlivePreset', llmKeepAlivePreset);
+    await prefs.setBool('llmKeepAliveCustom', llmKeepAliveCustom);
+    await prefs.setInt('llmKeepAliveMinutes', llmKeepAliveMinutes);
     await prefs.setBool('llmThinking', llmThinking);
     await prefs.setString('updateServerUrl', updateServerUrl);
     await prefs.setString('imageServerUrl', imageServerUrl);
@@ -1129,6 +1194,9 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble('imageFacePass', imageFacePass);
     await prefs.setDouble('imageHires', imageHires);
     await prefs.setBool('imageFreeVoiceToo', imageFreeVoiceToo);
+    await prefs.setInt('speechChunkChars', speechChunkChars);
+    await prefs.setInt('speechGapMs', speechGapMs);
+    await prefs.setBool('speechKeepParts', speechKeepParts);
     await prefs.setString('searchModel', searchModel);
     await prefs.setString('chatModel', chatModel);
     await prefs.setString('apiKey', apiKey);
@@ -1213,16 +1281,17 @@ class AppState extends ChangeNotifier {
     await prefs.setString('ttsInterpMode', ttsInterpMode);
     await prefs.setString('ttsInterpModel', ttsInterpModel);
     await prefs.setString('ttsEngineChoice', ttsEngineChoice);
-    await prefs.setString('cosyvoiceEndpoint', cosyvoiceEndpoint);
+    await prefs.setString('qwenEndpoint', qwenEndpoint);
+    await prefs.setString('mossEndpoint', mossEndpoint);
     await prefs.setString('cloneServerPython', cloneServerPython);
-    await prefs.setString('cosyvoiceVoice', cosyvoiceVoice);
-    await prefs.setString('cosyvoiceClonePath', cosyvoiceClonePath);
-    await prefs.setString('cosyvoiceClonePromptText', cosyvoiceClonePromptText);
-    await prefs.setDouble('cosyvoiceSpeed', cosyvoiceSpeed);
+    await prefs.setString('qwenVoice', qwenVoice);
+    await prefs.setString('voiceSamplePath', voiceSamplePath);
+    await prefs.setString('voiceSampleText', voiceSampleText);
+    await prefs.setDouble('qwenSpeed', qwenSpeed);
     await prefs.setString('cloneLanguage', cloneLanguage);
-    await prefs.setString('cosyvoiceEmotion', cosyvoiceEmotion);
-    await prefs.setString('cosyvoiceInstruct', cosyvoiceInstruct);
-    await prefs.setString('cosyvoiceDevice', cosyvoiceDevice);
+    await prefs.setString('qwenEmotion', qwenEmotion);
+    await prefs.setString('qwenInstruct', qwenInstruct);
+    await prefs.setString('qwenDevice', qwenDevice);
     await prefs.setString('customVoices',
         jsonEncode(customVoices.map((e) => e.toJson()).toList()));
     await prefs.setBool('cloneEnabled', cloneEnabled);
@@ -1406,7 +1475,7 @@ class AppState extends ChangeNotifier {
     llmTopK = prefs.getInt('llmTopK');
     llmRepeatPenalty = prefs.getDouble('llmRepeatPenalty');
     llmMinP = prefs.getDouble('llmMinP');
-    llmKeepAlive = prefs.getString('llmKeepAlive') ?? '';
+    _loadKeepAlive();
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     imageServerUrl = prefs.getString('imageServerUrl') ?? '';
@@ -1420,6 +1489,10 @@ class AppState extends ChangeNotifier {
     imageFacePass = prefs.getDouble('imageFacePass') ?? 0.4;
     imageHires = prefs.getDouble('imageHires') ?? 0;
     imageFreeVoiceToo = prefs.getBool('imageFreeVoiceToo') ?? true;
+    speechChunkChars =
+        prefs.getInt('speechChunkChars') ?? kSpeechChunkDefault;
+    speechGapMs = prefs.getInt('speechGapMs') ?? 300;
+    speechKeepParts = prefs.getBool('speechKeepParts') ?? false;
     searchModel = prefs.getString('searchModel') ?? '';
     chatModel = prefs.getString('chatModel') ?? '';
     inferenceMode = prefs.getString('inferenceMode') ?? 'localServer';
@@ -1515,18 +1588,20 @@ class AppState extends ChangeNotifier {
     ttsInterpEnabled = prefs.getBool('ttsInterpEnabled') ?? true;
     ttsInterpMode = prefs.getString('ttsInterpMode') ?? 'rules';
     ttsInterpModel = prefs.getString('ttsInterpModel') ?? '';
+    _migrateCosyKeys();
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
-    cosyvoiceEndpoint = prefs.getString('cosyvoiceEndpoint') ?? '';
+    qwenEndpoint = prefs.getString('qwenEndpoint') ?? '';
     cloneServerPython = prefs.getString('cloneServerPython') ?? '';
-    cosyvoiceVoice = prefs.getString('cosyvoiceVoice') ?? '';
-    cosyvoiceClonePath = prefs.getString('cosyvoiceClonePath') ?? '';
-    cosyvoiceClonePromptText =
-        prefs.getString('cosyvoiceClonePromptText') ?? '';
-    cosyvoiceSpeed = prefs.getDouble('cosyvoiceSpeed') ?? 1.0;
+    qwenVoice = prefs.getString('qwenVoice') ?? '';
+    voiceSamplePath = prefs.getString('voiceSamplePath') ?? '';
+    mossEndpoint = prefs.getString('mossEndpoint') ?? '';
+    voiceSampleText =
+        prefs.getString('voiceSampleText') ?? '';
+    qwenSpeed = prefs.getDouble('qwenSpeed') ?? 1.0;
     cloneLanguage = prefs.getString('cloneLanguage') ?? 'Russian';
-    cosyvoiceEmotion = prefs.getString('cosyvoiceEmotion') ?? 'neutral';
-    cosyvoiceInstruct = prefs.getString('cosyvoiceInstruct') ?? '';
-    cosyvoiceDevice = prefs.getString('cosyvoiceDevice') ?? 'cuda';
+    qwenEmotion = prefs.getString('qwenEmotion') ?? 'neutral';
+    qwenInstruct = prefs.getString('qwenInstruct') ?? '';
+    qwenDevice = prefs.getString('qwenDevice') ?? 'cuda';
     final cvRaw = prefs.getString('customVoices');
     if (cvRaw != null) {
       try {
@@ -1732,6 +1807,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSpeechChunkChars(int v) {
+    speechChunkChars =
+        v < kSpeechChunkMin ? kSpeechChunkMin
+            : (v > kSpeechChunkMax ? kSpeechChunkMax : v);
+    _save();
+    notifyListeners();
+  }
+
+  void setSpeechGapMs(int v) {
+    speechGapMs = v < 0 ? 0 : (v > 2000 ? 2000 : v);
+    _save();
+    notifyListeners();
+  }
+
+  void setSpeechKeepParts(bool v) {
+    speechKeepParts = v;
+    _save();
+    notifyListeners();
+  }
+
   void setLlmThinking(bool v) {
     llmThinking = v;
     _save();
@@ -1791,8 +1886,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setLlmKeepAlive(String v) {
-    llmKeepAlive = v;
+  void setLlmKeepAlivePreset(String v) {
+    llmKeepAlivePreset = v;
+    llmKeepAliveCustom = false;
+    _syncKeepAlive();
+    _save();
+    notifyListeners();
+  }
+
+  void setLlmKeepAliveCustom(bool v) {
+    llmKeepAliveCustom = v;
+    _syncKeepAlive();
+    _save();
+    notifyListeners();
+  }
+
+  void setLlmKeepAliveMinutes(int v) {
+    llmKeepAliveMinutes = v < 1 ? 1 : (v > 10080 ? 10080 : v);
+    _syncKeepAlive();
     _save();
     notifyListeners();
   }
@@ -1918,43 +2029,50 @@ class AppState extends ChangeNotifier {
     // returned without a word, so both the engine chip and the "Включить
     // клон-голос" button did nothing at all. A sample is still required: there
     // is nothing to clone or replay without one.
-    if (v == 'cosyvoice' &&
-        (cosyvoiceEndpoint.trim().isEmpty ||
-            cosyvoiceClonePath.trim().isEmpty)) {
+    if (v == 'clone' &&
+        (qwenEndpoint.trim().isEmpty ||
+            voiceSamplePath.trim().isEmpty)) {
       return;
     }
-    ttsEngineChoice = v == 'cosyvoice' ? 'cosyvoice' : 'piper';
+    ttsEngineChoice = v == 'clone' ? 'clone' : 'piper';
     _save();
     notifyListeners();
     unawaited(applyCloneServer());
   }
 
-  void setCosyvoiceEndpoint(String v) {
-    cosyvoiceEndpoint = v.trim();
-    cosyvoiceOnline = null; // must re-check after an address change
+  void setMossEndpoint(String v) {
+    mossEndpoint = v.trim();
     _save();
     notifyListeners();
     unawaited(applyCloneServer());
   }
 
-  // CosyVoice deep-control setters (§3.2). State only for now — values are
-  // persisted and will be sent to the CosyVoice server once synthesis routing
+  void setQwenEndpoint(String v) {
+    qwenEndpoint = v.trim();
+    qwenOnline = null; // must re-check after an address change
+    _save();
+    notifyListeners();
+    unawaited(applyCloneServer());
+  }
+
+  // Qwen3-TTS deep-control setters (§3.2). State only for now — values are
+  // persisted and will be sent to the Qwen3-TTS server once synthesis routing
   // is wired (see PATCH-2.0.1-STATUS.md follow-up).
-  void setCosyvoiceVoice(String v) {
-    cosyvoiceVoice = v.trim();
+  void setQwenVoice(String v) {
+    qwenVoice = v.trim();
     _save();
     notifyListeners();
   }
 
-  void setCosyvoiceClonePath(String v) {
-    cosyvoiceClonePath = v;
+  void setVoiceSamplePath(String v) {
+    voiceSamplePath = v;
     _save();
     notifyListeners();
     unawaited(applyCloneServer());
   }
 
-  void setCosyvoiceClonePromptText(String v) {
-    cosyvoiceClonePromptText = v;
+  void setVoiceSampleText(String v) {
+    voiceSampleText = v;
     _save();
     notifyListeners();
     unawaited(applyCloneServer());
@@ -2073,8 +2191,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void setCosyvoiceSpeed(double v) {
-    cosyvoiceSpeed = v;
+  void setQwenSpeed(double v) {
+    qwenSpeed = v;
     _save();
     notifyListeners();
   }
@@ -2086,20 +2204,20 @@ class AppState extends ChangeNotifier {
     unawaited(applyCloneServer());
   }
 
-  void setCosyvoiceEmotion(String v) {
-    cosyvoiceEmotion = v;
+  void setQwenEmotion(String v) {
+    qwenEmotion = v;
     _save();
     notifyListeners();
   }
 
-  void setCosyvoiceInstruct(String v) {
-    cosyvoiceInstruct = v;
+  void setQwenInstruct(String v) {
+    qwenInstruct = v;
     _save();
     notifyListeners();
   }
 
-  void setCosyvoiceDevice(String v) {
-    cosyvoiceDevice = v == 'cuda' ? 'cuda' : 'cpu';
+  void setQwenDevice(String v) {
+    qwenDevice = v == 'cuda' ? 'cuda' : 'cpu';
     _save();
     notifyListeners();
   }
@@ -2362,45 +2480,149 @@ class AppState extends ChangeNotifier {
   // сохранял это. Без установленного голоса Piper это означало системный голос
   // Windows — а поскольку кэш фраз читается только при выбранном движке
   // клонирования, полностью заготовленный кэш собственного голоса лежал без
-  // дела, и вернуться было нечем: чип CosyVoice в интерфейсе был недоступен,
+  // дела, и вернуться было нечем: чип Qwen3-TTS в интерфейсе был недоступен,
   // пока сервер офлайн. Возвращаем клон ровно в этом состоянии.
   void _restoreCloneEngineOnce() {
     if (prefs.getBool('cloneEngineRestored') == true) return;
     unawaited(prefs.setBool('cloneEngineRestored', true));
     if (ttsEngineChoice != 'piper' ||
         ttsPiperVoice.trim().isNotEmpty ||
-        cosyvoiceEndpoint.trim().isEmpty ||
-        cosyvoiceClonePath.trim().isEmpty) {
+        qwenEndpoint.trim().isEmpty ||
+        voiceSamplePath.trim().isEmpty) {
       return;
     }
-    ttsEngineChoice = 'cosyvoice';
+    ttsEngineChoice = 'clone';
     unawaited(prefs.setString('ttsEngineChoice', ttsEngineChoice));
   }
 
+  /// Голос считается клон-сервером: движок выбран, адрес и образец заданы.
+  ///
+  /// Одно место на всё приложение. Арбитр видеокарты спрашивает ровно это же —
+  /// освобождать карту под синтез имеет смысл только когда синтез на ней и
+  /// считается, а у Piper и системного голоса карты нет.
+  /// Работает ли СТУДИЙНЫЙ сервер — Qwen3-TTS на видеокарте станции.
+  ///
+  /// Спрашивает арбитр видеокарты: освобождать её под синтез имеет смысл
+  /// только когда синтез на ней и считается. Про живые ответы этот признак
+  /// ничего не говорит — они идут мимо карты, см. [cloneVoiceOn].
+  bool get cloneServerOn =>
+      qwenEndpoint.trim().isNotEmpty && voiceSamplePath.trim().isNotEmpty;
+
+  /// Говорит ли ассистент клон-голосом в разговоре — MOSS-TTS-Nano на
+  /// процессоре. Отдельно от [cloneServerOn]: серверы разные, ресурсы разные,
+  /// и один вполне может работать без другого.
+  bool get cloneVoiceOn =>
+      ttsEngineChoice == 'clone' &&
+      mossEndpoint.trim().isNotEmpty &&
+      voiceSamplePath.trim().isNotEmpty;
+
+  /// Настройки от версий, где оба сервера синтеза назывались CosyVoice.
+  ///
+  /// Имя было неправдой с тех пор, как на станции встал Qwen3-TTS, и правка
+  /// имён задела ключи сохранённых настроек. Без переноса у человека молча
+  /// обнулились бы адрес сервера, путь к образцу и его расшифровка — то есть
+  /// клон-голос перестал бы работать после обновления, без единого сообщения.
+  ///
+  /// Старые ключи не удаляем: откат на предыдущую версию должен находить свои
+  /// настройки на месте.
+  /// Срок жизни модели на карте: четыре готовых значения или своё.
+  ///
+  /// Раньше это было одно свободное поле, куда писали строку для Ollama. При
+  /// переходе разбираем то, что там лежало: пустое значило «не присылать
+  /// ничего», а станция в этом случае берёт свои тридцать минут — их и
+  /// подставляем, чтобы поведение не изменилось молча. Строка не из списка
+  /// становится своим значением, а не теряется.
+  void _loadKeepAlive() {
+    llmKeepAliveMinutes = prefs.getInt('llmKeepAliveMinutes') ?? 30;
+    final preset = prefs.getString('llmKeepAlivePreset');
+    if (preset != null) {
+      llmKeepAlivePreset = preset;
+      llmKeepAliveCustom = prefs.getBool('llmKeepAliveCustom') ?? false;
+      _syncKeepAlive();
+      return;
+    }
+    final old = (prefs.getString('llmKeepAlive') ?? '').trim();
+    const known = {'15m', '30m', '1h', '-1'};
+    if (old.isEmpty || known.contains(old)) {
+      llmKeepAlivePreset = old.isEmpty ? '30m' : old;
+      llmKeepAliveCustom = false;
+    } else {
+      final m = RegExp(r'^(\d+)\s*m?$').firstMatch(old);
+      final mins = int.tryParse(m?.group(1) ?? '') ?? 0;
+      if (mins > 0) {
+        llmKeepAliveMinutes = mins;
+        llmKeepAliveCustom = true;
+      } else {
+        llmKeepAlivePreset = '30m';
+        llmKeepAliveCustom = false;
+      }
+    }
+    _syncKeepAlive();
+  }
+
+  void _migrateCosyKeys() {
+    const pairs = <String, String>{
+      'cosyvoiceEndpoint': 'qwenEndpoint',
+      'cosyvoiceClonePath': 'voiceSamplePath',
+      'cosyvoiceClonePromptText': 'voiceSampleText',
+      'cosyvoiceVoice': 'qwenVoice',
+      'cosyvoiceEmotion': 'qwenEmotion',
+      'cosyvoiceInstruct': 'qwenInstruct',
+      'cosyvoiceDevice': 'qwenDevice',
+    };
+    pairs.forEach((from, to) {
+      if (prefs.containsKey(to)) return;
+      final v = prefs.getString(from);
+      if (v != null) unawaited(prefs.setString(to, v));
+    });
+    if (!prefs.containsKey('qwenSpeed')) {
+      final v = prefs.getDouble('cosyvoiceSpeed');
+      if (v != null) unawaited(prefs.setDouble('qwenSpeed', v));
+    }
+    // Выбор движка: значение тоже переименовано. «cosyvoice» было именем
+    // модели, а выбор всегда означал роль — «говорить клоном голоса».
+    if (prefs.getString('ttsEngineChoice') == 'cosyvoice') {
+      unawaited(prefs.setString('ttsEngineChoice', 'clone'));
+    }
+    // Адрес живых ответов при переходе берётся с нуля: раньше сервер был один
+    // и тот же на обе роли, а теперь их два, и подставлять сюда адрес Qwen
+    // значило бы вернуть ту самую тесноту на карте, от которой уходим.
+  }
+
   Future<void> applyCloneServer() async {
-    final on = ttsEngineChoice == 'cosyvoice' &&
-        cosyvoiceEndpoint.trim().isNotEmpty &&
-        cosyvoiceClonePath.trim().isNotEmpty;
-    await SidecarClient.instance.applyCosy(
+    // Движку сайдкара — тот сервер, который озвучивает РАЗГОВОР. Это MOSS на
+    // процессоре, а не Qwen: Qwen поднимается только под открытую студию и
+    // всё остальное время отдаёт карту гемме.
+    final on = cloneVoiceOn;
+    await SidecarClient.instance.applyCloneVoice(
       enabled: on,
-      endpoint: cosyvoiceEndpoint.trim(),
-      ref: cosyvoiceClonePath.trim(),
-      promptText: cosyvoiceClonePromptText,
-      speed: cosyvoiceSpeed,
+      endpoint: mossEndpoint.trim(),
+      ref: voiceSamplePath.trim(),
+      promptText: voiceSampleText,
+      speed: qwenSpeed,
       language: cloneLanguage,
     );
     if (on) {
-      // Pre-render the fixed phrase set so common lines play from cache — the
-      // Постоянные реплики заготавливаются один раз и потом играют мгновенно.
-      // На станции это особенно важно: живой синтез стоит около пяти секунд,
-      // а заготовленная фраза — нисколько.
-      SidecarClient.instance.prerender(clonePhrasesToRender());
+      // Клон-сервер поднят только пока открыта студия голоса — всё остальное
+      // время он на паузе и отдаёт видеокарту гемме (GpuArbiter.takeForVoice /
+      // releaseVoice). Отсюда две ветки вместо прежней одной.
+      if (GpuArbiter.instance.voiceHeld) {
+        // Постоянные реплики заготавливаются один раз и потом играют
+        // мгновенно. На станции это особенно важно: живой синтез стоит около
+        // пяти секунд, а заготовленная фраза — нисколько.
+        SidecarClient.instance.prerender(clonePhrasesToRender());
+      } else {
+        // Ставим паузу и при запуске, и после любой правки настроек: сервер
+        // мог остаться разбуженным с прошлого раза — например, если
+        // приложение закрыли аварийно с открытой студией.
+        unawaited(GpuArbiter.instance.setVoicePaused(this, true));
+      }
     }
   }
 
-  // Best-effort reachability probe for the CosyVoice HTTP server. Any response
+  // Best-effort reachability probe for the Qwen3-TTS HTTP server. Any response
   // (even an error status) means it's up; a timeout/refusal means offline. The
-  // server isn't deployed yet, so this normally reports offline and CosyVoice
+  // server isn't deployed yet, so this normally reports offline and Qwen3-TTS
   // stays unselectable.
   /// Вытащить название модели из ответа сервера. Сервер отвечает JSON вида
   /// {"model": "...", "engine": "..."}; берём первое, что похоже на название,
@@ -2423,10 +2645,10 @@ class AppState extends ChangeNotifier {
     return '';
   }
 
-  Future<bool> checkCosyvoice() async {
-    final url = cosyvoiceEndpoint.trim();
+  Future<bool> checkQwenServer() async {
+    final url = qwenEndpoint.trim();
     if (url.isEmpty) {
-      cosyvoiceOnline = false;
+      qwenOnline = false;
       notifyListeners();
       return false;
     }
@@ -2434,10 +2656,10 @@ class AppState extends ChangeNotifier {
       final res = await http
           .get(Uri.parse(url))
           .timeout(const Duration(seconds: 5));
-      cosyvoiceOnline = res.statusCode > 0;
+      qwenOnline = res.statusCode > 0;
       cloneServerModel = _cloneModelFrom(res.body);
     } catch (_) {
-      cosyvoiceOnline = false;
+      qwenOnline = false;
       // Do NOT switch the engine away here. The pre-rendered phrase cache is
       // only consulted while a CLONING engine is active, so auto-reverting to
       // Piper threw away every phrase already rendered in the user's own voice
@@ -2446,20 +2668,20 @@ class AppState extends ChangeNotifier {
       // cloned voice even with the server down; anything NOT cached falls back
       // per-utterance (Piper, else system voice). The offline state is already
       // visible in the voice status strip.
-      if (ttsEngineChoice == 'cosyvoice') {
+      if (ttsEngineChoice == 'clone') {
         VizOverlayServer.instance.note(t('ttsCosyFellBack'), kind: 'info');
       }
     }
     notifyListeners();
-    return cosyvoiceOnline ?? false;
+    return qwenOnline ?? false;
   }
 
-  // One-shot probe at launch: if CosyVoice is the saved engine or an endpoint is
+  // One-shot probe at launch: if Qwen3-TTS is the saved engine or an endpoint is
   // configured, verify reachability so an unavailable server auto-reverts to
   // Piper (§3.2) instead of leaving the app "stuck" on an unreachable engine.
-  Future<void> checkCosyvoiceOnStartup() async {
-    if (ttsEngineChoice == 'cosyvoice' || cosyvoiceEndpoint.trim().isNotEmpty) {
-      await checkCosyvoice();
+  Future<void> checkQwenOnStartup() async {
+    if (ttsEngineChoice == 'clone' || qwenEndpoint.trim().isNotEmpty) {
+      await checkQwenServer();
     }
   }
 

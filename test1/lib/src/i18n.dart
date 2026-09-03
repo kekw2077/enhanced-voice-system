@@ -212,7 +212,16 @@ const Map<String, Map<String, String>> _i18n = {
     'llmTemp': 'Температура',
     'llmTempDesc': 'temperature — 0 предсказуемо, выше — свободнее (0–1.5)',
     'llmKeepAlive': 'Держать модель в памяти',
-    'llmKeepAliveDesc': 'keep_alive — например 30m или -1 (не выгружать)',
+    'llmKeepAliveDesc': 'Сколько модель ждёт на видеокарте после последнего '
+        'ответа. Дольше — быстрее отвечает, но карта занята; «постоянно» '
+        'уместно, когда делить её больше не с кем. Студия голоса и генератор '
+        'картинок всё равно снимают её с карты на время работы и возвращают '
+        'обратно.',
+    'kaMin15': '15 минут',
+    'kaMin30': '30 минут',
+    'kaHour1': '1 час',
+    'kaAlways': 'Постоянно',
+    'kaCustom': 'Своё значение',
     'llmDefaultHint': 'по умолчанию',
     'llmBadNumber': 'Нужно число',
     'llmTempRange': 'Допустимо 0–1.5',
@@ -446,6 +455,12 @@ const Map<String, Map<String, String>> _i18n = {
     'gpuBusyBannerTab': 'Языковая модель выгружена, чтобы освободить видеокарту под '
         'генерацию. Голосовые команды и чат сейчас недоступны — вернутся, когда '
         'уйдёте с этого экрана.',
+    'gpuBusyBannerVoice': 'Языковая модель выгружена, чтобы освободить видеокарту '
+        'под синтез голоса. Чат и голосовые команды сейчас недоступны — '
+        'вернутся, когда закроете окно.',
+    'gpuBusyBannerVoiceTab': 'Языковая модель выгружена, чтобы освободить '
+        'видеокарту под синтез голоса. Чат и голосовые команды сейчас '
+        'недоступны — вернутся, когда уйдёте с этого экрана.',
     'gpuBusyRestoring': 'Возвращаю языковую модель на видеокарту…',
     'gpuWaitFrame': 'Телефон дорисовывает кадр на видеокарте — отвечу, как только он закончится',
     'gpuHoldNote': 'компьютер (разговор с языковой моделью)',
@@ -693,8 +708,8 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEnginePiper': 'Piper',
     'ttsEnginePiperHint': 'быстро, офлайн, CPU',
     'ttsEngineCosy': 'Клон (сервер)',
-    'ttsEngineCosyHint': 'ваш голос: Qwen3-TTS или CosyVoice',
-    'ttsCosyUnavailable': 'Клон-сервер не отвечает — запустите локальный Qwen3-TTS или укажите адрес CosyVoice',
+    'ttsEngineCosyHint': 'ваш голос: Qwen3-TTS или Qwen3-TTS',
+    'ttsCosyUnavailable': 'Клон-сервер не отвечает — запустите локальный Qwen3-TTS или укажите адрес Qwen3-TTS',
     'motionMode': 'Анимации интерфейса',
     'motionModeDesc':
         'Декоративные анимации (сфера, рамки, идл-волны) нагружают процессор. '
@@ -705,7 +720,7 @@ const Map<String, Map<String, String>> _i18n = {
     'cloneSectionTitle': 'Клон голоса — локальный (CPU)',
     'cloneSectionHint':
         'Свой клонировщик, работает на этом компьютере без видеокарты. '
-            'К настройкам сервера CosyVoice выше отношения не имеет.',
+            'К настройкам сервера Qwen3-TTS выше отношения не имеет.',
     'ttsCosySectionTitle': 'Qwen3-TTS — сервер клон-голоса',
     'cloneTitle': 'Клон голоса (XTTS · CPU)',
     'cloneHint':
@@ -740,7 +755,12 @@ const Map<String, Map<String, String>> _i18n = {
         'Системные фразы и озвучка команд готовятся заранее и звучат мгновенно; '
             'новый длинный текст синтезируется на ходу. Сверху можно наложить '
             'Voice FX (например, пресет EDI).',
-    'ttsCosyEndpoint': 'Адрес клон-сервера',
+    'ttsCosyEndpoint': 'Адрес студийного сервера (Qwen3-TTS)',
+    'ttsMossEndpoint': 'Адрес сервера живого голоса (MOSS)',
+    'ttsMossHint': 'Им озвучиваются ответы в разговоре. Считает на процессоре '
+        'и видеокарту не занимает, поэтому языковая модель остаётся на ней '
+        'постоянно. Студийный сервер ниже — он поднимается на видеокарте '
+        'только на время открытой студии голоса.',
     'cloneSrvTitle': 'Локальный сервер клона',
     'cloneSrvDesc': 'Запускает sidecar/qwen_tts_server.py на этом компьютере. Нужен python с torch и CUDA — обычный интерпретатор не подойдёт.',
     'cloneSrvStart': 'Запустить сервер',
@@ -759,12 +779,12 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsCosyFellBack': 'Клон-сервер не отвечает — заготовленные фразы играют из кэша, новые озвучит обычный голос',
     'ttsCosyChecking': 'Проверка…',
     'ttsCosyWiringHint':
-        'Настройки сохраняются. Синтез через CosyVoice подключится, когда сервер будет развёрнут.',
+        'Настройки сохраняются. Синтез через Qwen3-TTS подключится, когда сервер будет развёрнут.',
     'ttsCosyClone': 'Клонировать по образцу',
     'ttsCosyClonePick': 'Выбрать WAV…',
     'ttsCosyCloneNone': 'Образец не выбран',
     'ttsCosyClonePrompt': 'Текст в образце',
-    'ttsCosyClonePromptHint': 'Что произнесено в WAV-образце (нужно для клонирования).',
+    'ttsCosyClonePromptHint': 'Что произнесено в образце, слово в слово. Необязательно: без неё копируется только тембр, с ней — манера речи целиком.',
     'ttsCosySpeed': 'Скорость',
     'ttsInterp': 'Интерпретатор озвучки',
     'ttsInterpDesc':
@@ -1005,7 +1025,7 @@ const Map<String, Map<String, String>> _i18n = {
     'gpuLoadHint':
         'Для локального сервера Qwen3-TTS: профиль ограничивает, сколько '
             'видеопамяти занимает клон и как быстро освобождает её в простое. '
-            'Удалённый CosyVoice эти настройки игнорирует — он считает на своей машине.',
+            'Удалённый Qwen3-TTS эти настройки игнорирует — он считает на своей машине.',
     'voiceCustomHint': 'Свой голос (добавлен вручную)',
     'voiceImportTitle': 'Добавить свой голос',
     'voiceImportHint':
@@ -1495,8 +1515,33 @@ const Map<String, Map<String, String>> _i18n = {
     'prismSpeakNow': 'Озвучить',
     'prismSpeakStop': 'Стоп',
     'prismSaveToFile': 'Сохранить в файл',
+    'prismSpeakPreparing': 'Готовлю…',
+    'prismProgressRender': 'Синтезирую в файл',
+    'prismProgressSpeak': 'Синтезирую, сейчас зазвучит',
+    'prismChunking': 'Нарезка',
+    'prismChunkSize': 'Длина куска, знаков',
+    'prismChunkGap': 'Пауза между абзацами',
+    'prismKeepParts': 'Оставлять куски отдельными файлами',
+    'prismChunksN': 'кусков: {n}',
+    'prismChunksDone': 'готово {done} из {total}',
+    'prismChunksStop': 'Остановить после куска',
+    'prismChunksResume': 'Продолжить',
+    'prismProgressChunk': 'Синтезирую кусок {n} из {total}',
+    'prismChunkHint': 'Пустая строка в тексте — граница куска: так разрез '
+        'можно расставить руками. Короче кусок — ровнее держится голос, но '
+        'больше швов на склейке. Куски считаются по одному и собираются в один '
+        'файл; сорвавшийся переделывается без пересчёта остальных.',
+    'prismClonePromptHint': 'Слово в слово то, что сказано в образце',
+    'prismClonePromptOff': 'Без расшифровки сервер копирует только тембр. С '
+        'ней он берёт образец как пример речи целиком — вместе с интонацией и '
+        'манерой.',
+    'prismClonePromptOn': 'Расшифровка есть: образец пойдёт как пример речи '
+        'целиком. Она должна совпадать с записью слово в слово — неточная '
+        'хуже, чем никакой.',
+    'speechCancelled': 'Остановлено',
     'prismStateSpeaking': 'говорю',
     'prismStateRendering': 'сохраняю',
+    'prismStatePreparing': 'готовлю',
     'prismStateSilent': 'тишина',
     'prismJustNow': 'только что',
     'minShort': 'мин',
@@ -2320,7 +2365,15 @@ const Map<String, Map<String, String>> _i18n = {
     'llmTemp': 'Temperature',
     'llmTempDesc': 'temperature — 0 is predictable, higher is freer (0–1.5)',
     'llmKeepAlive': 'Keep model loaded',
-    'llmKeepAliveDesc': 'keep_alive — e.g. 30m, or -1 to never unload',
+    'llmKeepAliveDesc': 'How long the model waits on the GPU after the last '
+        'reply. Longer means faster answers but a busy card; "always" makes '
+        'sense when nothing else needs it. The voice studio and the image '
+        'generator still take it off the card while they run and put it back.',
+    'kaMin15': '15 minutes',
+    'kaMin30': '30 minutes',
+    'kaHour1': '1 hour',
+    'kaAlways': 'Always',
+    'kaCustom': 'Custom value',
     'llmDefaultHint': 'default',
     'llmBadNumber': 'Must be a number',
     'llmTempRange': 'Allowed 0–1.5',
@@ -2555,6 +2608,12 @@ const Map<String, Map<String, String>> _i18n = {
     'gpuBusyBannerTab': 'The language model was unloaded to free the GPU for '
         'generation. Voice commands and chat are unavailable — they come back '
         'when you leave this screen.',
+    'gpuBusyBannerVoice': 'The language model was unloaded to free the GPU for '
+        'voice synthesis. Chat and voice commands are unavailable right now — '
+        'they come back when you close this window.',
+    'gpuBusyBannerVoiceTab': 'The language model was unloaded to free the GPU '
+        'for voice synthesis. Chat and voice commands are unavailable — they '
+        'come back when you leave this screen.',
     'gpuBusyRestoring': 'Bringing the language model back to the GPU…',
     'gpuWaitFrame': 'The phone is finishing a frame on the GPU — I will answer as soon as it is done',
     'gpuHoldNote': 'desktop (talking to the language model)',
@@ -2801,8 +2860,8 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEnginePiper': 'Piper',
     'ttsEnginePiperHint': 'fast, offline, CPU',
     'ttsEngineCosy': 'Clone (server)',
-    'ttsEngineCosyHint': 'your voice: Qwen3-TTS or CosyVoice',
-    'ttsCosyUnavailable': 'Clone server not responding — start the local Qwen3-TTS or set a CosyVoice address',
+    'ttsEngineCosyHint': 'your voice: Qwen3-TTS or Qwen3-TTS',
+    'ttsCosyUnavailable': 'Clone server not responding — start the local Qwen3-TTS or set a Qwen3-TTS address',
     'motionMode': 'Interface animations',
     'motionModeDesc':
         'Decorative animations (sphere, borders, idle waves) cost CPU. '
@@ -2813,7 +2872,7 @@ const Map<String, Map<String, String>> _i18n = {
     'cloneSectionTitle': 'Voice clone — local (CPU)',
     'cloneSectionHint':
         'Your own cloner, running on this computer with no GPU. Unrelated to '
-            'the CosyVoice server settings above.',
+            'the Qwen3-TTS server settings above.',
     'ttsCosySectionTitle': 'Qwen3-TTS — voice clone server',
     'cloneTitle': 'Voice clone (XTTS · CPU)',
     'cloneHint':
@@ -2849,7 +2908,12 @@ const Map<String, Map<String, String>> _i18n = {
         'System phrases and command speech are pre-rendered and instant; novel '
             'long text is synthesized on the fly. You can layer Voice FX on top '
             '(e.g. the EDI preset).',
-    'ttsCosyEndpoint': 'Clone server address',
+    'ttsCosyEndpoint': 'Studio server address (Qwen3-TTS)',
+    'ttsMossEndpoint': 'Live-voice server address (MOSS)',
+    'ttsMossHint': 'Voices the replies in conversation. Runs on the CPU and '
+        'never touches the GPU, so the language model can stay on the card. '
+        'The studio server below is loaded on the GPU only while the voice '
+        'studio is open.',
     'cloneSrvTitle': 'Local clone server',
     'cloneSrvDesc': 'Runs sidecar/qwen_tts_server.py on this machine. Needs a python with torch and CUDA — a plain interpreter will not do.',
     'cloneSrvStart': 'Start server',
@@ -2868,12 +2932,12 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsCosyFellBack': 'Clone server offline — cached phrases still play, new text uses the fallback voice',
     'ttsCosyChecking': 'Checking…',
     'ttsCosyWiringHint':
-        'Settings are saved. CosyVoice synthesis connects once the server is deployed.',
+        'Settings are saved. Qwen3-TTS synthesis connects once the server is deployed.',
     'ttsCosyClone': 'Clone from sample',
     'ttsCosyClonePick': 'Choose WAV…',
     'ttsCosyCloneNone': 'No sample chosen',
     'ttsCosyClonePrompt': 'Text in the sample',
-    'ttsCosyClonePromptHint': 'What is spoken in the WAV sample (needed for cloning).',
+    'ttsCosyClonePromptHint': 'What is spoken in the sample, word for word. Optional: without it only the timbre is copied, with it the whole manner of speech.',
     'ttsCosySpeed': 'Speed',
     'ttsInterp': 'Speech interpreter',
     'ttsInterpDesc':
@@ -3113,7 +3177,7 @@ const Map<String, Map<String, String>> _i18n = {
     'gpuLoadHint':
         'For the local Qwen3-TTS server: the profile caps how much video memory '
             'the clone holds and how quickly it frees it when idle. A remote '
-            'CosyVoice ignores these — it renders on its own machine.',
+            'Qwen3-TTS ignores these — it renders on its own machine.',
     'voiceCustomHint': 'Your own voice (added manually)',
     'voiceImportTitle': 'Add your own voice',
     'voiceImportHint':
@@ -3590,8 +3654,33 @@ const Map<String, Map<String, String>> _i18n = {
     'prismSpeakNow': 'Speak',
     'prismSpeakStop': 'Stop',
     'prismSaveToFile': 'Save to file',
+    'prismSpeakPreparing': 'Preparing…',
+    'prismProgressRender': 'Rendering to file',
+    'prismProgressSpeak': 'Synthesizing, sound is coming',
+    'prismChunking': 'Chunking',
+    'prismChunkSize': 'Part length, characters',
+    'prismChunkGap': 'Pause between paragraphs',
+    'prismKeepParts': 'Keep the parts as separate files',
+    'prismChunksN': 'parts: {n}',
+    'prismChunksDone': '{done} of {total} done',
+    'prismChunksStop': 'Stop after this part',
+    'prismChunksResume': 'Resume',
+    'prismProgressChunk': 'Rendering part {n} of {total}',
+    'prismChunkHint': 'A blank line in the text forces a break, so you can '
+        'place the cuts by hand. Shorter parts keep the voice steadier but add '
+        'more seams. Parts are rendered one by one and joined into a single '
+        'file; a failed one is redone without recomputing the rest.',
+    'prismClonePromptHint': 'Word for word what is said in the sample',
+    'prismClonePromptOff': 'Without a transcript the server copies the timbre '
+        'only. With it, the sample is used as a full example of speech — '
+        'intonation and manner included.',
+    'prismClonePromptOn': 'Transcript set: the sample goes as a full example '
+        'of speech. It must match the recording word for word — an inaccurate '
+        'one is worse than none.',
+    'speechCancelled': 'Stopped',
     'prismStateSpeaking': 'speaking',
     'prismStateRendering': 'saving',
+    'prismStatePreparing': 'preparing',
     'prismStateSilent': 'silent',
     'prismJustNow': 'just now',
     'minShort': 'min',

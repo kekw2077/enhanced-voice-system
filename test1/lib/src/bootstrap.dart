@@ -638,9 +638,39 @@ Future<void> _updateSplashMain(List<String> args) async {
       );
     } catch (_) {}
     await windowManager.setResizable(false);
+    await _centerSplashOnPrimary(
+        const Size(_kUpdateSplashWin, _kUpdateSplashWin * 0.97));
     await windowManager.show();
   }));
   runApp(UpdateSplashApp(lang: lang, statusPath: statusPath, logPath: logPath));
+}
+
+/// Поставить окно по центру ОСНОВНОГО монитора.
+///
+/// `center: true` у window_manager центрует по тому экрану, на котором окно
+/// возникло, а Windows создаёт его там, где сейчас курсор. Из-за этого
+/// заставка выскакивала на втором мониторе, если мышь была там, и читалась как
+/// чужое окно. Основной монитор для окна запуска — единственный предсказуемый
+/// выбор: приложение в этот момент ещё не знает ни своих настроек, ни того, где
+/// человек держит его главное окно.
+///
+/// Перетащить заставку мышью можно — карточка обёрнута в [DragToMoveArea], — но
+/// положение НЕ запоминается намеренно: следующий запуск снова начинается с
+/// центра основного экрана.
+Future<void> _centerSplashOnPrimary(Size size) async {
+  try {
+    final d = await screenRetriever.getPrimaryDisplay();
+    final area = d.visibleSize ?? d.size;
+    final origin = d.visiblePosition ?? Offset.zero;
+    await windowManager.setPosition(Offset(
+      origin.dx + (area.width - size.width) / 2,
+      origin.dy + (area.height - size.height) / 2,
+    ));
+  } catch (_) {
+    try {
+      await windowManager.center();
+    } catch (_) {}
+  }
 }
 
 // Габариты: окно заметно больше карточки — за её краями лежит тень.
@@ -820,8 +850,16 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
       // Дать полосе доехать до конца, иначе окно исчезает на 90%.
       _watchdog?.cancel();
       _watchdog = Timer(
-          Duration(milliseconds: phase == 'error' ? 4000 : 800),
-          () => io.exit(0));
+          Duration(milliseconds: phase == 'error' ? 4000 : 800), () {
+        // Метка «я ухожу»: главный процесс ждёт её, чтобы показать своё окно
+        // ПОСЛЕ нашего исчезновения, а не одновременно с ним.
+        try {
+          if (widget.statusPath.isNotEmpty) {
+            io.File('${widget.statusPath}.gone').writeAsStringSync('1');
+          }
+        } catch (_) {}
+        io.exit(0);
+      });
     }
   }
 
@@ -882,8 +920,11 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
       home: Material(
         type: MaterialType.transparency,
         child: Center(
-          child: Container(
-            width: _kUpdateSplashCard,
+          // Таскается сама карточка, а не всё окно: за её краями лежит тень,
+          // то есть прозрачные пиксели, и тянуть за пустоту — странно.
+          child: DragToMoveArea(
+            child: Container(
+              width: _kUpdateSplashCard,
             height: _kUpdateSplashCard * 0.93,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(22),
@@ -977,6 +1018,7 @@ class _UpdateSplashAppState extends State<UpdateSplashApp> {
               ],
             ),
           ),
+          ),
         ),
       ),
     );
@@ -1023,6 +1065,8 @@ Future<void> _bootSplashMain(List<String> args) async {
       );
     } catch (_) {}
     await windowManager.setResizable(false);
+    await _centerSplashOnPrimary(
+        const Size(_kUpdateSplashWin, _kUpdateSplashWin * 0.97));
     await windowManager.show();
   }));
   runApp(UpdateSplashApp(lang: lang, statusPath: statusPath, mode: 'boot'));
@@ -1105,11 +1149,23 @@ class BootSplash {
     _proc = null;
     // Окно ещё доводит полосу до конца — главное показываем в тот же момент,
     // когда оно исчезает, иначе между ними будет пустой кадр рабочего стола.
+    // Заодно отпускаем заставку ОБНОВЛЕНИЯ, если она ещё жива. Это чужой
+    // процесс из прошлого поколения приложения: он следит за нами через
+    // tasklist раз в две секунды и не раньше чем через пятнадцать после
+    // старта — то есть вполне мог провисеть несколько секунд поверх уже
+    // открытого окна. Файл состояния он перечитывает раз в 250 мс, и слово
+    // «ready» в нём убирает окно куда быстрее.
+    unawaited(_dismissUpdateSplash());
     final done = onDone;
     onDone = null;
     if (done != null) {
-      unawaited(Future.delayed(
-          Duration(milliseconds: failed ? 3800 : 800), () => done()));
+      if (failed) {
+        // Ошибку окно показывает четыре секунды — ждать тут нечего.
+        unawaited(
+            Future.delayed(const Duration(milliseconds: 3800), () => done()));
+      } else {
+        unawaited(_showAfterSplashGone(done));
+      }
     }
     unawaited(Future.delayed(Duration(seconds: failed ? 6 : 3), () {
       try {
@@ -1119,6 +1175,50 @@ class BootSplash {
         if (_path.isNotEmpty) io.File(_path).deleteSync();
       } catch (_) {}
     }));
+  }
+
+  /// Сказать заставке обновления, что приложение поднялось.
+  ///
+  /// Путь тот же, что у AppUpdater — update-status.txt рядом с данными, и
+  /// формат тот же — фаза первой строкой. Пишем, только если файл уже есть:
+  /// создавать его на пустом месте значило бы оставлять мусор после каждого
+  /// обычного запуска.
+  Future<void> _dismissUpdateSplash() async {
+    try {
+      final root = await appDataRoot();
+      if (root.isEmpty) return;
+      final f = io.File(
+          '$root${io.Platform.pathSeparator}update-status.txt');
+      if (!await f.exists()) return;
+      await f.writeAsString('ready\n\n', flush: true);
+    } catch (_) {}
+  }
+
+  /// Показать главное окно ПОСЛЕ того, как окно загрузки действительно ушло.
+  ///
+  /// Раньше здесь стояла глухая пауза в 800 мс — ровно столько же окно ждёт
+  /// после «готово», прежде чем закрыться. Но его отсчёт начинается не от нашей
+  /// записи, а от ЧТЕНИЯ: файл оно перечитывает раз в 250 мс. То есть уходило
+  /// оно на четверть секунды ПОЗЖЕ, чем появлялось главное окно, и человек
+  /// видел оба сразу. Теперь окно перед выходом оставляет метку, а мы её ждём.
+  ///
+  /// Срок — страховка на случай, если метки не будет вовсе.
+  Future<void> _showAfterSplashGone(void Function() done) async {
+    final mark = io.File('$_path.gone');
+    final until = DateTime.now().add(const Duration(seconds: 3));
+    while (DateTime.now().isBefore(until)) {
+      try {
+        if (await mark.exists()) {
+          await mark.delete();
+          break;
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 60));
+    }
+    // Небольшой нахлёст: окно ещё десяток кадров разбирает себя, и показать
+    // главное ровно в этот миг — значит поймать пустой кадр рабочего стола.
+    await Future.delayed(const Duration(milliseconds: 140));
+    done();
   }
 
   // Пустая фаза = «оставь как было, я поменял только вторую строку».

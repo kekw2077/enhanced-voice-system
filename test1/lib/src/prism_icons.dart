@@ -295,6 +295,7 @@ abstract final class PrismIcons {
   static const play = 'M8 5.5v13l11-6.5-11-6.5Z';
   static const send = 'M12 20V5M5.6 11.4 12 5l6.4 6.4';
   static const stop = 'M6.5 6.5h11v11h-11z';
+  static const check = 'm5 12.5 4.6 4.6L19 7';
   static const lock = 'M7 10.5V8a5 5 0 0 1 10 0v2.5M5.5 10.5h13V20h-13z';
   static const spark =
       'M12 3.6 13.9 9l5.4 1.9-5.4 1.9L12 18.2 10.1 12.8 4.7 10.9 10.1 9 12 3.6Z';
