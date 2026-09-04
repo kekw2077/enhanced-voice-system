@@ -55,6 +55,7 @@ class WebSearchService {
   /// Все значения настройки «Поисковик». `auto` — прежнее поведение.
   static const List<String> providers = [
     'auto',
+    'searxng',
     'tavily',
     'brave',
     'google',
@@ -64,6 +65,7 @@ class WebSearchService {
 
   /// Настроен ли провайдер: у платных это наличие ключей, DuckDuckGo — всегда.
   bool configured(String id, AppState? app) => switch (id) {
+        'searxng' => (app?.searxngUrl ?? '').isNotEmpty,
         'tavily' => (app?.tavilyKey ?? '').isNotEmpty,
         'brave' => (app?.braveKey ?? '').isNotEmpty,
         'google' =>
@@ -81,9 +83,20 @@ class WebSearchService {
   // DuckDuckGo вместо него — сюрприз, а не помощь.
   List<String> _order(AppState? app) {
     final chosen = app?.searchProvider ?? 'auto';
-    if (chosen != 'auto' && providers.contains(chosen)) return [chosen];
+    // Ненастроенный выбор — не выбор. Провайдер без ключа (или SearXNG без
+    // адреса) не отвечает ничем, и строгое «спрашиваем только его» превращало
+    // поиск в тишину: ни ответа, ни ошибки, ни причины. Настроенный выбор
+    // по-прежнему уважается строго — в этом и был смысл.
+    if (chosen != 'auto' &&
+        providers.contains(chosen) &&
+        configured(chosen, app)) {
+      return [chosen];
+    }
     return [
-      for (final p in const ['tavily', 'brave', 'google', 'yandex'])
+      // Свой сервер спрашивают первым, и не из вежливости: он в домашней сети,
+      // не тратит чужую квоту и не знает, кто именно спросил. Молчит станция —
+      // очередь идёт дальше, как и раньше.
+      for (final p in const ['searxng', 'tavily', 'brave', 'google', 'yandex'])
         if (configured(p, app)) p,
       'ddg',
     ];
@@ -106,12 +119,66 @@ class WebSearchService {
 
   Future<List<SearchHit>> _byId(String id, String q, AppState? app) =>
       switch (id) {
+        'searxng' => _searxng(q, app?.searxngUrl ?? ''),
         'tavily' => _tavily(q, app?.tavilyKey ?? ''),
         'brave' => _brave(q, app?.braveKey ?? ''),
         'google' => _google(q, app?.googleKey ?? '', app?.googleCx ?? ''),
         'yandex' => _yandex(q, app?.yandexKey ?? '', app?.yandexFolder ?? ''),
         _ => _ddg(q),
       };
+
+  /// Проверить свой SearXNG настоящим запросом — сколько ответов вернулось.
+  ///
+  /// Нужна затем же, зачем настоящая проверка в скриптах развёртывания: адрес
+  /// можно вписать с опечаткой, станция может спать, а формат json у SearXNG
+  /// по умолчанию выключен — и все три случая выглядят одинаково, как поиск,
+  /// который молча ничего не находит.
+  Future<int> probeSearxng(String base) async =>
+      (await _searxng('погода', base)).length;
+
+  /// Свой SearXNG на станции. Метапоисковик: сам обходит Google, DuckDuckGo и
+  /// остальных и отдаёт сведённый список.
+  ///
+  /// Формат `json` у него по умолчанию ВЫКЛЮЧЕН — сервер отвечает 403 на том
+  /// самом пути, ради которого он и заведён. Включается это в его settings.yml
+  /// (`search.formats`), и `server/searxng/deploy-searxng.sh` заканчивается
+  /// настоящим запросом именно поэтому.
+  ///
+  /// Готового ответа-сводки у него нет, зато бывают `answers` — короткие
+  /// врезки от самих движков (курс, погода, калькулятор). Кладём их первыми:
+  /// модель читает список сверху, и врезка отвечает на вопрос точнее, чем
+  /// заголовок страницы.
+  Future<List<SearchHit>> _searxng(String q, String base) async {
+    final url = base.trim().replaceAll(RegExp(r'/+$'), '');
+    if (url.isEmpty) return const [];
+    final uri = Uri.parse('$url/search').replace(queryParameters: {
+      'q': q,
+      'format': 'json',
+      'language': 'ru',
+      'safesearch': '0',
+    });
+    final res = await http.get(uri, headers: {
+      // Свой сервер, но с пустым User-Agent часть движков за ним отвечает
+      // отказом — представляемся.
+      'User-Agent': 'NexusAnima/1.0',
+    }).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) return const [];
+    final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
+    final hits = <SearchHit>[];
+    for (final a in (data['answers'] as List? ?? const [])) {
+      final text = a is Map ? (a['answer'] ?? '').toString() : a.toString();
+      if (text.trim().isNotEmpty) hits.add(SearchHit('Сводка', '', text));
+    }
+    for (final r in (data['results'] as List? ?? const [])) {
+      if (r is! Map) continue;
+      hits.add(SearchHit(
+          (r['title'] ?? '').toString(),
+          (r['url'] ?? '').toString(),
+          (r['content'] ?? '').toString()));
+      if (hits.length >= 6) break;
+    }
+    return hits;
+  }
 
   Future<List<SearchHit>> _tavily(String q, String key) async {
     final res = await http

@@ -276,7 +276,18 @@ Future<List<String>> localAddresses() async {
   return out;
 }
 
-enum VoiceCommandType { app, file, url, shell, system, media, appVolume }
+enum VoiceCommandType {
+  app,
+  file,
+  url,
+  shell,
+  system,
+  media,
+  appVolume,
+  // Закрыть запущенную программу. `value` — как её называть человеку,
+  // `process` — имя файла, по которому её ищут среди окон.
+  appClose,
+}
 
 class VoiceCommand {
   String phrase;
@@ -304,6 +315,12 @@ class VoiceCommand {
   // single UAC consent) so admin-only apps start without the confirmation
   // window. See CommandExecutor.ensureElevatedTask.
   bool elevated;
+  // Для appClose: если программа не закрылась по-хорошему — завершить её.
+  // Нужно тем, кто прячется в трей (Telegram, Amnezia): окно у них не
+  // уничтожается, а скрывается, и на просьбу закрыться они просто прячутся
+  // снова. Спрашивается у человека в мастере и по умолчанию выключено: цена
+  // ошибки здесь — его несохранённое.
+  bool closeForce;
   // Команда в каталоге, но выключена: сопоставитель фраз её пропускает
   // (см. _matchCommand). Отдельное поле, а не удаление, потому что выключить
   // на время и потерять настройку — разные вещи; в макете это тумблер в
@@ -321,6 +338,7 @@ class VoiceCommand {
     this.argMin = 0,
     this.argMax = 100,
     this.elevated = false,
+    this.closeForce = false,
     this.enabled = true,
   });
 
@@ -334,6 +352,10 @@ class VoiceCommand {
         // Пишем только выключенные: у всех уже сохранённых команд ключа нет,
         // и файл настроек остаётся совместимым со старыми сборками.
         if (!enabled) 'off': true,
+        if (type == VoiceCommandType.appClose) ...{
+          'process': process,
+          if (closeForce) 'force': true,
+        },
         if (type == VoiceCommandType.appVolume) ...{
           'process': process,
           'action': action,
@@ -359,11 +381,60 @@ class VoiceCommand {
         elevated: j['elevated'] == true,
         enabled: j['off'] != true,
         process: j['process'] as String? ?? '',
+        closeForce: j['force'] == true,
         action: j['action'] as String? ?? 'set',
         defaultValue: (j['default'] as num?)?.toInt(),
         argMin: (j['min'] as num?)?.toInt() ?? 0,
         argMax: (j['max'] as num?)?.toInt() ?? 100,
       );
+}
+
+/// Имя файла программы, которую запускает команда, — чтобы её же можно было
+/// закрыть.
+///
+/// Путь на .exe отдаёт имя сразу; ярлык приходится разворачивать — цель у него
+/// внутри, и достаёт её тот же WScript.Shell, которым Windows открывает ярлыки
+/// сама. Для приложения из Microsoft Store («shell:AppsFolder\…») ответа нет
+/// вовсе: там не путь, а идентификатор пакета, и настоящий процесс становится
+/// известен, только когда приложение запущено. Пусто — значит, программу
+/// придётся выбрать из списка запущенного.
+Future<String> resolveExeName(String target) async {
+  final t = target.trim().replaceAll('"', '');
+  if (t.isEmpty || t.toLowerCase().startsWith('shell:')) return '';
+  String leaf(String p) => p.split(RegExp(r'[\\/]')).last.trim();
+  if (t.toLowerCase().endsWith('.exe')) return leaf(t).toLowerCase();
+  if (!t.toLowerCase().endsWith('.lnk')) return '';
+  try {
+    final r = await io.Process.run(
+        'powershell',
+        [
+          '-NoProfile',
+          '-Command',
+          "(New-Object -ComObject WScript.Shell).CreateShortcut('$t').TargetPath"
+        ],
+        runInShell: false);
+    final path = (r.stdout as String).trim();
+    if (path.toLowerCase().endsWith('.exe')) return leaf(path).toLowerCase();
+  } catch (_) {}
+  return '';
+}
+
+/// Фраза для парной команды закрытия: «открой телегу» -> «закрой телегу».
+///
+/// Глагол запуска срезается, а не приписывается спереди: «закрой открой
+/// телегу» человек не скажет никогда, а сопоставитель фраз сравнивает именно
+/// то, что сказано.
+String closePhraseFor(AppState app, String launchPhrase) {
+  var s = launchPhrase.trim();
+  for (final verb in app.t('cmdOpenVerbs').split(',')) {
+    final v = verb.trim();
+    if (v.isEmpty) continue;
+    if (s.toLowerCase().startsWith('$v ')) {
+      s = s.substring(v.length).trim();
+      break;
+    }
+  }
+  return '${app.t('cmdCloseVerb')} $s'.trim();
 }
 
 // One launchable program in the add-command picker.
@@ -474,8 +545,19 @@ class CmdSuggestion {
   bool selected;
   bool collides;
   final int usage;
+
+  /// Что предлагается завести: запуск или закрытие. У закрытия обязателен
+  /// [process] — имя файла, по которому программу ищут среди окон; без него
+  /// команда была бы кнопкой в никуда, поэтому такие подсказки и не собираются
+  /// для того, чего не удалось развернуть до .exe.
+  final VoiceCommandType type;
+  final String process;
   CmdSuggestion(this.program, this.phrase,
-      {this.selected = true, this.collides = false, this.usage = 0});
+      {this.selected = true,
+      this.collides = false,
+      this.usage = 0,
+      this.type = VoiceCommandType.app,
+      this.process = ''});
 }
 
 // Windows UserAssist run-counts keyed by normalized app name (leaf without
@@ -1179,8 +1261,13 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
     for (final s in chosen) {
       app.addVoiceCommand(VoiceCommand(
         phrase: s.phrase.trim(),
-        type: VoiceCommandType.app,
-        value: s.program.value, // authoritative path from the scan
+        type: s.type,
+        // У запуска значение — путь из обхода меню «Пуск», у закрытия там
+        // человеческое имя, а искать программу будут по `process`.
+        value: s.type == VoiceCommandType.appClose
+            ? s.program.name
+            : s.program.value,
+        process: s.process,
       ));
     }
     Navigator.pop(context, chosen.length);
@@ -1333,7 +1420,13 @@ class _SuggestCommandsDialogState extends State<_SuggestCommandsDialog> {
           Padding(
             padding: const EdgeInsets.only(left: 32, top: 3),
             child: Text(
-              isStore ? 'Microsoft Store' : s.program.value,
+              // У подсказки на закрытие путь ни при чём: там ищут окно по
+              // имени файла, и показать надо именно его.
+              s.type == VoiceCommandType.appClose
+                  ? '${app.t('typeAppClose')} · ${s.process}'
+                  : isStore
+                      ? 'Microsoft Store'
+                      : s.program.value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 11, color: _faint(context)),
@@ -1354,7 +1447,12 @@ class _AddCommandWizard extends StatefulWidget {
   // When set, the wizard opens in EDIT mode: pre-filled and jumps straight to
   // the phrase step; "Save" returns the updated command.
   final VoiceCommand? initial;
-  const _AddCommandWizard({required this.app, this.initial});
+
+  /// Заготовка пришла из меню «Добавить закрытие»: поля заполнены, но команда
+  /// НОВАЯ — кнопка должна звать добавить, а не сохранить.
+  final bool asNew;
+  const _AddCommandWizard(
+      {required this.app, this.initial, this.asNew = false});
   @override
   State<_AddCommandWizard> createState() => _AddCommandWizardState();
 }
@@ -1372,6 +1470,10 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
   final Map<String, String> _iconPaths = {}; // iconSource -> cached PNG path
   // App-volume (appVolume) wizard state.
   List<Map<String, dynamic>>? _sessions; // null = loading active audio sessions
+  // Запущенные программы с окном — для команды «закрыть».
+  List<Map<String, dynamic>>? _running;
+  String _closeProcess = '';
+  bool _closeForce = false;
   String _avProcess = '';
   String _avAction = 'set';
   final _avDefaultCtrl = TextEditingController();
@@ -1379,7 +1481,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
   bool _elevated = false;
   bool _creatingTask = false;
 
-  bool get _isEdit => widget.initial != null;
+  bool get _isEdit => widget.initial != null && !widget.asNew;
   AppState get app => widget.app;
 
   @override
@@ -1393,6 +1495,9 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
       _phraseCtrl.text = it.phrase;
       _speakCtrl.text = it.speakPhrase;
       _avProcess = it.process;
+      _closeProcess = it.process;
+      _closeForce = it.closeForce;
+      _valueLabel = it.value;
       _avAction = it.action;
       _avDefaultCtrl.text = it.defaultValue?.toString() ?? '';
       _elevated = it.elevated;
@@ -1416,6 +1521,7 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     (VoiceCommandType.system, 'cmdWizSystem', Icons.settings_suggest_outlined),
     (VoiceCommandType.media, 'cmdWizMedia', Icons.music_note_outlined),
     (VoiceCommandType.appVolume, 'cmdWizVolume', Icons.volume_up_outlined),
+    (VoiceCommandType.appClose, 'cmdWizClose', Icons.close_rounded),
   ];
 
   Future<void> _pickCategory(VoiceCommandType t) async {
@@ -1437,6 +1543,15 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
       if (mounted && map.isNotEmpty) setState(() => _iconPaths.addAll(map));
     } else if (t == VoiceCommandType.file) {
       await _pickFileValue();
+    } else if (t == VoiceCommandType.appClose) {
+      // Выбирают из ЗАПУЩЕННОГО, а не из установленного: закрывать нечего,
+      // пока программа не открыта, и её имя файла берётся из живого окна —
+      // тем же перебором, которым выбирают игру и проигрыватель.
+      setState(() {
+        _running = null;
+        _step = 1;
+      });
+      await _loadRunning();
     } else if (t == VoiceCommandType.appVolume) {
       // Plain trigger phrase (no {N} template): the target volume is a fixed
       // value chosen in this step, so the phrase is matched like any other
@@ -1449,6 +1564,11 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     } else {
       setState(() => _step = 1);
     }
+  }
+
+  Future<void> _loadRunning() async {
+    final list = await SidecarClient.instance.windowedApps();
+    if (mounted) setState(() => _running = list);
   }
 
   Future<void> _loadSessions() async {
@@ -1488,6 +1608,20 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     if (_creatingTask) return;
     final phrase = _phraseCtrl.text.trim();
     if (phrase.isEmpty || _type == null || _value.trim().isEmpty) return;
+    if (_type == VoiceCommandType.appClose) {
+      if (_closeProcess.trim().isEmpty) return;
+      Navigator.pop(
+          context,
+          VoiceCommand(
+            phrase: phrase,
+            type: VoiceCommandType.appClose,
+            value: _value.trim(), // как называть человеку
+            speakPhrase: _speakCtrl.text.trim(),
+            process: _closeProcess.trim(),
+            closeForce: _closeForce,
+          ));
+      return;
+    }
     if (_type == VoiceCommandType.appVolume) {
       if (_avProcess.trim().isEmpty) return;
       final def = int.tryParse(_avDefaultCtrl.text.trim());
@@ -1579,6 +1713,124 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
             child: Text(_isEdit ? app.t('save') : app.t('add')),
           ),
       ],
+    );
+  }
+
+  // Шаг 1 для «закрыть программу»: выбор из запущенного с окном.
+  Widget _closeStep() {
+    final running = _running;
+    return SizedBox(
+      height: 380,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(app.t('closePickApp'),
+                  style: TextStyle(fontSize: 13, color: _body(context))),
+            ),
+            IconButton(
+              tooltip: app.t('refreshModelsBtn'),
+              icon: Icon(Icons.refresh, size: 18, color: _sub(context)),
+              onPressed: () {
+                setState(() => _running = null);
+                _loadRunning();
+              },
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Expanded(
+            child: running == null
+                ? const Center(
+                    child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2)))
+                : running.isEmpty
+                    ? Center(
+                        child: Text(app.t('busNoApps'),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontSize: 12.5, color: _faint(context))))
+                    : ListView(
+                        children: [
+                          for (final a in running)
+                            _closeTile((a['exe'] ?? '').toString(),
+                                (a['title'] ?? '').toString()),
+                        ],
+                      ),
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            borderRadius: BorderRadius.circular(6),
+            onTap: () => setState(() => _closeForce = !_closeForce),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(children: [
+                Icon(
+                    _closeForce
+                        ? Icons.check_box_outlined
+                        : Icons.check_box_outline_blank,
+                    size: 18,
+                    color: _closeForce ? _accent(context) : _faint(context)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(app.t('closeForce'),
+                      style:
+                          TextStyle(fontSize: 12.5, color: _body(context))),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(app.t(_closeForce ? 'closeForceHint' : 'closeHint'),
+              style: TextStyle(fontSize: 11.5, color: _faint(context))),
+        ],
+      ),
+    );
+  }
+
+  Widget _closeTile(String exe, String title) {
+    final selected = _closeProcess.toLowerCase() == exe.toLowerCase();
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => setState(() {
+        _closeProcess = exe;
+        _value = title.isNotEmpty ? title : exe;
+        _valueLabel = _value;
+      }),
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color:
+              selected ? const Color(0x263A7BE0) : _overlayFill(context, 0.03),
+          border: Border.all(
+              color: selected ? _accent(context) : _stroke(context)),
+        ),
+        child: Row(children: [
+          Icon(selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 16,
+              color: selected ? const Color(0xFF7BA0E0) : _faint(context)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title.isNotEmpty ? title : exe,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: _body(context))),
+                Text(exe,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: _faint(context))),
+              ],
+            ),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -1763,6 +2015,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
         return app.t('cmdWizSystem');
       case VoiceCommandType.media:
         return app.t('cmdWizMedia');
+      case VoiceCommandType.appClose:
+        return app.t('cmdWizClose');
       case VoiceCommandType.appVolume:
         return app.t('cmdWizVolume');
       default:
@@ -1774,6 +2028,8 @@ class _AddCommandWizardState extends State<_AddCommandWizard> {
     if (_step == 0) return _categoryStep();
     if (_step == 2) return _phraseStep();
     switch (_type) {
+      case VoiceCommandType.appClose:
+        return _closeStep();
       case VoiceCommandType.appVolume:
         return _volumeStep();
       case VoiceCommandType.app:

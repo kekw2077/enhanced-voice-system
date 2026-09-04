@@ -166,11 +166,23 @@ GW=${GW:-172.17.0.1}
 # остаётся через шлюз. Своя сеть даёт ещё и имя вместо адреса: адрес
 # контейнера меняется при каждом пересоздании, имя — нет.
 docker network inspect evs-gpu >/dev/null 2>&1 || docker network create evs-gpu >/dev/null 2>&1 || true
-TTS_HOST="${GW}:8760"
-if docker inspect evs-qwen >/dev/null 2>&1; then
-  docker network connect evs-gpu evs-qwen >/dev/null 2>&1 || true
-  TTS_HOST="evs-qwen:8760"
-fi
+# Соседей по синтезу двое: студийный голос (Sonora, 8760) и живой — тот, что
+# отвечает голосом ассистента (8762). Освобождать карту надо у ОБОИХ. Пока
+# здесь стоял один студийный, живой оставался на карте, веса кадра грузились
+# поверх него, и 4 сентября 2026 станция ушла в вытеснение видеопамяти и
+# встала. Имя контейнера вместо адреса шлюза берётся там, где контейнер есть:
+# адрес меняется при каждом пересоздании, имя — нет.
+TTS_URLS=""
+for c in evs-qwen:8760 evs-xtts:8762; do
+  name="${c%%:*}"
+  port="${c##*:}"
+  target="${GW}:${port}"
+  if docker inspect "$name" >/dev/null 2>&1; then
+    docker network connect evs-gpu "$name" >/dev/null 2>&1 || true
+    target="$c"
+  fi
+  TTS_URLS="${TTS_URLS:+$TTS_URLS,}http://${target}"
+done
 
 say "Запуск"
 docker rm -f evs-image >/dev/null 2>&1 || true
@@ -188,7 +200,7 @@ docker run -d --name evs-image --restart unless-stopped \
   -e IMG_MODELS_DIR=/models \
   -e "IMG_MODEL=/models/$(basename "$HAVE")" \
   -e "IMG_FREE_OLLAMA=http://${GW}:11434" \
-  -e "IMG_FREE_TTS=http://${TTS_HOST}" \
+  -e "IMG_FREE_TTS=${TTS_URLS}" \
   -e IMG_IDLE_UNLOAD=600 \
   evs-image:latest >/dev/null || die "контейнер не поднялся"
 docker network connect evs-gpu evs-image >/dev/null 2>&1 || true

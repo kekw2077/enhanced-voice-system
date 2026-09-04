@@ -42,6 +42,7 @@ Protocol (JSON text frames)
     {"type": "audio.devices"}                # выходы звука: список и текущий
     {"type": "audio.set_default", "device": "<id>"}   # переключить выход
     {"type": "proc.windowed"}                # программы с окном — для выбора
+    {"type": "proc.close", "exe": str, "force": bool}   # закрыть программу
     {"type": "ping"}
   server -> client:
     {"type": "ready", "protocol": int,
@@ -60,6 +61,7 @@ Protocol (JSON text frames)
                                      "default": bool}]}
     {"type": "audio.set_default.result", "ok": bool, "reason"?: str}
     {"type": "proc.windowed.result", "apps": [{"exe": str, "title": str}]}
+    {"type": "proc.close.result", "ok": bool, "closed": int}
     {"type": "bus.recent.result", "events": [{"ts": str, "source": str,
                                               "type": str, "severity": str,
                                               "subject": {}, "payload": {},
@@ -698,6 +700,14 @@ async def _handle(ws, stt: SttEngine, tts: TtsEngine) -> None:
                     res = dict(res)
                     res["type"] = "audio.set_default.result"
                     emit(res)
+                elif t == "proc.close":
+                    # Закрытие идёт в исполнителе, а не здесь: перебор окон
+                    # ходит в чужие процессы и на занятой машине занимает
+                    # десятки миллисекунд, а цикл событий держит и голос.
+                    res = await loop.run_in_executor(
+                        None, procwatch.close_app, str(data.get("exe") or ""),
+                        bool(data.get("force")))
+                    emit({"type": "proc.close.result", **res})
                 elif t == "proc.windowed":
                     apps = await asyncio.get_event_loop().run_in_executor(
                         None, procwatch.windowed_apps)

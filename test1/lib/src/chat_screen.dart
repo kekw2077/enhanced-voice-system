@@ -193,7 +193,8 @@ class _ChatScreenState extends State<ChatScreen> {
           app.applyAppVolume(cmd, t).then((r) {
             if (!mounted) return;
             if (SidecarClient.instance.ttsAvailable) {
-              SidecarClient.instance.speak(r.$2);
+              SidecarClient.instance
+                  .speak(r.$2, rate: app.ttsRate, volume: app.ttsVolume);
             }
             showAppSnackBar(context, r.$2);
           });
@@ -201,7 +202,8 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         CommandExecutor.instance.execute(cmd);
         if (SidecarClient.instance.ttsAvailable) {
-          SidecarClient.instance.speak(app.t('cmdRunOk'));
+          SidecarClient.instance.speak(app.t('cmdRunOk'),
+              rate: app.ttsRate, volume: app.ttsVolume);
         }
         showAppSnackBar(context, '${app.t('cmdRunOk')}: ${cmd.phrase}');
         return;

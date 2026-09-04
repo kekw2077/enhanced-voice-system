@@ -879,6 +879,18 @@ const Map<String, Map<String, String>> _i18n = {
     'webSearchEnable': 'Искать в интернете',
     'webSearchDesc': 'Ассистент найдёт свежие данные (курс, погода, новости), когда вопрос этого требует.',
     'webSearchKeysHint': 'Работает без ключа (DuckDuckGo). Ключ любого другого поисковика — стабильнее и качественнее.',
+    'webSearchCheck': 'Проверить',
+    'webSearchCheckOk': 'Поисковик отвечает, ответов:',
+    'webSearchCheckEmpty':
+        'Сервер ответил, но ничего не нашёл — движки заблокированы или у станции нет сети.',
+    'webSearchCheckFail': 'Не отвечает:',
+    'webSearchSearxng': 'Свой SearXNG (адрес станции)',
+    'webSearchSearxngHint':
+        'SearXNG — метапоисковик на вашей станции: он сам обходит Google, '
+        'DuckDuckGo и остальных и отдаёт сведённый ответ. Ключей не требует, '
+        'запросы уходят со станции, а не с этого компьютера. Разворачивается '
+        'скриптом server/searxng/deploy-searxng.sh; в режиме «Автоматически» '
+        'спрашивают его первым.',
     'webSearchTavily': 'Tavily API-ключ (необязательно)',
     'webSearchBrave': 'Brave API-ключ (необязательно)',
     'webSearchGoogleKey': 'Google API-ключ',
@@ -894,6 +906,9 @@ const Map<String, Map<String, String>> _i18n = {
     'vaWakeHeard': 'услышал, говорите!',
     'vaArmed': 'Говорите команду…',
     'vaCmdUnknown': 'Команду не понял',
+    'vaChoiceLearned':
+        'Запомнено: та же фраза в следующий раз запустит',
+    'vaChoicePicked': 'Выбрано:',
     'vaClarifyAsk': 'Не нашёл такой команды. Вы имели в виду',
     'cmdClarify': 'Уточнять команду моделью',
     'cmdClarifyDesc':
@@ -986,6 +1001,20 @@ const Map<String, Map<String, String>> _i18n = {
     'remoteLastSeen': 'был(а) в сети',
     'remoteNever': 'ещё не подключался',
     'remoteEnableFirst': 'Сначала включите приём команд',
+    'cmdAddClose': 'Добавить закрытие',
+    'cmdOpenVerbs': 'открой,открыть,запусти,запустить,включи,включить',
+    'cmdCloseVerb': 'закрой',
+    'cmdWizClose': 'Закрыть программу',
+    'closePickApp': 'Выберите открытую программу — закрывать будем её',
+    'closeHint':
+        'Закрытие идёт как крестиком в углу окна: программа успеет спросить о '
+        'несохранённом. Свёрнутую в трей это не закроет — у неё нет окна.',
+    'closeForce': 'Завершить, если не закрылась сама',
+    'closeForceHint':
+        'Программе дают пять секунд закрыться по-хорошему и только потом '
+        'завершают. Нужно тем, кто прячется в трей вместо закрытия '
+        '(Telegram, Amnezia). Несохранённое при завершении теряется — '
+        'редактору такую команду не заводите.',
     'cmdWizVolume': 'Громкость приложения',
     'volPickApp': 'Приложение (из воспроизводящих сейчас)',
     'volNoSessions':
@@ -1028,6 +1057,7 @@ const Map<String, Map<String, String>> _i18n = {
     'typeWeb': 'Сайт',
     'typeSystem': 'Системное',
     'typeMedia': 'Медиа',
+    'typeAppClose': 'Закрытие',
     'typeAppVolume': 'Громкость',
     'volNotPlaying': '{app} сейчас не воспроизводит звук',
     'volNoNumber': 'Не расслышал число',
@@ -2015,7 +2045,37 @@ const Map<String, Map<String, String>> _i18n = {
     'prismOnCard': 'На карте',
     'prismCardFree': 'свободна',
     'prismRuntime': 'Исполнение',
-    'prismCpuLoad': 'Загрузка процессора',
+    'prismVoiceModel': 'Модель на карте',
+    'prismServer': 'Сервер',
+    'prismSample': 'Образец',
+    'prismSpeech': 'Темп · громкость',
+    'prismDenoise': 'Шумоподавление',
+    'prismDenoiseOff': 'выключено',
+    'prismDenoiseLight': 'лёгкое',
+    'prismDenoiseStrong': 'DeepFilterNet',
+    'prismHeard': 'Последняя фраза',
+    // Панель «Модели на карте» — она заменила график загрузки процессора:
+    // график ничего не решал, а карта у станции одна.
+    'prismModels': 'Модели на видеокарте станции',
+    'prismModelLlm': 'Языковая модель',
+    'prismModelLive': 'Живой голос',
+    'prismModelLiveNote': 'ответы ассистента · порт 8762',
+    'prismModelStudio': 'Студийный голос',
+    'prismModelStudioNote': 'Sonora · порт 8760',
+    'prismModelImages': 'Генератор картинок',
+    'prismModelImagesNote': 'Lumina · порт 8770',
+    'prismModelOn': 'на карте',
+    'prismModelOff': 'выгружена',
+    'prismModelPaused': 'на паузе',
+    'prismModelOffline': 'не отвечает',
+    'prismModelLoading': 'поднимается…',
+    'prismModelUnloading': 'выгружается…',
+    'prismModelLoad': 'Поднять',
+    'prismModelUnload': 'Выгрузить',
+    'prismModelsHint':
+        'Языковая модель занимает около 7,8 ГБ, голоса по 2–4, картинки — 7. '
+        'Втроём они не помещаются никогда. Обычно карту делит арбитр сам; '
+        'эти кнопки — на случай, когда он не справился.',
     'prismCollecting': 'Набираю данные…',
     'nxTtsClone': 'Клон (XTTS)',
     'nxTtsSystem': 'Система',
@@ -3050,6 +3110,18 @@ const Map<String, Map<String, String>> _i18n = {
     'webSearchEnable': 'Search the web',
     'webSearchDesc': 'The assistant fetches fresh info (rates, weather, news) when a question needs it.',
     'webSearchKeysHint': 'Works without a key (DuckDuckGo). A Tavily or Brave key is more reliable and higher quality.',
+    'webSearchCheck': 'Test',
+    'webSearchCheckOk': 'Search works, results:',
+    'webSearchCheckEmpty':
+        'The server answered but found nothing - engines blocked, or the station has no network.',
+    'webSearchCheckFail': 'No answer:',
+    'webSearchSearxng': 'Your SearXNG (station address)',
+    'webSearchSearxngHint':
+        'SearXNG is a metasearch engine running on your station: it queries '
+        'Google, DuckDuckGo and the rest itself and returns a merged answer. '
+        'No API key, and the queries leave the station rather than this '
+        'computer. Deploy it with server/searxng/deploy-searxng.sh; in '
+        '"Automatic" mode it is asked first.',
     'webSearchTavily': 'Tavily API key (optional)',
     'webSearchBrave': 'Brave API key (optional)',
     'webSearchGoogleKey': 'Google API key',
@@ -3065,6 +3137,8 @@ const Map<String, Map<String, String>> _i18n = {
     'vaWakeHeard': 'heard you, go ahead!',
     'vaArmed': 'Say the command…',
     'vaCmdUnknown': 'Could not understand the command',
+    'vaChoiceLearned': 'Remembered: the same phrase will now run',
+    'vaChoicePicked': 'Picked:',
     'vaClarifyAsk': 'No such command. Did you mean',
     'cmdClarify': 'Let the model clarify the command',
     'cmdClarifyDesc':
@@ -3157,6 +3231,21 @@ const Map<String, Map<String, String>> _i18n = {
     'remoteLastSeen': 'last seen',
     'remoteNever': 'never connected',
     'remoteEnableFirst': 'Enable command receiving first',
+    'cmdAddClose': 'Add a close command',
+    'cmdOpenVerbs': 'open,launch,start,run',
+    'cmdCloseVerb': 'close',
+    'cmdWizClose': 'Close a program',
+    'closePickApp': 'Pick an open program — this command will close it',
+    'closeHint':
+        'Closing works like the window X: the program still gets to ask about '
+        'unsaved work. It will not close an app minimised to the tray — that '
+        'one has no window.',
+    'closeForce': 'Terminate if it will not close',
+    'closeForceHint':
+        'The program gets five seconds to close on its own and is '
+        'terminated only then. Needed for apps that hide in the tray instead '
+        'of closing (Telegram, Amnezia). Unsaved work is lost on termination - '
+        'do not make such a command for an editor.',
     'cmdWizVolume': 'App volume',
     'volPickApp': 'App (from those playing now)',
     'volNoSessions':
@@ -3199,6 +3288,7 @@ const Map<String, Map<String, String>> _i18n = {
     'typeWeb': 'Site',
     'typeSystem': 'System',
     'typeMedia': 'Media',
+    'typeAppClose': 'Close',
     'typeAppVolume': 'Volume',
     'volNotPlaying': '{app} is not playing any sound right now',
     'volNoNumber': "I didn't catch a number",
@@ -4167,7 +4257,35 @@ const Map<String, Map<String, String>> _i18n = {
     'prismOnCard': 'On the card',
     'prismCardFree': 'free',
     'prismRuntime': 'Runtime',
-    'prismCpuLoad': 'CPU load',
+    'prismVoiceModel': 'Model on the GPU',
+    'prismServer': 'Server',
+    'prismSample': 'Voice sample',
+    'prismSpeech': 'Rate · volume',
+    'prismDenoise': 'Denoise',
+    'prismDenoiseOff': 'off',
+    'prismDenoiseLight': 'light',
+    'prismDenoiseStrong': 'DeepFilterNet',
+    'prismHeard': 'Last phrase',
+    'prismModels': 'Models on the station GPU',
+    'prismModelLlm': 'Language model',
+    'prismModelLive': 'Live voice',
+    'prismModelLiveNote': 'assistant replies · port 8762',
+    'prismModelStudio': 'Studio voice',
+    'prismModelStudioNote': 'Sonora · port 8760',
+    'prismModelImages': 'Image generator',
+    'prismModelImagesNote': 'Lumina · port 8770',
+    'prismModelOn': 'on the GPU',
+    'prismModelOff': 'unloaded',
+    'prismModelPaused': 'paused',
+    'prismModelOffline': 'not responding',
+    'prismModelLoading': 'loading…',
+    'prismModelUnloading': 'unloading…',
+    'prismModelLoad': 'Load',
+    'prismModelUnload': 'Unload',
+    'prismModelsHint':
+        'The language model takes about 7.8 GB, each voice 2-4, images 7. '
+        'All three never fit at once. The arbiter shares the card on its own; '
+        'these buttons are for when it did not manage.',
     'prismCollecting': 'Collecting data…',
     'nxTtsClone': 'Clone (XTTS)',
     'nxTtsSystem': 'System',

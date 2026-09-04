@@ -307,11 +307,7 @@ class Engine:
             return
         self._loading = True
         try:
-            import torch
-            _patch_audio_loader()
-            from TTS.tts.configs.xtts_config import XttsConfig
-            from TTS.tts.models.xtts import Xtts
-            from TTS.utils.manage import ModelManager
+            torch, XttsConfig, Xtts, ModelManager = _preimport()
 
             dev = self.want_device
             if dev == "auto":
@@ -501,6 +497,48 @@ class Engine:
         os._exit(0)
 
 
+_IMPORTED = None
+_IMPORT_LOCK = threading.Lock()
+
+
+def _preimport() -> tuple:
+    """Импорты torch и TTS. Самая долгая часть холодного пути, и она первая.
+
+    Замер на станции: от первой фразы после простоя до первого звука — 37
+    секунд, из них 21 приходится ровно сюда (torch с патчем аудио — пять,
+    пакет TTS с его ModelManager — шестнадцать). Веса при этом не трогаются:
+    видеопамять не занимается, платится только хостовая память самих модулей.
+
+    Поэтому их и греют сразу после старта процесса, фоновым потоком. Процесс
+    и так поднимается заново после каждого ухода по простою ([Engine.idle_check]),
+    и лучше он подождёт готовым: к приходу фразы останется только поднять веса.
+    """
+    global _IMPORTED
+    with _IMPORT_LOCK:
+        if _IMPORTED is None:
+            import torch
+            _patch_audio_loader()
+            from TTS.tts.configs.xtts_config import XttsConfig
+            from TTS.tts.models.xtts import Xtts
+            from TTS.utils.manage import ModelManager
+            _IMPORTED = (torch, XttsConfig, Xtts, ModelManager)
+    return _IMPORTED
+
+
+def _preimport_warm() -> None:
+    """Тот же прогрев, но в фоне и без права уронить сервер."""
+    t0 = time.time()
+    try:
+        _preimport()
+    except Exception as e:
+        _log("прогрев импортов не удался (%s) — первая фраза оплатит их сама" % e)
+        return
+    _log("прогрев импортов: torch и TTS готовы за %.1fs" % (time.time() - t0))
+
+
+_AUDIO_PATCHED = False
+
+
 def _patch_audio_loader() -> None:
     """Научить torchaudio читать наши WAV без torchcodec.
 
@@ -511,6 +549,9 @@ def _patch_audio_loader() -> None:
     а его пишем мы сами и всегда в WAV. Разбираем модулем `wave` из стандартной
     библиотеки, всё остальное оставляем прежнему загрузчику.
     """
+    global _AUDIO_PATCHED
+    if _AUDIO_PATCHED:
+        return                      # второй раз обернули бы уже свою же замену
     try:
         import numpy as np
         import torch
@@ -740,6 +781,12 @@ def main() -> int:
 
     srv = ThreadingHTTPServer((args.host, args.port), Handler)
     _log("слушаю %s:%d" % (args.host, args.port))
+    # Импорты греются уже после того, как порт открыт: они держат GIL заметные
+    # секунды, и делать это ДО открытия значило бы отвечать отказом на запросы,
+    # которые сейчас просто подождут. С --warm поток не нужен — там поднимают
+    # и модель, а импорты входят в неё же.
+    if not args.warm:
+        threading.Thread(target=_preimport_warm, daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

@@ -715,6 +715,8 @@ Widget animaModelPill(BuildContext context, {double fontSize = 13}) {
 Widget animaMessageChoices(BuildContext context, ChatMessage m) {
   if (m.choices.isEmpty) return const SizedBox.shrink();
   final app = context.watch<AppState>();
+  // Выбор уже сделан — реплика остаётся в переписке, но действовать перестаёт.
+  final done = m.chosen.isNotEmpty;
   final items = <Widget>[];
   for (final phrase in m.choices) {
     // Каталог человек правит, и вариант из старой переписки может уже никуда
@@ -728,34 +730,83 @@ Widget animaMessageChoices(BuildContext context, ChatMessage m) {
     }
     if (cmd == null) continue;
     final target = cmd;
+    final picked = m.chosen == phrase;
+    // Три вида одной кнопки: живая (выбора ещё не было), выбранная (с галочкой,
+    // акцентом) и погасшая соседняя. Погасшая остаётся на месте намеренно:
+    // пропавшие кнопки заставляют вспоминать, из чего вообще выбирали.
+    final border = picked
+        ? _accent(context)
+        : done
+            ? _stroke(context)
+            : _accent(context).withValues(alpha: 0.55);
+    final fill = picked
+        ? _accent(context).withValues(alpha: 0.18)
+        : done
+            ? Colors.transparent
+            : _accent(context).withValues(alpha: 0.10);
+    final ink = picked
+        ? _accent(context)
+        : done
+            ? _faint(context)
+            : _accent(context);
     items.add(InkWell(
       borderRadius: BorderRadius.circular(999),
-      onTap: () {
-        app.buzz();
-        // Вместе с командой отдаём и то, что было сказано: выбор человека —
-        // единственное надёжное подтверждение, и его стоит запомнить.
-        unawaited(VoiceAssistant.instance
-            .runChosen(app, target, said: m.choicesFor));
-      },
+      onTap: done
+          ? null
+          : () async {
+              app.buzz();
+              // Вместе с командой отдаём и то, что было сказано: выбор
+              // человека — единственное надёжное подтверждение.
+              final learned = await VoiceAssistant.instance
+                  .runChosen(app, target, said: m.choicesFor);
+              app.markChoice(m, phrase, learned: learned);
+            },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: _accent(context).withValues(alpha: 0.55)),
-          color: _accent(context).withValues(alpha: 0.10),
+          border: Border.all(color: border),
+          color: fill,
         ),
-        child: Text(phrase,
-            style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: _accent(context))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (picked) ...[
+            Icon(Icons.check_rounded, size: 14, color: ink),
+            const SizedBox(width: 5),
+          ],
+          Text(phrase,
+              style: TextStyle(
+                  fontSize: 12.5, fontWeight: FontWeight.w600, color: ink)),
+        ]),
       ),
     ));
   }
   if (items.isEmpty) return const SizedBox.shrink();
   return Padding(
     padding: const EdgeInsets.only(top: 9),
-    child: Wrap(spacing: 8, runSpacing: 8, children: items),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(spacing: 8, runSpacing: 8, children: items),
+        // Про запоминание пишем только когда оно случилось: запись делается
+        // лишь для фразы, отличной от самой команды («валорам» -> «открой
+        // валорант»), и обещать её там, где её нет, нельзя.
+        if (done) ...[
+          const SizedBox(height: 7),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(m.chosenLearned ? Icons.bookmark_added_outlined : Icons.check,
+                size: 13, color: _sub(context)),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                  m.chosenLearned
+                      ? '${app.t('vaChoiceLearned')} «${m.chosen}»'
+                      : '${app.t('vaChoicePicked')} «${m.chosen}»',
+                  style: TextStyle(fontSize: 11.5, color: _sub(context))),
+            ),
+          ]),
+        ],
+      ],
+    ),
   );
 }
 

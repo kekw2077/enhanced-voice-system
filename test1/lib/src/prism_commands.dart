@@ -55,6 +55,34 @@ class _PrismCommandsState extends State<_PrismCommands> {
     if (cmd != null) app.replaceVoiceCommand(c, cmd);
   }
 
+  /// Завести парную команду закрытия к уже существующему запуску.
+  ///
+  /// Имя файла достаётся из цели: для ярлыка — разворачиванием, для .exe —
+  /// напрямую. У приложения из Microsoft Store пути нет, и тогда мастер
+  /// открывается на выборе из запущенного — это единственное место, где такое
+  /// приложение называет себя по имени процесса.
+  Future<void> _addClose(AppState app, VoiceCommand c) async {
+    final exe = await resolveExeName(c.value);
+    if (!mounted) return;
+    final name = closePhraseFor(app, c.phrase);
+    final cmd = await showDialog<VoiceCommand>(
+      context: context,
+      builder: (_) => exe.isEmpty
+          ? _AddCommandWizard(app: app)
+          : _AddCommandWizard(
+              app: app,
+              asNew: true,
+              initial: VoiceCommand(
+                phrase: name,
+                type: VoiceCommandType.appClose,
+                value: c.phrase,
+                process: exe,
+              ),
+            ),
+    );
+    if (cmd != null) app.addVoiceCommand(cmd);
+  }
+
   Future<void> _suggest(AppState app) async {
     final n = await showDialog<int>(
       context: context,
@@ -73,6 +101,10 @@ class _PrismCommandsState extends State<_PrismCommands> {
       items: [
         PopupMenuItem(value: 'edit', child: Text(app.t('ncEdit'))),
         PopupMenuItem(value: 'run', child: Text(app.t('run'))),
+        // Только у запуска программы: закрывать сайт или системное действие
+        // нечего, а у уже заведённого закрытия пара уже есть.
+        if (c.type == VoiceCommandType.app)
+          PopupMenuItem(value: 'close', child: Text(app.t('cmdAddClose'))),
         PopupMenuItem(
           value: 'delete',
           child: Text(app.t('delete'),
@@ -82,6 +114,7 @@ class _PrismCommandsState extends State<_PrismCommands> {
     );
     if (!mounted) return;
     if (v == 'edit') await _edit(app, c);
+    if (v == 'close') await _addClose(app, c);
     if (v == 'delete') app.removeVoiceCommand(c);
     if (v == 'run') {
       final ok = await CommandExecutor.instance.execute(c);
@@ -322,6 +355,7 @@ String _prismTypeLabel(AppState app, VoiceCommandType t) => switch (t) {
       VoiceCommandType.system => app.t('typeSystem'),
       VoiceCommandType.media => app.t('typeMedia'),
       VoiceCommandType.appVolume => app.t('typeAppVolume'),
+      VoiceCommandType.appClose => app.t('typeAppClose'),
     };
 
 /// Цвет типа — тот же слот, что у значка типа в настройках: приложение красится
@@ -333,6 +367,7 @@ Color _prismTypeColor(BuildContext c, VoiceCommandType t) => switch (t) {
       VoiceCommandType.shell => _warn(c),
       VoiceCommandType.system => _danger(c),
       VoiceCommandType.media => _warn(c),
+      VoiceCommandType.appClose => _warn(c),
       VoiceCommandType.appVolume => _info(c),
     };
 

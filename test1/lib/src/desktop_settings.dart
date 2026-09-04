@@ -157,6 +157,7 @@ class _WebSearchCard extends StatefulWidget {
 }
 
 class _WebSearchCardState extends State<_WebSearchCard> {
+  late final TextEditingController _searxng;
   late final TextEditingController _tavily;
   late final TextEditingController _brave;
   late final TextEditingController _googleKey;
@@ -168,6 +169,7 @@ class _WebSearchCardState extends State<_WebSearchCard> {
   void initState() {
     super.initState();
     final app = context.read<AppState>();
+    _searxng = TextEditingController(text: app.searxngUrl);
     _tavily = TextEditingController(text: app.tavilyKey);
     _brave = TextEditingController(text: app.braveKey);
     _googleKey = TextEditingController(text: app.googleKey);
@@ -176,8 +178,35 @@ class _WebSearchCardState extends State<_WebSearchCard> {
     _yandexFolder = TextEditingController(text: app.yandexFolder);
   }
 
+  /// Идёт ли проверка своего поисковика прямо сейчас.
+  bool _probing = false;
+
+  /// Спросить свой SearXNG по-настоящему и сказать, что вышло. Ответ в той же
+  /// всплывающей строке, что и у остальных проверок в настройках.
+  Future<void> _probeSearxng() async {
+    final app = context.read<AppState>();
+    final url = _searxng.text.trim();
+    if (url.isEmpty) return;
+    setState(() => _probing = true);
+    try {
+      final n = await WebSearchService.instance.probeSearxng(url);
+      if (!mounted) return;
+      showAppSnackBar(
+          context,
+          n > 0
+              ? '${app.t('webSearchCheckOk')} $n'
+              : app.t('webSearchCheckEmpty'));
+    } catch (e) {
+      if (!mounted) return;
+      showAppSnackBar(context, '${app.t('webSearchCheckFail')} $e');
+    } finally {
+      if (mounted) setState(() => _probing = false);
+    }
+  }
+
   @override
   void dispose() {
+    _searxng.dispose();
     _tavily.dispose();
     _brave.dispose();
     _googleKey.dispose();
@@ -193,6 +222,7 @@ class _WebSearchCardState extends State<_WebSearchCard> {
   Widget _providerChips(AppState app) {
     const labels = {
       'auto': null, // берётся из i18n
+      'searxng': 'SearXNG',
       'tavily': 'Tavily',
       'brave': 'Brave',
       'google': 'Google',
@@ -315,6 +345,24 @@ class _WebSearchCardState extends State<_WebSearchCard> {
                 style:
                     TextStyle(fontSize: 11.5, color: _faint(context))),
             const SizedBox(height: 10),
+            // Свой сервер идёт первым: он единственный здесь без ключа и без
+            // чужой квоты, и в очереди `auto` спрашивают тоже его.
+            Text(app.t('webSearchSearxngHint'),
+                style: TextStyle(fontSize: 11.5, color: _faint(context))),
+            const SizedBox(height: 8),
+            _label(app.t('webSearchSearxng')),
+            Row(children: [
+              Expanded(
+                child: _keyField(
+                    _searxng, 'http://100.79.130.7:8888', app.setSearxngUrl,
+                    obscure: false),
+              ),
+              const SizedBox(width: 8),
+              animaGhostButton(context, app.t('webSearchCheck'),
+                  Icons.travel_explore_outlined,
+                  onTap: _probing ? null : () => unawaited(_probeSearxng())),
+            ]),
+            const SizedBox(height: 12),
             _label(app.t('webSearchTavily')),
             _keyField(_tavily, 'tvly-…', app.setTavilyKey),
             const SizedBox(height: 10),
@@ -1704,7 +1752,8 @@ class _BusAudioCardState extends State<_BusAudioCard> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (res['ok'] == true) {
-      SidecarClient.instance.speak(app.t('busTestPhrase'));
+      SidecarClient.instance.speak(app.t('busTestPhrase'),
+          rate: app.ttsRate, volume: app.ttsVolume);
       showAppSnackBar(context, app.t('busTestOk'));
     } else {
       final why = (res['reason'] ?? '').toString();
@@ -5166,6 +5215,7 @@ class _DesktopSettingsState extends State<DesktopSettings> {
       VoiceCommandType.system => (app.t('typeSystem'), _danger(context)),
       VoiceCommandType.media => (app.t('typeMedia'), _warn(context)),
       VoiceCommandType.appVolume => (app.t('typeAppVolume'), _info(context)),
+      VoiceCommandType.appClose => (app.t('typeAppClose'), _warn(context)),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),

@@ -55,7 +55,19 @@ IDLE_UNLOAD = float(os.environ.get("IMG_IDLE_UNLOAD", "600"))
 # Соседи по видеокарте. Пусто — не трогать; так сервер остаётся пригодным и на
 # машине, где он один.
 FREE_OLLAMA = os.environ.get("IMG_FREE_OLLAMA", "").strip().rstrip("/")
-FREE_TTS = os.environ.get("IMG_FREE_TTS", "").strip().rstrip("/")
+# Соседей по синтезу двое, и это не дублирование: студийный голос (Sonora) и
+# живой (ответы ассистента) — разные серверы на разных портах. Пока здесь стоял
+# один адрес, живой оставался на карте и в неё же грузились веса кадра: 4
+# сентября 2026 это уронило станцию — карта ушла в вытеснение видеопамяти, а
+# ядро в `svm_range_restore_work`. Список через запятую.
+FREE_TTS = [u.strip().rstrip("/")
+            for u in os.environ.get("IMG_FREE_TTS", "").split(",") if u.strip()]
+
+# Сколько видеопамяти должно остаться свободной, чтобы браться за веса. Меньше
+# — отказ, и это лучший исход из возможных: в полную карту грузится не «чуть
+# медленнее», а насмерть, вместе со станцией. Замер: модель просит около семи
+# гигабайт.
+MIN_FREE_MB = int(os.environ.get("IMG_MIN_FREE_MB", "7000"))
 
 MODEL_SUFFIXES = (".safetensors", ".ckpt")
 # Довески лежат ПОДКАТАЛОГОМ в том же томе: они меняются чаще моделей и
@@ -121,6 +133,10 @@ _lock = threading.Lock()
 # оказывалось два конвейера вместо одного (13,7 ГБ при модели в семь).
 _gen_lock = threading.Lock()
 _pipe = None
+# Идёт ли прямо сейчас подъём весов. Нужен снаружи: приложение показывает в
+# панели «Модели на карте», что модель поднимается, а не просто «выгружена» —
+# подъём занимает секунд двадцать, и всё это время карточка врала бы.
+_loading = False
 _last_use = 0.0
 _device = "неизвестно"
 _model_name = ""
@@ -390,12 +406,13 @@ def free_gpu():
                 freed.append(name)
             except Exception as e:
                 log(f"не выгрузилась {name}: {e}")
-    if FREE_TTS:
+    for url in FREE_TTS:
+        who = url.split("//")[-1]
         try:
-            _http(FREE_TTS + "/unload", b"", timeout=60)
-            freed.append("синтез речи")
+            _http(url + "/unload", b"", timeout=60)
+            freed.append("синтез речи (%s)" % who)
         except Exception as e:
-            log(f"синтез не выгрузился: {e}")
+            log(f"синтез {who} не выгрузился: {e}")
     if freed:
         log("прошу освободить карту: " + ", ".join(freed))
         # Драйвер отдаёт память не в тот же миг, когда процесс её отпустил.
@@ -412,6 +429,29 @@ def free_gpu():
     if t:
         log(f"видеопамять: занято {u / 2 ** 30:.1f} из {t / 2 ** 30:.1f} ГБ")
     return freed
+
+
+def require_room() -> None:
+    """Отказаться от загрузки, если на карте нет места. Отказ — это ответ.
+
+    Соседей просят освободиться, но просьба не приказ: Ollama может быть занята
+    ответом, сервер синтеза — фразой, а карта у станции одна. Раньше сервер в
+    таком случае всё равно брался за веса, и дальше решал уже драйвер: он
+    начинал вытеснять видеопамять в хостовую, та уходила в подкачку, и станция
+    вставала целиком — не «медленно», а до кнопки питания. Пусть лучше кадр не
+    посчитается и об этом скажут словами.
+    """
+    u, t = vram()
+    if not t:
+        return                      # драйвер молчит — решать не по чему
+    free_mb = (t - u) >> 20
+    if free_mb >= MIN_FREE_MB:
+        return
+    raise RuntimeError(
+        "на видеокарте свободно %d МБ из %d, для модели нужно %d — сосед не "
+        "отпустил карту. Кадр не считаю: загрузка в полную карту вешает "
+        "станцию. Попробуйте ещё раз через несколько секунд."
+        % (free_mb, t >> 20, MIN_FREE_MB))
 
 
 # --- конвейер --------------------------------------------------------------
@@ -466,6 +506,7 @@ def _build_pipe(path: str):
     log(f"загружаю {os.path.basename(path)} на {_device}")
     if cuda:
         free_gpu()
+        require_room()
     t0 = time.time()
     # from_single_file — потому что чекпоинты сообщества раздаются одним
     # .safetensors, а не деревом каталогов diffusers.
@@ -839,7 +880,7 @@ def _apply_loras(want):
 
 
 def load_pipe(name: str = "", loras=None):
-    global _pipe, _model_name, _loras
+    global _pipe, _model_name, _loras, _loading
     want_loras = [(str(x.get("name") or ""), float(x.get("weight", 1.0)))
                   for x in (loras or []) if isinstance(x, dict)
                   and str(x.get("name") or "")]
@@ -863,7 +904,11 @@ def load_pipe(name: str = "", loras=None):
             log(f"смена модели: {_model_name} -> {want}")
             _drop_pipe()
             _loras = []
-        _pipe = _build_pipe(path)
+        _loading = True
+        try:
+            _pipe = _build_pipe(path)
+        finally:
+            _loading = False
         # Настройка исходного планировщика — до того, как её кто-то подменил.
         try:
             _pipe._evs_sched_config = _pipe.scheduler.config
@@ -1061,6 +1106,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         return {"engine": "sdxl", "loaded": _pipe is not None,
+                "loading": _loading,
                 "device": _device,
                 "model": _model_name or pick_default(),
                 "loaded_model": _model_name if _pipe is not None else "",

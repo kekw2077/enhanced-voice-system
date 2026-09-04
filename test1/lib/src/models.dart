@@ -30,6 +30,15 @@ class ChatMessage {
   /// фразой стояла именно эта команда. Дальше та же фраза сработает без
   /// переспроса. Пусто у обычных реплик и у старых переписок.
   final String choicesFor;
+
+  /// Что из вариантов человек выбрал, и попал ли выбор в память разборов.
+  ///
+  /// Не final: сообщение уже лежит в переписке, когда по нему нажимают. Ради
+  /// этих двух полей оно и переживает нажатие — иначе кнопки остались бы
+  /// живыми навсегда, и старая реплика запускала бы команды при каждом
+  /// пролистывании истории. Выбранный вариант виден и потом, остальные гаснут.
+  String chosen;
+  bool chosenLearned;
   ChatMessage({
     String? id,
     required this.role,
@@ -39,6 +48,8 @@ class ChatMessage {
     List<String>? attachments,
     List<String>? choices,
     this.choicesFor = '',
+    this.chosen = '',
+    this.chosenLearned = false,
   }) : id = id ?? const Uuid().v4(),
        time = time ?? DateTime.now(),
        attachments = attachments ?? [],
@@ -53,6 +64,8 @@ class ChatMessage {
     'attachments': attachments,
     if (choices.isNotEmpty) 'choices': choices,
     if (choicesFor.isNotEmpty) 'choicesFor': choicesFor,
+    if (chosen.isNotEmpty) 'chosen': chosen,
+    if (chosenLearned) 'chosenLearned': true,
   };
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
     id: j['id'] as String?,

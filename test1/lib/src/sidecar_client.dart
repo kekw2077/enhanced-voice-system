@@ -483,6 +483,12 @@ class SidecarClient {
             }
             _setDevWaiters.clear();
             break;
+          case 'proc.close.result':
+            for (final c in _closeWaiters) {
+              if (!c.isCompleted) c.complete(m['ok'] == true);
+            }
+            _closeWaiters.clear();
+            break;
           case 'proc.windowed.result':
             final apps = ((m['apps'] as List?) ?? const [])
                 .whereType<Map>()
@@ -695,6 +701,7 @@ class SidecarClient {
   final List<Completer<List<Map<String, dynamic>>>> _devWaiters = [];
   final List<Completer<Map<String, dynamic>>> _setDevWaiters = [];
   final List<Completer<List<Map<String, dynamic>>>> _appWaiters = [];
+  final List<Completer<bool>> _closeWaiters = [];
 
   /// Выходы звука: все, включая невоткнутые. Невоткнутые нужны обязательно —
   /// наушники называют один раз, а втыкают каждый день.
@@ -722,6 +729,21 @@ class SidecarClient {
     _send({'type': 'proc.windowed'});
     return c.future.timeout(const Duration(seconds: 6),
         onTimeout: () => <Map<String, dynamic>>[]);
+  }
+
+  /// Закрыть программу по имени файла — так же, как крестиком в углу окна.
+  ///
+  /// Через движок, а не `taskkill`: окна видит он, и он же умеет разворачивать
+  /// рамку Store-приложения в настоящий процесс. Ответ `false` означает, что
+  /// закрывать было нечего — программа не запущена или спрятана в трей.
+  Future<bool> closeApp(String exe, {bool force = false}) {
+    final c = Completer<bool>();
+    _closeWaiters.add(c);
+    _send({'type': 'proc.close', 'exe': exe, 'force': force});
+    // Ждать приходится дольше самого закрытия: при `force` движок даёт
+    // программе пять секунд на добровольный уход и только потом завершает её.
+    return c.future
+        .timeout(const Duration(seconds: 15), onTimeout: () => false);
   }
 
   /// Перечитать rules.yaml с диска — файл правят руками, и перезапускать ради
@@ -1151,8 +1173,17 @@ class SidecarClient {
     });
   }
 
+  /// Сказать вслух. Скорость и громкость ОБЯЗАТЕЛЬНЫ намеренно.
+  ///
+  /// Раньше у них было значение по умолчанию 1.0, и места, забывшие их
+  /// передать, говорили с натуральной скоростью, что бы человек ни поставил в
+  /// настройках. Выглядело это как «настройка не работает»: часть реплик её
+  /// слушалась, часть нет. Требование указывать заставляет каждое место
+  /// решить осознанно — и «здесь ровно 1.0» становится видно в коде.
   void speak(String text,
-          {double rate = 1.0, double volume = 1.0, bool cached = false}) =>
+          {required double rate,
+          required double volume,
+          bool cached = false}) =>
       _send({
         'type': 'tts.speak',
         'text': text,
@@ -1249,6 +1280,14 @@ class VoiceAssistant {
 
   void _arm() {
     state.value = VaState.armed;
+    // Слово-активатор услышано, команда будет следующей фразой — это самый
+    // ранний момент, когда известно, что отвечать придётся голосом. Живому
+    // голосу нужно тринадцать секунд, чтобы подняться с нуля, и здесь впереди
+    // ещё вся фраза человека и её распознавание: прогрев прячется за ними.
+    // Прогрев в [_handle] остаётся — он для фраз, где активатор и команда
+    // сказаны разом, и там этого момента просто нет.
+    final app = _app;
+    if (app != null) unawaited(warmLiveVoice(app));
     _armTimer?.cancel();
     _armTimer = Timer(const Duration(seconds: 8), () {
       if (state.value == VaState.armed) {
@@ -1716,6 +1755,7 @@ class VoiceAssistant {
     if (app.ttsEngineChoice != 'clone') return;
     final base = app.liveVoiceEndpoint.trim();
     if (base.isEmpty) return;
+    if (!await _llmHoldsCard(app)) return;
     final url = base.replaceAll(RegExp(r'/+$'), '');
     try {
       await http
@@ -1723,6 +1763,38 @@ class VoiceAssistant {
           .timeout(const Duration(seconds: 5));
     } catch (_) {
       // Сервер молчит или не умеет прогрев — не беда, синтез справится сам.
+    }
+  }
+
+  /// Лежит ли языковая модель на карте станции прямо сейчас.
+  ///
+  /// Очередь на видеокарту: языковая модель первая, голос второй. Карта одна,
+  /// гемма занимает на ней около десяти гигабайт, живой голос — два с
+  /// половиной, и вдвоём они помещаются. Но подниматься одновременно им нельзя:
+  /// прогрев затевается ровно в тот момент, когда языковая модель вот-вот
+  /// понадобится, и лезть впереди неё значит отодвинуть сам ответ, ради
+  /// которого голос и греют.
+  ///
+  /// Поэтому: модель на карте — греем, модели нет — молчим, и голос поднимется
+  /// сам на первой же реплике, когда модель уже ответила. Спрашиваем тем же
+  /// `/api/ps`, которым `StationMonitor` смотрит, что лежит на карте.
+  ///
+  /// Локальная модель считается на этом компьютере — соседей на карте станции
+  /// нет, и очередь ни к чему.
+  Future<bool> _llmHoldsCard(AppState app) async {
+    if (app.isLocalModel(app.selectedModel)) return true;
+    final srv = app.serverUrl.trim();
+    if (srv.isEmpty) return true;
+    final u = srv.startsWith('http') ? srv : 'http://$srv';
+    try {
+      final r = await http
+          .get(Uri.parse('$u/api/ps'))
+          .timeout(const Duration(seconds: 3));
+      if (r.statusCode != 200) return false;
+      final list = (jsonDecode(r.body) as Map)['models'];
+      return list is List && list.isNotEmpty;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -1755,17 +1827,22 @@ class VoiceAssistant {
   /// [said] — фраза, на которую отвечали этим выбором. Если она известна, выбор
   /// запоминается: в следующий раз та же фраза запустит эту же команду сразу,
   /// без переспроса и без обращения к модели.
-  Future<void> runChosen(AppState app, VoiceCommand cmd,
+  /// Возвращает true, если выбор попал в память разборов: об этом сообщают в
+  /// самой переписке, и обещать запоминание там, где его не было, нельзя.
+  Future<bool> runChosen(AppState app, VoiceCommand cmd,
       {String said = ''}) async {
     final key = _learnKey(said);
+    var learned = false;
     if (key.isNotEmpty && key != _learnKey(cmd.phrase)) {
       // Совпадающий ключ не запоминаем: там каталог и так справится, а запись
       // была бы мёртвой — до неё дело просто не дойдёт.
       app.learnCommand(key, cmd.phrase);
+      learned = true;
       unawaited(appendLog(
           'commands', 'ЗАПОМНИЛ: «$said» -> ${cmd.phrase}'));
     }
     await _runCommand(app, cmd, utterance: cmd.phrase);
+    return learned;
   }
 
   /// Ключ запомненного разбора: та же нормализация, что и у сравнения с
@@ -1903,8 +1980,14 @@ class VoiceAssistant {
     final micVia = SidecarClient.instance.lastSttDevice;
     unawaited(appendLog(
         'commands',
+        // Сказанное пишем и при удаче, а не только при отказе. Без него
+        // журнал отвечал на вопрос «что запустилось», но не на «почему
+        // именно это»: строка «открой браузер -> OK» одинакова и когда
+        // фразу услышали верно, и когда «закрой браузер» совпало с ней по
+        // сходству. Разобрать задним числом было нечем.
         '${cmd.phrase} -> [${cmd.type.name}] ${cmd.value} : '
-        '${ok ? 'OK' : 'FAIL'}${micVia.isNotEmpty ? ' (mic: $micVia)' : ''}'));
+        '${ok ? 'OK' : 'FAIL'}${micVia.isNotEmpty ? ' (mic: $micVia)' : ''}'
+        '${utterance.trim().isEmpty || utterance.trim() == cmd.phrase ? '' : ' | услышано: «$utterance»'}'));
   }
 
   // Best catalog match for a spoken phrase. Returns the matched command (null

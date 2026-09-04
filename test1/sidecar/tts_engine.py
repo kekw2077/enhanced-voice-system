@@ -720,11 +720,25 @@ class TtsEngine:
                          args=(self._apply_seq,), daemon=True).start()
 
     def _stale(self, seq) -> bool:
-        """Успел ли выбор смениться, пока этот поток грузил движок."""
+        """Успел ли выбор смениться, пока этот поток грузил движок.
+
+        Уходя, поток обязан назвать приложению тот движок, который играет на
+        самом деле. Причина не теоретическая: перед загрузкой поток говорит
+        «загружаюсь», а потом обнаруживает, что выбор сменился, и молча
+        уходит — последним словом остаётся его «piper, загружаюсь», хотя
+        активен клон. Карточка озвучки показывает именно последнее сказанное,
+        и в ней висел Piper с подписью «клон не отвечает» при работающем
+        клоне. Порядок при этом неважен: успел победитель отчитаться раньше —
+        мы повторим его же имя, не успел — он скажет своё следом.
+        """
         if seq is None or seq == self._apply_seq:
             return False
         _log(f"apply: поколение {seq} устарело (текущее {self._apply_seq}) — "
              f"результат не применяю")
+        try:
+            self._emit_status(self._active_name, self._voice, "ready")
+        except Exception:
+            pass
         return True
 
     def _apply_blocking(self, seq=None) -> None:
@@ -755,9 +769,17 @@ class TtsEngine:
             try:
                 if not eng.is_loaded:
                     eng.load()
+                # Проверка поколения нужна и здесь. Раньше её тут не было —
+                # единственное место, где активный движок пишется из
+                # переменной, а не из поля, и потому пропущенное при разборе
+                # прошлой гонки. Отсюда получалось обратное прежнему: медленно
+                # поднявшийся клон затирал более свежий выбор, и приложению
+                # оставалось сказанное первым.
+                self._switching = False
+                if self._stale(seq):
+                    return
                 self._active = eng
                 self._active_name = want
-                self._switching = False
                 _log(f"apply: '{want}' ACTIVE")
                 self._emit_status(want, self._voice, "ready")
             except Exception as e:
@@ -785,11 +807,16 @@ class TtsEngine:
         try:
             if not self._piper.is_loaded:
                 self._piper.load()
+            # Снимаем «переключаюсь» ДО проверки поколения, а не после. Иначе
+            # устаревший поток уходил, оставив флаг поднятым навсегда: он уже
+            # успел сказать приложению «загружаюсь», а поправить это было
+            # некому — и в карточке озвучки висел движок, который никто не
+            # выбирал. Флаг общий на все потоки, снять его обязан любой.
+            self._switching = False
             if self._stale(seq):
                 return
             self._active = self._piper
             self._active_name = "piper"
-            self._switching = False
             self._emit_status("piper", self._voice, "ready")
         except Exception as e:  # rollback to the system voice
             self._switching = False

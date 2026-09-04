@@ -1943,6 +1943,7 @@ class AnimaCommandsTabState extends State<AnimaCommandsTab> {
     VoiceCommandType.system => app.t('typeSystem'),
     VoiceCommandType.media => app.t('typeMedia'),
     VoiceCommandType.appVolume => app.t('typeAppVolume'),
+    VoiceCommandType.appClose => app.t('typeAppClose'),
   };
 
   Future<void> _add(AppState app) async {
@@ -1982,10 +1983,32 @@ class AnimaCommandsTabState extends State<AnimaCommandsTab> {
       items: [
         PopupMenuItem(value: 'edit', child: Text(app.t('ncEdit'))),
         PopupMenuItem(value: 'run', child: Text(app.t('run'))),
+        if (c.type == VoiceCommandType.app)
+          PopupMenuItem(value: 'close', child: Text(app.t('cmdAddClose'))),
         PopupMenuItem(value: 'delete', child: Text(app.t('delete'))),
       ],
     );
     if (v == 'edit') await _edit(app, c);
+    if (v == 'close') {
+      final exe = await resolveExeName(c.value);
+      if (!mounted) return;
+      final cmd = await showDialog<VoiceCommand>(
+        context: context,
+        builder: (_) => exe.isEmpty
+            ? _AddCommandWizard(app: app)
+            : _AddCommandWizard(
+                app: app,
+                asNew: true,
+                initial: VoiceCommand(
+                  phrase: closePhraseFor(app, c.phrase),
+                  type: VoiceCommandType.appClose,
+                  value: c.phrase,
+                  process: exe,
+                ),
+              ),
+      );
+      if (cmd != null) app.addVoiceCommand(cmd);
+    }
     if (v == 'delete') app.removeVoiceCommand(c);
     if (v == 'run') {
       final ok = await CommandExecutor.instance.execute(c);

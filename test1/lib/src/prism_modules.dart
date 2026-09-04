@@ -30,12 +30,12 @@ class _PrismModules extends StatefulWidget {
 }
 
 class _PrismModulesState extends State<_PrismModules> {
-  // Кольцевой буфер загрузки процессора на минуту. Своего графика у приложения
-  // не было — SystemMonitor отдаёт только мгновенное значение, поэтому историю
-  // копим здесь, пока экран открыт. Уходя, теряем: врать про «последние 60 с»
-  // сразу после открытия нельзя, и график просто начинается с короткого хвоста.
-  static const _spanSeconds = 60;
-  final List<double> _cpuTrack = [];
+  // Автообновление — это опрос станции и перечитывание журнала, пока экран
+  // открыт. Раньше здесь копилась ещё и минутная история загрузки процессора
+  // под график; графика больше нет, а с ним ушёл и посекундный таймер: панели
+  // моделей секунда ни к чему, ей важно другое — успеть показать, что модель
+  // уже снялась с карты.
+  static const _period = Duration(seconds: 10);
   Timer? _sampler;
   bool _auto = true;
 
@@ -45,8 +45,7 @@ class _PrismModulesState extends State<_PrismModules> {
   @override
   void initState() {
     super.initState();
-    _sample();
-    _sampler = Timer.periodic(const Duration(seconds: 1), (_) => _sample());
+    _sampler = Timer.periodic(_period, (_) => _refresh());
     unawaited(_loadLog());
   }
 
@@ -56,13 +55,12 @@ class _PrismModulesState extends State<_PrismModules> {
     super.dispose();
   }
 
-  void _sample() {
-    if (!_auto || !mounted) return;
-    final v = SystemMonitor.instance.stats.value.cpu;
-    setState(() {
-      _cpuTrack.add(v.clamp(0.0, 1.0));
-      if (_cpuTrack.length > _spanSeconds) _cpuTrack.removeAt(0);
-    });
+  /// Перечитать станцию и журнал. По таймеру — только при включённом
+  /// автообновлении; кнопкой «Обновить» — всегда, на то она и кнопка.
+  void _refresh({bool force = false}) {
+    if (!mounted || (!_auto && !force)) return;
+    unawaited(StationMonitor.instance.refresh(context.read<AppState>()));
+    unawaited(_loadLog());
   }
 
   Future<void> _loadLog() async {
@@ -100,12 +98,7 @@ class _PrismModulesState extends State<_PrismModules> {
               _PrismGhostButton(
                 d: PrismIcons.refresh,
                 label: app.t('ncRefresh'),
-                onTap: () {
-                  _sample();
-                  unawaited(StationMonitor.instance
-                      .refresh(context.read<AppState>()));
-                  unawaited(_loadLog());
-                },
+                onTap: () => _refresh(force: true),
               ),
             ],
           ),
@@ -116,18 +109,18 @@ class _PrismModulesState extends State<_PrismModules> {
           // в полтораста пикселей не читается.
           LayoutBuilder(
             builder: (context, c) {
-              final chart = _PrismCpuChart(track: _cpuTrack, span: _spanSeconds);
+              const models = _PrismModelsCard();
               final log = _PrismLogCard(
                   lines: _log, loading: _logLoading, onOpen: widget.onLog);
               if (c.maxWidth < 820) {
                 return Column(
-                  children: [chart, const SizedBox(height: 16), log],
+                  children: [models, const SizedBox(height: 16), log],
                 );
               }
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: chart),
+                  const Expanded(child: models),
                   const SizedBox(width: 16),
                   SizedBox(width: 300, child: log),
                 ],
@@ -260,6 +253,7 @@ class _PrismSubsystemCards extends StatelessWidget {
         sc.deviceStatus,
         sc.gpuInfo,
         StationMonitor.instance.stats,
+        VoiceAssistant.instance.lastHeard,
       ]),
       builder: (context, _) {
         final cards = [
@@ -388,6 +382,12 @@ class _PrismSubsystemCards extends StatelessWidget {
     final (engine, sub) = animaTtsEngineLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
     final ok = connected && sc.ttsAvailable;
+    final st = StationMonitor.instance.stats.value;
+    // Строки про карту и образец — только у клон-голоса. У Piper и системного
+    // ни сервера, ни образца нет вовсе, и пустые подписи там были бы враньём.
+    final clone = app.ttsEngineChoice == 'clone';
+    final live = app.liveVoiceEndpoint.trim();
+    final sample = app.voiceSamplePath.trim();
     return _PrismModuleCard(
       title: app.t('navSpeech'),
       status: ok ? app.t('nxOnline') : app.t('nxOffline'),
@@ -396,6 +396,18 @@ class _PrismSubsystemCards extends StatelessWidget {
       rows: [
         _PrismModuleRow(app.t('prismEngine'), engine, accent: true),
         _PrismModuleRow(app.t('prismDetails'), sub),
+        if (clone && live.isNotEmpty) ...[
+          _PrismModuleRow(
+              app.t('prismVoiceModel'), _prismServiceLabel(app, st.live)),
+          _PrismModuleRow(app.t('prismServer'), _prismHostPort(live),
+              accent: true),
+        ],
+        if (clone && sample.isNotEmpty)
+          _PrismModuleRow(app.t('prismSample'), _prismFileName(sample)),
+        _PrismModuleRow(
+            app.t('prismSpeech'),
+            '${app.ttsRate.toStringAsFixed(1)}× · '
+                '${(app.ttsVolume * 100).round()} %'),
       ],
     );
   }
@@ -419,9 +431,50 @@ class _PrismSubsystemCards extends StatelessWidget {
         _PrismModuleRow(app.t('prismEngine'), sttEngineLabel(app), accent: true),
         _PrismModuleRow(app.t('prismRuntime'),
             '${sttRuntimeLabel(app)} · $device'),
+        // Адрес — только когда распознаёт чужой сервер: у своих движков он
+        // никакой, и строка «Сервер: —» ничего не сообщает.
+        if (app.sttSidecarEngine == 'remote' &&
+            app.sttRemoteUrl.trim().isNotEmpty)
+          _PrismModuleRow(
+              app.t('prismServer'), _prismHostPort(app.sttRemoteUrl),
+              accent: true),
+        _PrismModuleRow(app.t('prismDenoise'), switch (app.denoiseMode) {
+          'off' => app.t('prismDenoiseOff'),
+          'strong' => app.t('prismDenoiseStrong'),
+          _ => app.t('prismDenoiseLight'),
+        }),
+        // Слово-активатор не участвует при удержании клавиши: там вся фраза и
+        // есть команда, и показывать его значило бы обещать несуществующее.
+        if (app.listenMode != 'ptt' && app.cmdMode == 'wakeword')
+          _PrismModuleRow(app.t('cmdActivator'), app.wakeWord, accent: true),
+        if (VoiceAssistant.instance.lastHeard.value.trim().isNotEmpty)
+          _PrismModuleRow(app.t('prismHeard'),
+              VoiceAssistant.instance.lastHeard.value.trim()),
       ],
     );
   }
+
+  /// «100.79.130.7:8762» из «http://100.79.130.7:8762/»: в карточке важен
+  /// адрес, а не схема — на неё ушла бы половина строки.
+  static String _prismHostPort(String raw) =>
+      raw.trim().replaceFirst(RegExp(r'^https?://'), '').split('/').first;
+
+  /// Имя файла образца без пути: путь в строку всё равно не влезает.
+  static String _prismFileName(String path) =>
+      path.trim().split(RegExp(r'[\\/]')).last;
+
+  /// Состояние соседа по карте — теми же словами, что и панель «Модели на
+  /// видеокарте станции». Одно и то же состояние не должно называться на двух
+  /// экранах по-разному: человек сверяет их взглядом, а не по коду.
+  static String _prismServiceLabel(AppState app, StationService s) => !s.online
+      ? app.t('prismModelOffline')
+      : s.loading
+          ? app.t('prismModelLoading')
+          : s.paused
+              ? app.t('prismModelPaused')
+              : s.loaded
+                  ? app.t('prismModelOn')
+                  : app.t('prismModelOff');
 
   static void _openSettings(BuildContext c, String page) =>
       Navigator.of(c).push(
@@ -573,61 +626,269 @@ class _PrismModuleCard extends StatelessWidget {
 }
 
 // --------------------------------------------------------------------------
-// ГРАФИК И ЖУРНАЛ
+// МОДЕЛИ НА КАРТЕ И ЖУРНАЛ
 // --------------------------------------------------------------------------
 
-class _PrismCpuChart extends StatelessWidget {
-  const _PrismCpuChart({required this.track, required this.span});
-  final List<double> track;
-  final int span;
+/// Кто занимает видеокарту станции — и рычаг к каждому.
+///
+/// На этом месте был график загрузки процессора. Он ничего не решал: число
+/// красивое, а действий по нему не бывает. Карта у станции одна, и решения на
+/// ней принимают каждый день — панель показывает, кто её держит, и даёт снять
+/// или поднять любого руками.
+///
+/// Обычно этим занимается [GpuArbiter] сам, и панель не нужна. Нужна она
+/// тогда, когда сам он не справился: сосед не отпустил память, генерация
+/// ответила «нет места», станция ушла в вытеснение видеопамяти. Раньше в таком
+/// случае оставалось идти на станцию через ssh.
+class _PrismModelsCard extends StatefulWidget {
+  const _PrismModelsCard();
+
+  @override
+  State<_PrismModelsCard> createState() => _PrismModelsCardState();
+}
+
+class _PrismModelsCardState extends State<_PrismModelsCard> {
+  /// Чей запрос сейчас в пути. Пока он идёт, обе кнопки этой строки погашены:
+  /// подъём модели занимает секунды, и второй щелчок за это время означал бы
+  /// две загрузки подряд на одну карту.
+  StationModel? _busy;
+
+  /// Что именно затеяли и когда. Секунды идут в подпись: доли процента у
+  /// подъёма весов взять неоткуда — ни один из серверов их не считает, — а
+  /// «поднимаю… 8 с» отвечает на настоящий вопрос человека: не завис ли.
+  bool _busyLoad = true;
+  DateTime? _since;
+  Timer? _tick;
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  /// Пока что-то поднимается или выгружается — опрашиваем станцию чаще
+  /// обычного. Общий опрос ходит раз в пятнадцать секунд, и на нём переход
+  /// «поднимается → на карте» показался бы с опозданием почти на полминуты.
+  void _watch() {
+    _tick?.cancel();
+    _tick = Timer.periodic(const Duration(seconds: 2), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() {});                      // счётчик секунд
+      final st = StationMonitor.instance.stats.value;
+      final busy = _busy != null ||
+          st.live.loading ||
+          st.studio.loading ||
+          st.images.loading;
+      if (!busy) {
+        t.cancel();
+        _tick = null;
+        _since = null;
+        return;
+      }
+      unawaited(StationMonitor.instance.refresh(context.read<AppState>()));
+    });
+  }
+
+  Future<void> _set(StationModel which, bool load) async {
+    final app = context.read<AppState>();
+    setState(() {
+      _busy = which;
+      _busyLoad = load;
+      _since = DateTime.now();
+    });
+    _watch();
+    try {
+      await GpuArbiter.instance.setModelLoaded(app, which, load);
+    } finally {
+      if (mounted) setState(() => _busy = null);
+    }
+  }
+
+  /// «8 с» — сколько уже идёт начатое. Пусто, пока ничего не начиналось.
+  String get _elapsed {
+    final t = _since;
+    if (t == null) return '';
+    return ' ${DateTime.now().difference(t).inSeconds} с';
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final r = _ramp(context);
     return PrismPanel(
       radius: 24,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       shadow: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+      child: AnimatedBuilder(
+        animation: StationMonitor.instance.stats,
+        builder: (context, _) {
+          final st = StationMonitor.instance.stats.value;
+          final vram = st.vramTotalMb > 0;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(app.t('prismCpuLoad'),
-                  style: PrismType.label.copyWith(
-                      color: _txt(context),
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Text(
-                // Пишем, сколько НА САМОМ ДЕЛЕ накоплено, а не «последние 60 с»:
-                // сразу после открытия экрана в графике три секунды.
-                '${track.length} ${app.t('secShort')}',
-                style: PrismType.numeric
-                    .copyWith(color: _faint(context), fontSize: 11),
+              Row(
+                children: [
+                  Text(app.t('prismModels'),
+                      style: PrismType.label.copyWith(
+                          color: _txt(context),
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  if (vram)
+                    Text(
+                      '${(st.vramUsedMb / 1024).toStringAsFixed(1)} / '
+                      '${(st.vramTotalMb / 1024).round()} ГБ',
+                      style: PrismType.numeric.copyWith(
+                          color: _sub(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600),
+                    ),
+                ],
               ),
+              if (vram) ...[
+                const SizedBox(height: 10),
+                _PrismVramBar(
+                    fraction: (st.vramUsedMb / st.vramTotalMb).clamp(0.0, 1.0)),
+              ],
+              const SizedBox(height: 16),
+              // У языковой модели «онлайн» ничего не значит: сервер Ollama жив
+              // всегда, а модель на карте — нет. Поэтому её состояние читается
+              // из списка резидентных моделей, а не из ответа сервера.
+              _row(
+                context,
+                app,
+                StationModel.llm,
+                app.t('prismModelLlm'),
+                st.model.isEmpty
+                    ? animaShortModel(app.selectedModel)
+                    : '${animaShortModel(st.model)} · '
+                        '${(st.modelVramMb / 1024).toStringAsFixed(1)} ГБ',
+                online: st.ok && app.serverUrl.trim().isNotEmpty,
+                loaded: st.model.isNotEmpty,
+              ),
+              _row(context, app, StationModel.liveVoice,
+                  app.t('prismModelLive'), app.t('prismModelLiveNote'),
+                  online: st.live.online,
+                  loaded: st.live.loaded,
+                  loading: st.live.loading,
+                  paused: st.live.paused),
+              _row(context, app, StationModel.studioVoice,
+                  app.t('prismModelStudio'), app.t('prismModelStudioNote'),
+                  online: st.studio.online,
+                  loaded: st.studio.loaded,
+                  loading: st.studio.loading,
+                  paused: st.studio.paused),
+              _row(context, app, StationModel.images,
+                  app.t('prismModelImages'), app.t('prismModelImagesNote'),
+                  online: st.images.online,
+                  loaded: st.images.loaded,
+                  loading: st.images.loading),
+              const SizedBox(height: 4),
+              Text(app.t('prismModelsHint'),
+                  style: PrismType.caption
+                      .copyWith(color: _faint(context), fontSize: 11.5)),
             ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            height: 120,
-            child: track.length < 2
-                ? Center(
-                    child: Text(app.t('prismCollecting'),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, AppState app, StationModel which,
+      String label, String note,
+      {required bool online,
+      required bool loaded,
+      bool paused = false,
+      bool loading = false}) {
+    final busy = _busy == which;
+    // «Поднимается» может прийти и со стороны: голос греет сам ассистент перед
+    // ответом, картинки поднимает первый же кадр с телефона. Поэтому признак
+    // берётся и от сервера (`loading`), и от собственной нажатой кнопки.
+    final working = busy || loading;
+    final (state, color) = working
+        ? (
+            (busy && !_busyLoad
+                    ? app.t('prismModelUnloading')
+                    : app.t('prismModelLoading')) +
+                (busy ? _elapsed : ''),
+            _warn(context)
+          )
+        : !online
+            ? (app.t('prismModelOffline'), _faint(context))
+            : paused
+                ? (app.t('prismModelPaused'), _sub(context))
+                : loaded
+                    ? (app.t('prismModelOn'), _success(context))
+                    : (app.t('prismModelOff'), _sub(context));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: PrismType.body
+                              .copyWith(color: _txt(context), fontSize: 13)),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration:
+                          BoxDecoration(color: color, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(state,
                         style: PrismType.caption
-                            .copyWith(color: _faint(context))),
-                  )
-                : CustomPaint(
-                    size: Size.infinite,
-                    painter: _PrismSparkPainter(
-                      track: track,
-                      span: span,
-                      a1: r.a1,
-                      a2: r.a2,
-                      grid: _stroke(context),
+                            .copyWith(color: color, fontSize: 11.5)),
+                  ],
+                ),
+                if (note.isNotEmpty)
+                  Text(note,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: PrismType.caption.copyWith(
+                          color: _faint(context),
+                          fontFamily: kPrismMono,
+                          fontSize: 10.5)),
+                if (working) ...[
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      minHeight: 3,
+                      backgroundColor: _prismChip(context),
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(_ramp(context).a2),
                     ),
                   ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          _PrismGhostButton(
+            label: app.t('prismModelLoad'),
+            onTap: !online || loaded || working
+                ? null
+                : () => unawaited(_set(which, true)),
+          ),
+          const SizedBox(width: 8),
+          _PrismGhostButton(
+            label: app.t('prismModelUnload'),
+            onTap: !online || !loaded || working
+                ? null
+                : () => unawaited(_set(which, false)),
           ),
         ],
       ),
@@ -635,77 +896,38 @@ class _PrismCpuChart extends StatelessWidget {
   }
 }
 
-class _PrismSparkPainter extends CustomPainter {
-  _PrismSparkPainter({
-    required this.track,
-    required this.span,
-    required this.a1,
-    required this.a2,
-    required this.grid,
-  });
-
-  final List<double> track;
-  final int span;
-  final Color a1, a2, grid;
+/// Полоска занятости видеопамяти станции — та же, что в строках метрик, но во
+/// всю ширину карточки: по ней и решают, влезет ли ещё одна модель.
+class _PrismVramBar extends StatelessWidget {
+  const _PrismVramBar({required this.fraction});
+  final double fraction;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    // Три горизонтали — 0, 50 и 100 %. Больше линий на графике в 120 пикселей
-    // читаются как сетка, а не как шкала.
-    final line = Paint()
-      ..color = grid
-      ..strokeWidth = 1;
-    for (var i = 0; i <= 2; i++) {
-      final y = size.height * i / 2;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
-    }
-
-    // График всегда занимает всю ширину, но точки ставятся по своей позиции в
-    // окне: пока минута не набралась, линия идёт слева и обрывается там, где
-    // кончились данные, а не растягивается на весь холст выдуманным шагом.
-    final step = size.width / (span - 1);
-    Offset at(int i) =>
-        Offset(i * step, size.height * (1 - track[i].clamp(0.0, 1.0)));
-
-    final path = Path()..moveTo(at(0).dx, at(0).dy);
-    for (var i = 1; i < track.length; i++) {
-      path.lineTo(at(i).dx, at(i).dy);
-    }
-
-    final last = at(track.length - 1);
-    final fill = Path.from(path)
-      ..lineTo(last.dx, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(
-      fill,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [a2.withValues(alpha: 0.28), a1.withValues(alpha: 0.02)],
-        ).createShader(Offset.zero & size),
+  Widget build(BuildContext context) {
+    final r = _ramp(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(5),
+      child: Stack(
+        children: [
+          Container(height: 6, color: _prismChip(context)),
+          Positioned.fill(
+            child: AnimatedFractionallySizedBox(
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOutCubic,
+              alignment: Alignment.centerLeft,
+              widthFactor: fraction.clamp(0.0, 1.0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [r.a1, r.a2]),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
-
-    canvas.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..shader = LinearGradient(colors: [a1, a2])
-            .createShader(Offset.zero & size),
-    );
-
-    canvas.drawCircle(last, 3.2, Paint()..color = a2);
   }
-
-  @override
-  bool shouldRepaint(_PrismSparkPainter old) =>
-      old.track.length != track.length ||
-      old.a1 != a1 ||
-      (track.isNotEmpty && old.track.isNotEmpty && old.track.last != track.last);
 }
 
 class _PrismLogCard extends StatelessWidget {

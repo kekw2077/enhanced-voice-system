@@ -564,6 +564,9 @@ class AppState extends ChangeNotifier {
   // the model. Keyless DuckDuckGo by default; an optional Tavily/Brave API key
   // gives more reliable results.
   bool webSearchEnabled = false;
+  /// Свой SearXNG на станции. Не ключ, а адрес: сервер спрашивает чужие
+  /// поисковики сам, и платить за него нечем.
+  String searxngUrl = '';
   String tavilyKey = '';
   String braveKey = '';
   // Google Programmable Search: нужен и ключ, и ID созданного движка (cx).
@@ -1027,6 +1030,7 @@ class AppState extends ChangeNotifier {
     barCount = prefs.getInt('barCount') ?? 7;
     autoUpdateCheck = prefs.getBool('autoUpdateCheck') ?? true;
     webSearchEnabled = prefs.getBool('webSearchEnabled') ?? false;
+    searxngUrl = prefs.getString('searxngUrl') ?? '';
     tavilyKey = prefs.getString('tavilyKey') ?? '';
     braveKey = prefs.getString('braveKey') ?? '';
     googleKey = prefs.getString('googleKey') ?? '';
@@ -1189,7 +1193,8 @@ class AppState extends ChangeNotifier {
         cmdEnabled, chatEnabled, vizType, showVizBg,
         showPartial, overlayMode, startupShowWindow, overlaySize, vizAccent,
         orbSize, orbSpeed,
-        barCount, autoUpdateCheck, webSearchEnabled, tavilyKey, braveKey,
+        barCount, autoUpdateCheck, webSearchEnabled, searxngUrl,
+        tavilyKey, braveKey,
         googleKey, googleCx, yandexKey, yandexFolder, searchProvider,
         voiceResponses, announceReady, ttsPiperVoice, ttsRate, ttsVolume,
         ttsInterpEnabled, ttsInterpMode, ttsInterpModel, ttsEngineChoice,
@@ -1362,6 +1367,7 @@ class AppState extends ChangeNotifier {
     await prefs.setInt('barCount', barCount);
     await prefs.setBool('autoUpdateCheck', autoUpdateCheck);
     await prefs.setBool('webSearchEnabled', webSearchEnabled);
+    await prefs.setString('searxngUrl', searxngUrl);
     await prefs.setString('tavilyKey', tavilyKey);
     await prefs.setString('braveKey', braveKey);
     await prefs.setString('googleKey', googleKey);
@@ -1674,6 +1680,7 @@ class AppState extends ChangeNotifier {
     barCount = prefs.getInt('barCount') ?? 7;
     autoUpdateCheck = prefs.getBool('autoUpdateCheck') ?? true;
     webSearchEnabled = prefs.getBool('webSearchEnabled') ?? false;
+    searxngUrl = prefs.getString('searxngUrl') ?? '';
     tavilyKey = prefs.getString('tavilyKey') ?? '';
     braveKey = prefs.getString('braveKey') ?? '';
     googleKey = prefs.getString('googleKey') ?? '';
@@ -3080,6 +3087,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Запомнить, какой из предложенных вариантов человек выбрал.
+  ///
+  /// Сообщение остаётся в переписке навсегда, а кнопки в нём — нет: после
+  /// выбора они гаснут. Иначе старая реплика запускала бы команду каждый раз,
+  /// когда до неё долистают, — и это второй запуск, о котором никто не просил.
+  void markChoice(ChatMessage m, String phrase, {required bool learned}) {
+    if (m.chosen.isNotEmpty) return;
+    m.chosen = phrase;
+    m.chosenLearned = learned;
+    unawaited(_save());
+    notifyListeners();
+  }
+
   /// Model name for the outgoing remote request, applying the optional per-mode
   /// override. A turn counts as "search" when live web results were pulled for
   /// it (pendingWebContext) — the only search-vs-chat distinction this app has.
@@ -3673,6 +3693,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setSearxngUrl(String v) {
+    searxngUrl = v.trim();
+    _save();
+    notifyListeners();
+  }
+
   void setTavilyKey(String v) {
     tavilyKey = v.trim();
     _save();
@@ -4088,6 +4114,47 @@ class AppState extends ChangeNotifier {
   // "открой <name>" per app when the model is unavailable or replies badly.
   // Apps already mapped to a command are skipped so a repeat run only offers new
   // ones (§1.8).
+  /// Подсказки на ЗАКРЫТИЕ — к тем командам запуска, что уже заведены.
+  ///
+  /// Названия здесь не выдумываются: берётся фраза, которую человек уже
+  /// придумал сам («открой телегу»), и меняется глагол — «закрой телегу».
+  /// Модель участвует ровно в той мере, в какой участвовала при заведении
+  /// запуска, и второй раз её об этом же спрашивать незачем.
+  ///
+  /// Собираются только те, чью цель удалось развернуть до имени .exe: у
+  /// приложения из Microsoft Store пути нет, и такую команду заводят из мастера
+  /// выбором из запущенного.
+  Future<List<CmdSuggestion>> _closeSuggestions() async {
+    final launches = voiceCommands
+        .where((c) => c.type == VoiceCommandType.app && c.enabled)
+        .toList();
+    if (launches.isEmpty) return const [];
+    final haveClose = voiceCommands
+        .where((c) => c.type == VoiceCommandType.appClose)
+        .map((c) => c.process.toLowerCase())
+        .toSet();
+    // Ярлык разворачивается через PowerShell, и это сотни миллисекунд на
+    // каждый: спрашиваем разом, а не по очереди, и не больше дюжины — список
+    // подсказок всё равно читают глазами.
+    final take = launches.take(12).toList();
+    final exes = await Future.wait(take.map((c) => resolveExeName(c.value)));
+    final out = <CmdSuggestion>[];
+    for (var i = 0; i < take.length; i++) {
+      final exe = exes[i];
+      if (exe.isEmpty || haveClose.contains(exe)) continue;
+      final c = take[i];
+      final name = c.phrase.trim();
+      out.add(CmdSuggestion(
+        ProgramEntry(name, c.value, c.value),
+        closePhraseFor(this, c.phrase),
+        selected: false, // закрытие предлагают, а не навязывают
+        type: VoiceCommandType.appClose,
+        process: exe,
+      ));
+    }
+    return out;
+  }
+
   Future<List<CmdSuggestion>> buildCommandSuggestions({int topN = 20}) async {
     final apps = (await listInstalledPrograms())
         .where((p) => !SuggestionEngine.isJunk(p))
@@ -4107,6 +4174,7 @@ class AppState extends ChangeNotifier {
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
     final top = candidates.take(topN).toList();
+    final closes = await _closeSuggestions();
     final anyUsage = top.any((p) => SuggestionEngine.scoreFor(p, usage) > 0);
 
     Map<String, List<String>>? ai;
@@ -4131,6 +4199,7 @@ class AppState extends ChangeNotifier {
         usage: score,
       ));
     }
+    out.addAll(closes);
     SuggestionEngine.resolveCollisions(out, voiceCommands);
     return out;
   }

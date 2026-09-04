@@ -165,6 +165,12 @@ class CommandExecutor {
           return _system(c.value);
         case VoiceCommandType.media:
           return _media(c.value);
+        case VoiceCommandType.appClose:
+          // Закрывает движок: окна видит он, и он же разворачивает рамку
+          // Store-приложения в настоящий процесс. Просьба, а не завершение:
+          // программа успевает спросить про несохранённое.
+          return SidecarClient.instance
+              .closeApp(c.process, force: c.closeForce);
         case VoiceCommandType.appVolume:
           // Per-app volume needs the sidecar (Core Audio) and the spoken number,
           // so it is dispatched via AppState.applyAppVolume, not this launcher.
@@ -853,6 +859,26 @@ String _sttEngineNow(AppState app) {
 /// через kernel32, а здесь два чужих сервера по сети. Смешивать их в одну
 /// метрику нельзя — именно из-за такой путаницы карточка «Нейросеть» показывала
 /// местную карту под моделью, которая считается за сто километров отсюда.
+/// Сосед по карте станции: жив ли сервер и держит ли он сейчас модель.
+///
+/// Одного «онлайн» мало. Сервер отвечает всегда — он лёгкий, пока веса не
+/// подняты, — и вопрос не в том, работает ли он, а в том, занимает ли он карту
+/// прямо сейчас. Карта одна на всех, и решение «выгрузить руками» принимают
+/// именно по этому признаку.
+class StationService {
+  const StationService({
+    this.online = false,
+    this.loaded = false,
+    this.loading = false,
+    this.paused = false,
+  });
+
+  /// `loading` — веса поднимаются прямо сейчас. Это состояние приходится
+  /// показывать отдельно: подъём занимает от десяти до тридцати секунд, и всё
+  /// это время «выгружена» была бы неправдой — как и «на карте».
+  final bool online, loaded, loading, paused;
+}
+
 class StationStats {
   const StationStats({
     this.ok = false,
@@ -865,6 +891,9 @@ class StationStats {
     this.vramTotalMb = 0,
     this.model = '',
     this.modelVramMb = 0,
+    this.live = const StationService(),
+    this.studio = const StationService(),
+    this.images = const StationService(),
   });
 
   /// Ответил ли хоть кто-нибудь. Ложь — рисовать нечего: полоска на выдуманном
@@ -881,6 +910,10 @@ class StationStats {
   /// Языковая модель, лежащая на карте станции, и сколько она занимает.
   final String model;
   final int modelVramMb;
+
+  /// Кто ещё стоит на карте: живой голос, студийный и генератор картинок.
+  /// Нужны они панели в «Модулях», где этим управляют руками.
+  final StationService live, studio, images;
 }
 
 class StationMonitor {
@@ -924,10 +957,12 @@ class StationMonitor {
 
   /// Спросить станцию. Источников два, и это не дублирование.
   ///
-  /// Числа берёт агент станции (`pc-agent`, порт 8765) — он для того и заведён,
-  /// им же пользуется телефон, и живёт он отдельно от голоса и картинок. Имена
-  /// железа он не считает: в его ответе есть загрузка процессора, но не его
-  /// название. Их добирает сервер живого голоса, который и так на связи.
+  /// Числа и имена железа берёт агент станции (`pc-agent`, порт 8765) — он для
+  /// того и заведён, им же пользуется телефон, и живёт он отдельно от голоса и
+  /// картинок. Названия процессора и карты приходили когда-то от сервера живого
+  /// голоса, но тот сменился и блок `host` больше не отдаёт: строка станции
+  /// осталась без имени процессора вовсе. Имена переехали к агенту, голос
+  /// остался запасным источником.
   ///
   /// Любой из двух может молчать. Тогда пропадают только те строки, которых
   /// нет, — а не весь блок.
@@ -940,6 +975,9 @@ class StationMonitor {
       var ramUsed = 0, ramTotal = 0, vramUsed = 0, vramTotal = 0;
       var cpuModel = '', gpuName = '', model = '';
       var modelMb = 0;
+      var live = const StationService();
+      var studio = const StationService();
+      var images = const StationService();
 
       final agent = _agentBase(app);
       final token = app.stationToken.trim();
@@ -955,6 +993,7 @@ class StationMonitor {
             ramTotal = (((j['ramTotalBytes'] as num?)?.toInt() ?? 0) / 1048576)
                 .round();
             ramUsed = (ramTotal * ramPct / 100).round();
+            cpuModel = (j['cpuModel'] ?? '').toString();
             final g = j['gpu'];
             if (g is Map && g['present'] == true) {
               gpuName = (g['name'] ?? '').toString();
@@ -970,7 +1009,7 @@ class StationMonitor {
         } catch (_) {}
       }
 
-      // Сервер голоса: названия железа, а при молчащем агенте — и числа.
+      // Сервер голоса: запасные названия железа, а при молчащем агенте — и числа.
       final voice = app.liveVoiceEndpoint.trim();
       if (voice.isNotEmpty) {
         try {
@@ -978,9 +1017,20 @@ class StationMonitor {
           final r =
               await http.get(Uri.parse(u)).timeout(const Duration(seconds: 6));
           if (r.statusCode == 200) {
-            final h = (jsonDecode(r.body) as Map)['host'];
+            final root = jsonDecode(r.body) as Map;
+            // Тем же ответом, которым раньше брали только имена железа: сервер
+            // сам говорит, поднята ли у него модель и не стоит ли он на паузе.
+            live = StationService(
+              online: true,
+              loaded: root['loaded'] == true,
+              loading: root['loading'] == true,
+              paused: root['paused'] == true,
+            );
+            final h = root['host'];
             if (h is Map) {
-              cpuModel = (h['cpu_model'] ?? '').toString();
+              if (cpuModel.isEmpty) {
+                cpuModel = (h['cpu_model'] ?? '').toString();
+              }
               if (gpuName.isEmpty) gpuName = (h['gpu_name'] ?? '').toString();
               if (!ok) {
                 cpu = ((h['cpu_percent'] as num?)?.toDouble() ?? 0) / 100.0;
@@ -991,6 +1041,31 @@ class StationMonitor {
                 ok = ramTotal > 0;
               }
             }
+          }
+        } catch (_) {}
+      }
+
+      // Студийный голос и генератор картинок: у обоих корень отвечает тем же
+      // набором полей, что и живой голос. Спрашиваем их здесь, а не на экране
+      // «Модулей»: опрос станции должен быть один на всё приложение, иначе у
+      // каждого экрана заведётся свой таймер и они разойдутся периодами.
+      for (final e in <String, void Function(StationService)>{
+        app.qwenEndpoint.trim(): (v) => studio = v,
+        app.imageServerUrl.trim(): (v) => images = v,
+      }.entries) {
+        if (e.key.isEmpty) continue;
+        try {
+          final u = e.key.startsWith('http') ? e.key : 'http://${e.key}';
+          final r =
+              await http.get(Uri.parse(u)).timeout(const Duration(seconds: 6));
+          if (r.statusCode == 200) {
+            final j = jsonDecode(r.body) as Map;
+            e.value(StationService(
+              online: true,
+              loaded: j['loaded'] == true,
+              loading: j['loading'] == true,
+              paused: j['paused'] == true,
+            ));
           }
         } catch (_) {}
       }
@@ -1028,12 +1103,18 @@ class StationMonitor {
         vramTotalMb: vramTotal,
         model: model,
         modelVramMb: modelMb,
+        live: live,
+        studio: studio,
+        images: images,
       );
     } finally {
       _busy = false;
     }
   }
 }
+
+/// Четверо, кто может занимать карту станции. Порядок — тот же, что в панели.
+enum StationModel { llm, liveVoice, studioVoice, images }
 
 /// Кто сейчас занимает видеокарту станции.
 ///
@@ -1332,6 +1413,37 @@ class GpuArbiter {
     } catch (e) {
       unawaited(appendLog('errors', 'GPU: $path на $url — $e'));
     }
+  }
+
+  /// Поднять или снять модель руками — из панели «Модели на карте» в
+  /// «Модулях».
+  ///
+  /// Арбитр решает это сам, и в обычной работе панель не нужна. Но карта одна,
+  /// а решений на ней три, и когда что-то пошло не так — сосед не отпустил
+  /// память, генерация отказала «нет места», станция замерла на вытеснении —
+  /// человеку нужен способ разобрать карту руками, не выключая приложение.
+  /// Отсюда и вход: те же самые вызовы, которыми пользуется сам арбитр, просто
+  /// доступные снаружи.
+  Future<void> setModelLoaded(
+      AppState app, StationModel which, bool load) async {
+    switch (which) {
+      case StationModel.llm:
+        load ? await _warmLlm(app) : await _unloadLlm(app);
+      case StationModel.liveVoice:
+        await _post(_base(app.liveVoiceEndpoint), load ? '/load' : '/unload');
+      case StationModel.studioVoice:
+        // Снять с паузы обязательно: на паузе сервер отдаёт видеопамять и
+        // отвечает 503, и «поднять» без этого закончилось бы ничем.
+        if (load) await setVoicePaused(app, false);
+        await _post(_base(app.qwenEndpoint), load ? '/load' : '/unload');
+      case StationModel.images:
+        await _post(_base(app.imageServerUrl), load ? '/load' : '/unload');
+    }
+    unawaited(appendLog(
+        'sidecar',
+        'GPU: руками — ${load ? 'поднимаю' : 'выгружаю'} '
+            '${which.name}'));
+    await StationMonitor.instance.refresh(app);
   }
 
   /// Выгрузка модели из Ollama — это её же обычный запрос с `keep_alive: 0`.
