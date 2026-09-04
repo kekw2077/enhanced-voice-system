@@ -102,6 +102,8 @@ class _PrismModulesState extends State<_PrismModules> {
                 label: app.t('ncRefresh'),
                 onTap: () {
                   _sample();
+                  unawaited(StationMonitor.instance
+                      .refresh(context.read<AppState>()));
                   unawaited(_loadLog());
                 },
               ),
@@ -220,9 +222,21 @@ class _PrismGhostButtonState extends State<_PrismGhostButton> {
 
 /// Одна строка карточки: подпись, значение и, если метрика измеряется, полоска.
 class _PrismModuleRow {
-  const _PrismModuleRow(this.name, this.value, {this.bar, this.accent = false});
+  const _PrismModuleRow(this.name, this.value, {this.bar, this.accent = false})
+      : divider = false;
+
+  /// Полоса с подписью: ниже начинается другое железо. Нужна ровно потому, что
+  /// в одной карточке сошлись метрики этого компьютера и метрики станции, а
+  /// читались они как одно целое.
+  const _PrismModuleRow.section(this.name)
+      : value = '',
+        bar = null,
+        accent = false,
+        divider = true;
+
   final String name, value;
   final double? bar;
+  final bool divider;
 
   /// Значение — не число, а имя (модель, голос, устройство). Красится акцентом
   /// и без полоски: у него нет «сколько из скольки».
@@ -245,6 +259,7 @@ class _PrismSubsystemCards extends StatelessWidget {
         sc.ttsStatus,
         sc.deviceStatus,
         sc.gpuInfo,
+        StationMonitor.instance.stats,
       ]),
       builder: (context, _) {
         final cards = [
@@ -289,6 +304,7 @@ class _PrismSubsystemCards extends StatelessWidget {
     final (used, limit) = app.contextUsage(app.current);
     final gpu = sc.gpuInfo.value;
     final hasVram = gpu.$1 && gpu.$3 > 0;
+    final st = StationMonitor.instance.stats.value;
     final (label, color) = switch (status) {
       ConnectionStatus.connected => (app.t('statusConnected'), _success(c)),
       ConnectionStatus.connecting => (app.t('statusConnecting'), _warn(c)),
@@ -308,8 +324,13 @@ class _PrismSubsystemCards extends StatelessWidget {
             bar: (used / limit).clamp(0.0, 1.0),
           ),
         if (hasVram)
+          // Подпись «(этот ПК)» не украшение: карта здесь местная, а модель в
+          // строке ниже считается на станции. Без уточнения одно читалось как
+          // другое — и по местной видеопамяти делали выводы про чужую.
           _PrismModuleRow(
-            app.t('nxVram'),
+            gpu.$2.isEmpty
+                ? app.t('prismVramLocal')
+                : '${app.t('nxGpu')} · ${animaShortHardware(gpu.$2)}',
             '${(gpu.$4 / 1024).toStringAsFixed(1)} / '
                 '${(gpu.$3 / 1024).round()} ГБ',
             bar: (gpu.$4 / gpu.$3).clamp(0.0, 1.0),
@@ -321,6 +342,44 @@ class _PrismSubsystemCards extends StatelessWidget {
               : animaShortModel(app.selectedModel),
           accent: true,
         ),
+        // Станция — та же пара чисел, но про её карту. Рисуется только когда
+        // она ответила: пустая полоска врала бы ровно там, где по ней и
+        // принимают решение «влезет ли ещё одна модель».
+        if (st.ok) ...[
+          _PrismModuleRow.section(app.t('prismStation')),
+          if (st.ramTotalMb > 0) ...[
+            _PrismModuleRow(
+              st.cpuModel.isEmpty
+                  ? app.t('nxCpu')
+                  : '${app.t('nxCpu')} · ${animaShortHardware(st.cpuModel)}',
+              '${(st.cpuPercent * 100).round()}%',
+              bar: st.cpuPercent,
+            ),
+            _PrismModuleRow(
+              app.t('nxRam'),
+              '${(st.ramUsedMb / 1024).toStringAsFixed(1)} / '
+                  '${(st.ramTotalMb / 1024).round()} ГБ',
+              bar: (st.ramUsedMb / st.ramTotalMb).clamp(0.0, 1.0),
+            ),
+          ],
+          if (st.vramTotalMb > 0)
+            _PrismModuleRow(
+              st.gpuName.isEmpty
+                  ? app.t('nxGpu')
+                  : '${app.t('nxGpu')} · ${animaShortHardware(st.gpuName)}',
+              '${(st.vramUsedMb / 1024).toStringAsFixed(1)} / '
+                  '${(st.vramTotalMb / 1024).round()} ГБ',
+              bar: (st.vramUsedMb / st.vramTotalMb).clamp(0.0, 1.0),
+            ),
+          _PrismModuleRow(
+            app.t('prismOnCard'),
+            st.model.isEmpty
+                ? app.t('prismCardFree')
+                : '${animaShortModel(st.model)} · '
+                    '${(st.modelVramMb / 1024).toStringAsFixed(1)} ГБ',
+            accent: st.model.isNotEmpty,
+          ),
+        ],
       ],
     );
   }
@@ -438,6 +497,21 @@ class _PrismModuleCard extends StatelessWidget {
 
   Widget _row(BuildContext context, _PrismModuleRow r) {
     final ramp = _ramp(context);
+    if (r.divider) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(height: 1, color: _prismChip(context)),
+          const SizedBox(height: 11),
+          Text(r.name.toUpperCase(),
+              style: PrismType.label.copyWith(
+                  color: _sub(context),
+                  fontSize: 10.5,
+                  letterSpacing: 1.1,
+                  fontWeight: FontWeight.w700)),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

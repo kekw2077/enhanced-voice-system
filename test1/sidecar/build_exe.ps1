@@ -51,6 +51,9 @@ if ($uv) {
 # on first use into the HF cache (HF_HOME, set by the app to its data folder).
 # --onedir (NOT --onefile): keep every package's DLLs in its own folder so
 # sherpa-onnx's onnxruntime.dll and faster-whisper's don't collide.
+# --add-data rules.yaml: ОБРАЗЕЦ правил шины событий. Он копируется в userdata
+# при первом запуске и больше не трогается; без него в сборке шина не
+# поднималась вовсе — ни журнала, ни сторожа процессов, ни переключения звука.
 & $py -m PyInstaller --onedir --noconfirm --clean --name evs_sidecar `
   --collect-all faster_whisper `
   --collect-all ctranslate2 `
@@ -63,6 +66,7 @@ if ($uv) {
   --collect-all soundfile `
   --hidden-import comtypes `
   --hidden-import pynvml `
+  --add-data "rules.yaml;." `
   main.py
 
 $appdir = Join-Path $here "dist\evs_sidecar"

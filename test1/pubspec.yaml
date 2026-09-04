@@ -1,7 +1,7 @@
 name: anima
 description: "Nexus Anima — Windows desktop voice assistant with local & remote AI."
 publish_to: "none"
-version: 3.2.4+114
+version: 3.2.13+123
 
 environment:
   sdk: ">=3.10.0 <4.0.0"
@@ -72,11 +72,6 @@ flutter:
   assets:
     - assets/icon/app_icon.ico
     - assets/icon/icon.png
-    # Сервер клон-голоса запускается кнопкой в настройках, а папки sidecar/ в
-    # установленной версии нет — скрипт едет ассетом и разворачивается в
-    # userdata/tts-server. Вторую копию в assets/ намеренно не заводим: она
-    # рассинхронизировалась бы с оригиналом при первой же правке.
-    - sidecar/qwen_tts_server.py
   uses-material-design: true
   # Фон-аврора стиля «Призма». Собирается только на Impeller; если программа не
   # соберётся, оболочка молча остаётся на размытых пятнах (см. _PrismBackdrop).
@@ -124,9 +119,11 @@ flutter:
 
 flutter_launcher_icons:
   image_path: "assets/icon/icon.png"
-  android: true
-  ios: true
-  remove_alpha_ios: true
+  # Мобильных целей у проекта больше нет — папки android/ и ios/ вырезаны.
+  # Флаги оставлены выключенными, а не удалены: так видно, что это решение, а
+  # не пропуск, и генератор не ищет несуществующие папки.
+  android: false
+  ios: false
   macos:
     generate: true
   # Windows-иконка НЕ генерируется отсюда. Системные иконки (exe/ярлык/установщик
@@ -147,18 +144,11 @@ flutter_launcher_icons:
 flutter_native_splash:
   color: "#FFFFFF"
   color_dark: "#0E0E15"
-  # Must stay false: true makes the generator set UIStatusBarHidden=true in
-  # ios/Runner/Info.plist, which hides the status bar (time/signal/battery)
-  # app-wide on iOS, not just during the splash -- this has bitten the
-  # project before. Re-running `flutter_native_splash:create` with this on
-  # silently reintroduces the bug, so the flag itself has to stay off.
+  # Осталось от мобильных целей: на iOS true прописывал UIStatusBarHidden в
+  # Info.plist и прятал строку состояния во всём приложении, а не только на
+  # заставке. Целей больше нет, но и включать флаг незачем — на вебе он ничего
+  # полезного не делает.
   fullscreen: false
-  android: true
-  ios: true
+  android: false
+  ios: false
   web: true
-
-  # Android 12+ enforces its own splash (centered launcher icon on a solid
-  # color), so it only gets the background color here.
-  android_12:
-    color: "#FFFFFF"
-    color_dark: "#0E0E15"

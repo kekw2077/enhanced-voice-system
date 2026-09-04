@@ -1,242 +1,229 @@
-# Mirai — описание проекта
+# Nexus Anima — карта проекта
 
-Flutter-приложение «Mirai» — чат-клиент для LLM с поддержкой удалённых серверов (Ollama/OpenAI-совместимый API) и локального инференса прямо на устройстве (без интернета).
+Голосовой ассистент для **Windows**: постоянное прослушивание со словом-активатором,
+голосовые команды, чат с языковой моделью (своя станция или локальный инференс),
+студии генерации картинок и озвучки, плавающий виджет с визуализацией голоса.
+Тяжёлые вычисления уходят на домашнюю станцию с видеокартой.
 
-- Git repo root: `C:\Files\vs code\test v0.1` (проект Flutter лежит в подпапке `test1`)
-- GitHub remote: `https://github.com/kekw2077/mirai`
-- Основная ветка: `main`
-- Package name: `mirai`, отображаемое имя приложения: **Mirai**
+## Координаты
 
-## Ветки: `main` (мобильная) и `desktop` (Windows-only)
+| Что | Где |
+|---|---|
+| Рабочая копия | `f:\flutter\mirai`, Flutter-проект в подпапке `test1/` |
+| Ветка | `evs-main` |
+| Remote `evs` | `github.com/kekw2077/enhanced-voice-system` — рабочий репозиторий |
+| Remote `origin` | `github.com/kekw2077/mirai` — **мобильная линия, отдельный проект**: туда не пушить, оттуда не мержить |
+| Версия | `pubspec.yaml`, сейчас `3.2.4+114` |
+| Имена | продукт **Nexus Anima**, exe `anima.exe`, пакет `anima`, короткое имя Anima. Слово-активатор по умолчанию — «Anima» |
 
-С версии 2.13.2 разработка разделена на две ветки, развивающиеся независимо:
+Ветки `main` и `desktop` в этой копии остались от прежней схемы, когда мобильная и
+десктопная линии жили в одном репозитории. Мобильная разработка переехала в свой
+репозиторий; здесь **только Windows**, и инструкции про Android/Shorebird/APK к этой
+работе не относятся (их архив — [docs/archive/](docs/archive/)).
 
-- **`main`** — мобильная/основная версия. Отсюда и только отсюда выходят релизы на телефоны: Android через Shorebird (патч/релиз) + GitHub Release с APK, iOS через GitHub Actions (`ios-altstore.yml`) в AltStore. Всё, что описано в этом файле про сборку/деплой/нативные особенности, относится к `main`.
-- **`desktop`** — отдельная линия разработки **только под Windows-десктоп**. Создана от `main` на коммите 2.13.2+41. Сюда вносятся изменения, которых **не должно быть на мобильных версиях**.
+## Правило №1: одна библиотека, 38 частей
 
-**Правила синхронизации (важно):**
-- **Никогда не мёржить `desktop` → `main`** и не cherry-pick'ить коммиты из `desktop` в `main` — иначе Windows-правки утекут в мобильную сборку. Поток только в одну сторону.
-- Общий фикс, нужный обеим платформам, делается в `main`, затем переносится в `desktop` через `git merge main` или `git cherry-pick <sha>` (это разрешённое направление).
-- Мобильный деплой (Shorebird, iOS Actions, GitHub Release APK) запускается **только с `main`**. С `desktop` его не запускать.
+`lib/main.dart` — точка входа: 39 импортов, 38 директив `part`, `main()`. Каждый
+`lib/src/*.dart` начинается с `part of '../main.dart';`.
 
-### Инструкции для сессии, работающей в ветке `desktop` (Windows-only)
+**Новые `import` в части не добавлять** — все импорты живут в `main.dart`, части их
+наследуют. Смысл в приватности: в Dart она на уровне библиотеки, а библиотека тут
+одна, поэтому `_`-классы видны между файлами.
 
-Если ты открыт в чате для разработки именно десктоп-версии — сначала убедись, что находишься на ветке `desktop` (`git branch --show-current`; если нет — `git checkout desktop`). Дальше:
+## Карта кода
 
-- **Цель — только Windows.** Изменения не обязаны работать на Android/iOS/Web и не должны попадать в `main`. Можно свободно менять `pubspec.yaml`, версию, зависимости, UI — это не влияет на мобильную ветку.
-- **Не делай мобильный деплой.** Никаких `shorebird release`/`shorebird patch`, никаких запусков `ios-altstore.yml`, никаких GitHub Release с APK. Это всё привязано к `main`. Проверка/запуск десктопа: `flutter run -d windows` и `flutter build windows`.
-- **Версии/чейнджлог.** Веди отдельно от мобильной линии (мобильный `kChangelog`/`CHANGELOG.md` и схема версий из памяти относятся к `main`). Если на `desktop` нужна своя версия/история — спроси у пользователя, как её вести, не повторяй мобильную автоматически.
-- **Можно опираться на `dart:io`/десктоп-плагины напрямую** — веб-стабы (`local_model_stub.dart` и условные импорты) тут не критичны, но если правишь общий код, не ломай существующую сборку без нужды.
-- **Нативные мобильные нюансы не применяй** (Android NDK junction, fllama под несколько ABI, native splash, AltStore, Shorebird, подпись debug-ключом) — они про мобильную сборку и к Windows не относятся.
-- **Слияние с `main`:** если нужен свежий общий код из мобильной ветки — `git merge main` (разрешено). Обратно в `main` ничего не отправляй.
-
-- Приложение и репозиторий были переименованы из «Alice AI» (`alice_ai`, `com.example.test1`, репозиторий `test-v0.1`) в «Mirai» (`mirai`, `com.example.mirai`) — applicationId/bundle id изменился, поэтому старые установки на устройствах не обновятся поверх, а ставятся как отдельное приложение.
-
-## Архитектура
-
-Код — **одна логическая библиотека**, физически разнесённая на `part`-файлы:
-`main.dart` объявляет `part 'src/*.dart';`, а каждый `lib/src/*.dart` начинается с
-`part of '../main.dart';`. Это сохраняет видимость всех приватных (`_`) классов
-между файлами (приватность в Dart — на уровне библиотеки, а тут библиотека одна).
-**Новые `import` между этими файлами не добавлять** — все импорты живут в
-`main.dart`, части их наследуют.
-
-Карта «где искать» (весь код разнесён по `lib/src/`; `main.dart` — только точка входа):
+### Запуск и состояние
 
 | Файл | Что внутри |
 |---|---|
-| [lib/main.dart](lib/main.dart) (~166 строк) | только импорты, `part`-директивы, `main()` и `vizNotice` |
-| [lib/src/bootstrap.dart](lib/src/bootstrap.dart) | запуск/инфра: single-instance, восстановление окна, portable-prefs, `WidgetPosStore`, оверлей-процесс (`_vizOverlayMain`/`VizOverlayApp`), процесс-заставка обновления и **окно загрузки** (`_updateSplashMain`/`_bootSplashMain`/`UpdateSplashApp` с параметром `mode: 'update'\|'boot'`), `BootSplash` — сторона главного процесса: поднимает окно загрузки и пишет ему этапы в `boot-status.txt` |
-| [lib/src/i18n.dart](lib/src/i18n.dart) | словарь локализации `_i18n` (ru/en) |
-| [lib/src/models.dart](lib/src/models.dart) | дата-классы: `ChatMessage`/`Conversation`/`Personalization`, RP (`RPSessionConfig`/`RPMemoryManager`/…), `LocalModelSpec`+`kLocalModels`, `ChangelogEntry`+`kChangelog`, enums (`AppThemeMode`/`AppStyle`/`ConnectionStatus`/`LocalModelTier`), `AssetModelSpec`+`kAssetModels`, `formatBytes` |
-| [lib/src/llm_services.dart](lib/src/llm_services.dart) | `ILLMService`/`LocalLLMService`/`RemoteLLMService`/`LLMServiceFactory`, `VoiceInterpreter`, `NumberWords`, `TokenCounter`, `_effectiveModelFor` |
-| [lib/src/app_state.dart](lib/src/app_state.dart) | `AppState` — главное хранилище состояния |
-| [lib/src/theme_widgets.dart](lib/src/theme_widgets.dart) | **дизайн-система**: `_Palette` + палитры + токены (`_bg/_accent/_stroke/_info/_warn/…`) + шкалы (`EvsSpace/EvsRadius/EvsType`) + `evs*`-хелперы (`evsCard/evsRow/evsToggle/…`); `MiraiApp`/сплэш, glass-примитивы, `ParticleSphere`, пейнтеры, `AnimatedBorder`, `_EvsLogoMark`, `_WindowTitleBar`; **`MotionPolicy`/`AmbientMotion`** — гейт декоративных 60fps-анимаций (режимы full/balanced/saver, `app.motionMode`): вечный `..repeat()` в новых виджетах не делать, оборачивать контроллер в `AmbientMotion` |
-| [lib/src/genesis_logo.dart](lib/src/genesis_logo.dart) | логотип **Genesis**: построчный порт SVG+CSS-образца `genesis/EVS Animations.dc.html` в `CustomPainter` — `GenesisLogo` (вариант 01 со подписью и вариант 05 «знак»), палитра бренда, дорожки `@keyframes`, `paintGenesisMark`/`paintGenesisSignature` (отрисовка одного кадра без виджетов), `genesisBackdrop`. Единственное место, где сырые `Color(0x…)` уместны: это фиксированная палитра логотипа, не токены темы |
-| [lib/src/desktop_integration.dart](lib/src/desktop_integration.dart) | `CommandExecutor`, `SystemMonitor`, `ProcessJob`, `VizOverlayServer`, `CloneServer` (кнопка запуска/остановки сервера синтеза), `DesktopIntegration` (tray/hotkeys/окно), `PttWatcher` + `pttVkFor`/`pttKeyLabel`/`pttIdleHint`/`activatorLabel` — Push-to-Talk, `EvsLogFeed`/`EvsLogLine` — чтение логов `appendLog(...)` из `<app-data>/logs`, общее для экрана журнала «Ноктюрна» и страницы «Журнал» в настройках |
-| [lib/src/updater_and_web.dart](lib/src/updater_and_web.dart) | `AppUpdater` (Sparkle-апдейт), `WebSearchService`, `ComponentManager` |
-| [lib/src/sidecar_client.dart](lib/src/sidecar_client.dart) | `SidecarClient` (Python STT/TTS сайдкар), `VoiceAssistant` (wake-word/состояния, Push-to-Talk через `pttPress`/`pttRelease`) |
-| [lib/src/desktop_home.dart](lib/src/desktop_home.dart) | `_RootHome`/`DesktopHome`/`_DesktopSidebar`/`_DesktopSystemWidget`, `_evsRelTime`, контекст-меню чатов |
-| [lib/src/noctur_shell.dart](lib/src/noctur_shell.dart) | стиль **«Ноктюрн»** (третье значение `AppStyle`): `_NocturHome` (шапка с вкладками → экран → строка телеметрии), `NocturTopBar`, `NocturStatusStrip`, `NocturRingViz` (кольцо из 8 слоёв, тикер через `AmbientMotion` с гейтом `MotionGate.foreground` — вращается, пока окно видно), `_NocturStage` (главный экран) и три экрана вкладок — `_NocturDialogTab`, `_NocturCommandsTab`, `_NocturLogTab` (журнал читает `EvsLogFeed`); `_nocturSlot` — единственное место, где состояние выбирает цвет. Вкладка «Модели» — не экран, а ссылка на `DesktopSettings(initialPage: _Pages.llmConn)`. Данные берутся у `NexusPipeline`/`SidecarClient`/`SystemMonitor`/`AppState` — своих источников стиль не заводит |
-| [lib/src/remote_input.dart](lib/src/remote_input.dart) | `RemoteInputServer`, `VoiceCommand`/типы, `SuggestionEngine`, `_RemoteInputPanel`, `_AddCommandWizard`, `_SuggestCommandsDialog` |
-| [lib/src/voice_viz.dart](lib/src/voice_viz.dart) | визуализации голоса/микрофона: `VoiceLevels`, `EvsWaveViz`/`EvsBarsViz`/`EvsRingViz`/`EvsLiveViz`, `OverlayWidgetView`, `MicMeter`, `_DesktopMicWidget` |
-| [lib/src/desktop_settings.dart](lib/src/desktop_settings.dart) | все карточки настроек + `DesktopSettings` + `_TtsEngineCard`/`_TtsInterpCard`/`_ModelModeCard`/`_LlmAdvancedCard`/`_ConnCheckRow` |
-| [lib/src/chat_screen.dart](lib/src/chat_screen.dart) | `ChatScreen`, `_RecentAttachSheet`, `_ThinkingDots`, `_ModelMenu` |
-| [lib/src/voice_screen.dart](lib/src/voice_screen.dart) | `VoiceScreen`, `ConversationsSheet` |
-| [lib/src/settings_screens.dart](lib/src/settings_screens.dart) | `SettingsSheet`, `AboutVersionScreen`, `LocalModelsScreen`, `PersonalizationScreen` |
+| [lib/main.dart](lib/main.dart) | импорты, `part`-директивы, `main()` |
+| [lib/src/bootstrap.dart](lib/src/bootstrap.dart) | single-instance, восстановление окна, portable-prefs, процессы оверлея и заставки, подметание осиротевших `anima_sidecar.exe`/`evs_sidecar.exe` |
+| [lib/src/app_state.dart](lib/src/app_state.dart) | `AppState` — главное хранилище (provider + `shared_preferences`). Самый большой файл, 5210 строк |
+| [lib/src/models.dart](lib/src/models.dart) | дата-классы, `enum AppStyle { standard, nexus, noctur, prism }`, `kChangelog` — история версий для экрана «Что нового» |
+| [lib/src/llm_services.dart](lib/src/llm_services.dart) | `ILLMService`/`LocalLLMService`/`RemoteLLMService`, `VoiceInterpreter`, `TokenCounter` |
 
-Многофайловые группы собраны в исходном порядке; каждый класс/функция — ровно в одном
-файле. Правило: меняешь виджет — правь его `src/*.dart`; дизайн-система (токены/`_Palette`/
-`evs*`) — в `theme_widgets.dart`. Цвета только через токены (`_bg/_card/_txt/_accent/
-_stroke/_success/_danger/_info/_warn/…`), никаких сырых `Color(0x…)` в виджетах;
-тема = запись `_Palette` (14 ролей) + пункт `AppThemeMode` + `_palFor` + пикеры + i18n.
+### Оболочки — четыре стиля
 
-Ключевые классы (описания ниже; файл ищи по карте выше):
-- `AppState extends ChangeNotifier` — главное хранилище состояния (provider), персистится через `shared_preferences`. Содержит: язык интерфейса, тему, настройки голосового ввода, `serverUrl`/`apiKey`/список `models`/`selectedModel`, персонализацию (`Personalization persona`), список диалогов (`Conversation`), а также всё, что касается локальных моделей (`downloadedLocalModelIds`, `localDownloadProgress`).
-- `ChatMessage`, `Conversation` — модель данных чата. `ChatMessage.id` — стабильный uuid (появился позже, у сообщений из старых бэкапов перегенерируется при первой загрузке после обновления, так что закрепление сообщения, сделанное ДО обновления, переживает только сам факт обновления, а не более ранние перезапуски). `Conversation.pinnedMessageIds` — id сообщений, закреплённых в контексте именно этого чата (см. `pinnedContextBlock()` — добавляется к системному промпту после персонализации, и для локальных, и для удалённых моделей).
-- `Personalization` — системный промпт/настройки поведения ассистента. `savedMemories` (`List<String>`) — отдельные факты, добавленные действием «Запомнить» по долгому тапу на сообщении (в отличие от `memoryNote` — это одна заметка, которую пользователь вводит руками). Долгое нажатие на пузырь сообщения в чате (`_ChatScreenState._showMessageActions`) открывает меню: Копировать / Использовать в поле ввода / Запомнить / Забыть связанное воспоминание (удаляет из `savedMemories` запись, точно совпадающую с текстом сообщения — без какого-либо семантического сопоставления) / Закрепить-в-контексте (переключает `pinnedMessageIds`). `askBeforeRemembering` — перед ручным «Запомнить» показывает диалог выбора категории (`_ChatScreenState._pickMemoryCategory`); категория чисто косметическая (выбор не сохраняется — `savedMemories` остаётся плоским списком строк), это просто шаг подтверждения. `autoSaveMemories` — после каждого ответа ассистента (`AppState._autoSaveMemoryFromExchange`, вызывается без `await` из `sendMessage()`) шлёт ОТДЕЛЬНЫЙ тихий запрос той же модели (удалённой через `/api/chat`, либо локальной через `fllamaChat` с `maxTokens: 60`) с промптом-экстрактором фактов; если модель не возвращает `NONE`, ответ добавляется в `savedMemories`. Это реальный дополнительный инференс-запрос на каждое сообщение (увеличивает трафик/нагрузку и для удалённых, и для локальных моделей) — осознанный выбор пользователя в обмен на качество автосохранения, не throttling/дебаунса нет.
-  - **Диагностика «настройка личности не меняет поведение модели» (жалоба возникала на практике, v2.9.1/v2.9.2) — проверять в этом порядке, не перечитывая весь файл заново:**
-    1. Слайдеры formality/empathy/verbosity/humor/creativity пишут директиву в `_writeStyleFacts()` только за порогами `>= 0.6`/`< 0.4` (плюс усиленная формулировка за `>= 0.85`/`< 0.15`) — у каждого слайдера дефолт 0.5, так что умеренное движение от дефолта в сторону, не пересекающую порог, **намеренно** не меняет промпт. Если жалоба именно на «двигаю слайдер — ничего не меняется», сначала смотреть сюда, а не в передачу персоны в запрос.
-    2. `emoji == 'emoji_never'` — единственная настройка личности с детерминированной гарантией: `Personalization.enforceEmojiPolicy()` вырезает эмодзи регексом из готового ответа в `sendMessage()`, а не просто просит модель словами. Остальные стилевые настройки (formality/tone/verbosity/...) программно непроверяемы («достаточно ли формально?» не бинарный тест) и навсегда останутся promptonly — для них доступен только более чёткий текст директивы, не гарантия.
-    3. Если жалоба воспроизводится в чате с уже существующей историей — модель часто продолжает стиль, видимый в более ранних репликах ассистента, даже если system-промпт только что обновился (in-context anchoring сильнее system-промпта). Первый диагностический шаг — попросить проверить в НОВОМ чате, прежде чем искать баг в коде.
-    4. `conv.persona` берёт глобальный `AppState.persona` только пока `conv.persona == null`; **любое** сохранение экрана персонализации, открытого из чата (кнопка «Готово» в `_PersonalizationScreenState._save()`), безусловно создаёт `conv.persona`, даже если пользователь ничего не менял — после этого чат навсегда отрезан от последующих правок в глобальных настройках. Это намеренное поведение с v1.5.0 (каждый чат может иметь свои настройки), не баг, но частая причина «поменял в общих настройках — в чате не подействовало».
-- `LocalModelSpec` / `kLocalModels` — захардкоженный каталог GGUF-моделей для локального инференса.
-- `Conversation.rpModeEnabled` — опциональный пер-чатовый «режим ролевой игры» (по серии ТЗ от Gemini). Включён — `AppState.sendMessage()` уходит в `_sendMessageStreaming()`: ChatMessage ассистента добавляется в `conv.messages` ПУСТЫМ сразу при старте генерации и дальше растёт построчно (`ChatMessage.content` сделан мутабельным специально под это), вместо одного `await` на весь ответ. Кнопка отправки в `_inputBar` подменяется на Stop (красная, `Icons.stop_rounded`) пока `AppState.isGenerating && conv.rpModeEnabled`.
-- `Conversation.rpConfig` (`RPSessionConfig?`) — настройки RP для конкретного чата: имена персонажей, `systemPrompt`/`scenario` (свободный текст с плейсхолдерами `{{user}}`/`{{char}}` — единственное место в проекте с таким templating; всё остальное в `Personalization` собирается программно из отдельных предложений), `RPSamplingConfig sampling`, `lorebook` (`List<LoreEntry>`), `stopSequences`, `lockedModel` (модель чата — см. ниже), `contextWindowLimit`, `rollingSummary`/`summaryCoversUpToMessageIndex` (контекстная компрессия по запросу). Редактируется как третья вкладка «Ролевая игра» на `PersonalizationScreen` (`_roleplayTab`), показывается только если открыт из чата с `rpModeEnabled == true`.
-  - **Модель зафиксирована за чатом**: `AppState.toggleRpMode()` при первом включении RP для чата снимает текущий `selectedModel` в `rpConfig.lockedModel` (повторные вкл/выкл не перезаписывают). Дропдаун модели в `_topBar` для такого чата становится visually disabled (опасити, иконка замка) и по тапу показывает тост вместо `_openModelMenu()`. Везде, где `LocalLLMService`/`RemoteLLMService` раньше читали `app.selectedModel` напрямую, теперь читают через `_effectiveModelFor(app, conv)` — это даёт нужный модель-ключ независимо от того, что выбрано глобально сейчас. `LLMServiceFactory.forConversation(conv)` (в дополнение к старому `current`) выбирает local/remote по locked-модели, а не по глобальной — нужен, потому что RP-чат может быть на модели другого типа, чем глобально выбранная сейчас.
-  - **RP-промпт ЗАМЕНЯЕТ, а не дополняет** `Personalization.buildSystemPrompt()` — см. `RPMemoryManager.buildSystemPrompt()`: берёт `rpConfig.systemPrompt` (с подстановкой `{{user}}`/`{{char}}`, простыми `replaceAll`, без настоящего `extension` на `String`) + фоллбэк-заглушку, если промпт пуст, + `scenario` + `rollingSummary` (если есть) + найденные статьи `scanLorebook()` (сканирует последние 10 сообщений на совпадение `keywords` через запятую, регистронезависимо) + `conv.pinnedContextBlock()` (закреплённые сообщения по-прежнему работают и в RP-режиме). RP-режим всегда обходит `buildLocalSystemPrompt()`/light-tier ветку — RP-промпт короткий и авторский по природе.
-  - `RPMemoryManager.trimForContext()` — sliding-window FIFO: если оценка токенов (`TokenCounter.estimate`) превышает `contextWindowLimit`, в ИСХОДЯЩИЙ запрос идёт только первое сообщение + последние 8, остальное выкидывается только из запроса (`conv.messages`/UI не трогается).
-  - `RPSamplingConfig` (temperature/topP/repetitionPenalty/maxResponseTokens) реально применяется к генерации: `LocalLLMService._buildRequest` передаёт их в `OpenAiRequest` (`repetitionPenalty` → `presencePenalty`), `RemoteLLMService._buildBody` — в `options` (`temperature`/`top_p`/`repeat_penalty`/`num_predict`) Ollama-запроса, плюс `stopSequences` → `options.stop` (только remote — см. ниже).
-  - `RPGuardFilters` — пост-обработка готового (не промежуточного, после `await for`) ответа: `antiImpersonationFilter` режет текст на строке, похожей на реплику пользователя (`{{user}}:`, `ИмяПользователя:`, `*Вы ...`); `formatEnforcer` — если в тексте нечётное число `*`, дописывает один в конец. Это единственная защита для local-моделей: stop-последовательности нативно поддерживает только Ollama (`options.stop`), у закреплённой версии `fllama` поля `stop` в `OpenAiRequest` просто нет.
-  - **Контекстная компрессия по запросу** — `RPMemoryManager.checkContextThreshold()` (>80% от `contextWindowLimit`) показывает баннер над `_inputBar` (`_compressionBanner`) с кнопкой «Сжать память чата» → `AppState.compressRpContext()`: резюмирует всё, кроме последних 8 сообщений, отдельным вызовом `service.generateResponse()` на синтетической `Conversation` с нейтральной `Personalization()` (не персоной/RP-конфигом чата — резюмировщик не должен наследовать тон персонажа), результат — в `rpConfig.rollingSummary`.
-  - **Чего нет и сознательно не будет** (закреплённая версия `fllama`, см. git SHA в `pubspec.yaml`, проверено прямо в исходниках пакета): полей `mirostat`/`tfs_z`/`typical_p`/`stop` в `OpenAiRequest` просто нет; нет API выгрузки модели из памяти и нет catchable-исключения на OOM (`ModelLifecycleManager`/OOM-fallback из ТЗ нереализуемы без форка библиотеки); `fllamaChat` уже сам корректно применяет chat-template из метаданных GGUF — ручная сборка raw-строк по `PromptTemplateType` была бы шагом назад. Проект использует `package:http`, не `dio` — `DioException` не существует в проекте.
-- `ILLMService` / `LocalLLMService` / `RemoteLLMService` / `LLMServiceFactory` — provider-pattern обёртка над двумя бэкендами инференса, классы лежат прямо в `main.dart` (НЕ отдельными файлами — явная просьба одного из ТЗ, отклонена ради единого файла проекта). `AppState._llmFactory.current` отдаёт нужный сервис по `isLocalModel(selectedModel)` (для обычных чатов); `forConversation(conv)` — то же самое, но с учётом `rpConfig.lockedModel` (для RP-чатов). `sendMessage()`/`_sendMessageStreaming()` вызывают `generateResponse()`/`generateStream()` не зная, какой бэкенд за этим стоит. Для local стриминг — это переподключение к уже потоковому `fllamaChat` (он и раньше вызывал callback на каждый токен, раньше промежуточные вызовы просто отбрасывались); отмена — `fllamaCancelInference(requestId)`, `requestId` — int, который возвращает сам `fllamaChat`. Для remote — отдельный путь с `'stream': true` и построчным разбором NDJSON-ответа Ollama; отмена — `http.Client.close()`. `TokenCounter` (там же) — статическая утилита: `estimate()` — эвристика длина/4 (латиница) или длина/2.5 (кириллица) без I/O, `estimateForLocalModel()` — точный счёт через реальный `fllamaTokenize()` для локальных моделей (у remote-бэкенда точного счёта до ответа в принципе нет, только `usage` после).
-- `ChatScreen` / `_ChatScreenState` — основной экран чата.
-- `VoiceScreen` / `_VoiceScreenState` — экран голосового ввода (на базе `speech_to_text`).
-- `SettingsSheet`, `LocalModelsScreen`, `PersonalizationScreen`, `ConversationsSheet` — вспомогательные экраны/шторки настроек. `PersonalizationScreen` — вкладки сверху, под заголовком (`initialTab`): «Личность» (стиль/тон/пресеты) и «Память» (память, профиль «о вас», темы/безопасность) — раньше память была отдельным экраном `MemoryScreen`, который ВСЕГДА редактировал только глобальную персонализацию даже при открытии из чата; вкладки внутри одного `PersonalizationScreen` редактируют общий объект `p`, поэтому при открытии из чата (`conversation: app.current`) обе вкладки корректно попадают в `conv.persona`, а не в глобальные настройки. Третья вкладка «Ролевая игра» (`_roleplayTab`) появляется только если открыт из чата с `rpModeEnabled == true` — редактирует `conv.rpConfig` тем же клонируется-при-открытии/сохраняется-по-«Готово» паттерном, что и `p`.
-- `_ModelMenu` — пикер модели (показывает и удалённые модели с сервера, и локальные).
+| Файл | Что внутри |
+|---|---|
+| [lib/src/shell_common.dart](lib/src/shell_common.dart) | общее для classic · Nexus · «Ноктюрн» |
+| [lib/src/desktop_home.dart](lib/src/desktop_home.dart) | главный экран стилей `standard`/`nexus`, боковая панель |
+| [lib/src/noctur_shell.dart](lib/src/noctur_shell.dart) | «Ноктюрн»: шапка с вкладками, кольцо, строка телеметрии |
+| [lib/src/prism_shell.dart](lib/src/prism_shell.dart) | «Призма» — четвёртая оболочка по макету `handoff/design` |
+| `lib/src/prism_*.dart` (11 файлов) | части «Призмы»: [hub](lib/src/prism_hub.dart) «Центр», [chat](lib/src/prism_chat.dart) «Диалог», [commands](lib/src/prism_commands.dart), [modules](lib/src/prism_modules.dart), [appearance](lib/src/prism_appearance.dart), [welcome](lib/src/prism_welcome.dart), [lumina](lib/src/prism_lumina.dart) и [sonora](lib/src/prism_sonora.dart) — формы студий, [orb](lib/src/prism_orb.dart), [controls](lib/src/prism_controls.dart), [icons](lib/src/prism_icons.dart) |
+| [lib/src/tray_menu.dart](lib/src/tray_menu.dart) | меню в трее — своим окном, а не системным |
 
-Локализация: простой словарь `_i18n['ru']`/`_i18n['en']` внутри `main.dart`, доступ через `app.t('key')`. Язык переключается в настройках, по умолчанию `ru`.
+«Призма» держит только **форму**; логика студий остаётся в `studio_panel.dart`.
 
-Тема: `AppThemeMode { system, light, dark, gray }` — «Серая» добавлена отдельно от «Тёмной»: тот же `ThemeMode.dark` у Flutter, но нейтральная iOS-подобная палитра (`#000000`/`#1C1C1E`) без сине-фиолетового оттенка обычной тёмной темы (`#0E0E15`/`#1C1C26`). Так как почти весь UI красится через свободные функции `_bg(context)`/`_card(context)` (а не через `Theme.of(context).colorScheme`), эти функции сами читают `context.read<AppState>().themeMode` (см. `_isGrayMode`), чтобы решить, какую палитру отдавать — простого переключения `ThemeData.colorScheme` недостаточно. «Системная» при тёмной ОС всегда даёт обычную тёмную палитру, а не серую — серая включается только явным выбором в диалоге «Тема».
+### Экраны
 
-## Два режима инференса
+| Файл | Что внутри |
+|---|---|
+| [lib/src/chat_screen.dart](lib/src/chat_screen.dart) | чат |
+| [lib/src/voice_screen.dart](lib/src/voice_screen.dart) | голосовой ввод (распознавание), `ConversationsSheet` |
+| [lib/src/desktop_settings.dart](lib/src/desktop_settings.dart) | все карточки настроек, 9014 строк — самый большой экран |
+| [lib/src/settings_screens.dart](lib/src/settings_screens.dart) | «О программе», локальные модели, персонализация |
+| [lib/src/studio_panel.dart](lib/src/studio_panel.dart) | **обе студии**: `StudioMode { image, speech }` — генерация картинок и озвучка текста в одном состоянии |
+| [lib/src/lumina_studio.dart](lib/src/lumina_studio.dart) | «Nexus Lumina» — вид студии картинок |
+| [lib/src/relay_panel.dart](lib/src/relay_panel.dart) | экран канала (Nexus Relay) |
+| [lib/src/czn_translator.dart](lib/src/czn_translator.dart) | переводчик игры поверх стороннего приложения |
 
-1. **Удалённый (HTTP)** — `AppState.sendMessage()` шлёт запрос на `serverUrl` (Ollama/OpenAI-совместимый эндпоинт), это исходный и основной режим.
-2. **Локальный (on-device LLM)** — добавлен позже через библиотеку **`fllama`** (обёртка над llama.cpp, GGUF-модели). `sendMessage()` не различает local/remote сама — она зовёт `_llmFactory.current.generateResponse(...)` (см. `ILLMService`/`LocalLLMService`/`LLMServiceFactory` выше), а тот уже внутри решает по `isLocalModel(selectedModel)` (строка модели начинается с `local:`), грузит модель по локальному пути и стримит ответ через `fllamaChat(OpenAiRequest, callback)`.
-   - Каталог моделей зашит в код (`kLocalModels`), разбит на тиры по мощности устройства (`LocalModelTier.light/mid/high`): mid — Qwen2.5 1.5B, Gemma 2 2B, Qwen2.5 3B, Phi-3 Mini 4K; high — Mistral 7B v0.3, Qwen2.5 7B, Llama 3.1 8B. Все GGUF с HuggingFace, Q4_K_M. Лёгкий тир (был: Qwen2.5 0.5B, Llama 3.2 1B; ещё раньше — TinyLlama 1.1B) убран из каталога целиком — слишком слабые модели, не справлялись с системным промптом и выдавали бессвязные ответы даже после упрощения промпта. Сам enum `LocalModelTier.light` и ветки кода под него оставлены нетронутыми на случай, если лёгкий тир понадобится снова — просто сейчас под него нет моделей в `kLocalModels`.
-   - Экран **«Локальные модели»** (`LocalModelsScreen`, доступен из настроек) — скачать/отменить/удалить/выбрать модель, с прогресс-баром.
-   - Хранение скачанных файлов — через `path_provider`, путь определяется платформо-зависимым шимом: [lib/local_model_io.dart](lib/local_model_io.dart) (реальная реализация, `dart:io`) / [lib/local_model_stub.dart](lib/local_model_stub.dart) (веб-стаб), выбираются условным импортом `import 'local_model_stub.dart' if (dart.library.io) 'local_model_io.dart';` — это нужно специально из-за `path_provider`, который не собирается под Web напрямую.
+### Голос, десктоп, оформление
 
-### Важное про сам пакет `fllama`
+| Файл | Что внутри |
+|---|---|
+| [lib/src/sidecar_client.dart](lib/src/sidecar_client.dart) | `SidecarClient` — запуск и разговор с Python-движком, `VoiceAssistant` (wake-word, Push-to-Talk) |
+| [lib/src/voice_viz.dart](lib/src/voice_viz.dart) | `VoiceLevels`, визуализации волны/полос/кольца, виджет-оверлей |
+| [lib/src/speech_chunks.dart](lib/src/speech_chunks.dart) | нарезка длинного текста на куски под озвучку (14 тестов) |
+| [lib/src/desktop_integration.dart](lib/src/desktop_integration.dart) | `CommandExecutor`, `SystemMonitor`, `ProcessJob`, `CloneServer`, `DesktopIntegration` (трей/горячие клавиши/окно), `PttWatcher`, `EvsLogFeed` и **`GpuArbiter`** — см. ниже |
+| [lib/src/remote_input.dart](lib/src/remote_input.dart) | сервер удалённого ввода, каталог голосовых команд, мастер добавления |
+| [lib/src/updater_and_web.dart](lib/src/updater_and_web.dart) | `AppUpdater` (WinSparkle), `WebSearchService`, `ComponentManager` |
+| [lib/src/relay_client.dart](lib/src/relay_client.dart) | клиент агента канала — см. [nexus_relay/CLAUDE.md](nexus_relay/CLAUDE.md) |
+| [lib/src/theme_widgets.dart](lib/src/theme_widgets.dart) | **дизайн-система**: палитры, токены, шкалы, `evs*`-хелперы, `MotionPolicy`/`AmbientMotion` |
+| [lib/src/genesis_logo.dart](lib/src/genesis_logo.dart) | логотип Genesis кодом, а не картинкой |
+| [lib/src/i18n.dart](lib/src/i18n.dart) | словарь `ru`/`en`, доступ через `app.t('ключ')` |
 
-Существуют ДВА разных пакета с одним именем:
-- пакет `fllama` на pub.dev (автор `xuegao-tzx`) — низкоуровневый, Android/iOS/HarmonyOS только, **не тот**, что используется здесь.
-- настоящий используемый пакет — **Telosnex/fllama** (`https://github.com/Telosnex/fllama`), даёт `fllamaChat(OpenAiRequest, callback)` (OpenAI-style streaming API). Не опубликован на pub.dev, подключён как git-зависимость в `pubspec.yaml`, закреплён на конкретный commit SHA (не `main`, для воспроизводимости).
-- Собирается из исходников через Dart **native assets / hooks build system** (`hook/build.dart` + `native_toolchain_cmake`), компилирует llama.cpp через CMake при первой сборке под нужную платформу/архитектуру. Скомпилированная `.so`/`.dll` кэшируется в `~/.cache/fllama/<hash>/` — это ВНЕ `.dart_tool`, поэтому переживает `flutter clean`.
+**Цвета — только через токены** (`_bg`/`_card`/`_txt`/`_accent`/`_stroke`/…). Сырые
+`Color(0x…)` в виджетах не писать; исключение — фиксированная палитра логотипа.
+Вечный `..repeat()` не заводить: декоративная анимация оборачивается в
+`AmbientMotion`, иначе она крутится и на фоне.
 
-## Платформы и сборка
+## Движок (sidecar) — Python
 
-Поддерживаемые таргеты: Android, iOS, macOS, Windows, Linux, Web (папки соответствующие есть в репо). Реальное тестирование в этом проекте велось в первую очередь **на Android-телефоне по USB** (Huawei DLI-TL20, Android 7.0 / API 24, 32-бит ARM armeabi-v7a — это нижняя граница `minSdkVersion=24` у Flutter).
+Отдельный процесс, в релизе `anima_sidecar.exe`, в разработке `python sidecar/main.py`.
+Приложение читает из его вывода строку `ANIMA_SIDECAR_READY <порт>` (и старую
+`EVS_SIDECAR_READY`) — иначе останется вообще без голоса. Движок — **скачиваемый
+компонент** со своим циклом выпуска (`dist/components.json`), в установщик не входит.
 
-### Android-окружение на машине разработки (Windows)
+| Файл | Что внутри |
+|---|---|
+| [sidecar/main.py](sidecar/main.py) | точка входа, IPC, сборка всего вместе |
+| [sidecar/stt_engine.py](sidecar/stt_engine.py) | распознавание: микрофон, VAD, шумодав + три движка — `WhisperEngine`, `GigaAmEngine` (только CPU), `RemoteSttEngine` (чужой сервер по контракту OpenAI) |
+| [sidecar/tts_engine.py](sidecar/tts_engine.py) | синтез: очередь воспроизведения + сменные движки (Piper, системный, клон-серверы) |
+| [sidecar/qwen_tts_server.py](sidecar/qwen_tts_server.py) | клон-голос **на видеокарте** (Qwen3-TTS). Один и тот же файл работает и на компьютере под CUDA, и в контейнере станции под ROCm |
+| [sidecar/xtts_server.py](sidecar/xtts_server.py) | клон-голос **на видеокарте** (XTTS-v2) для живых ответов, тот же HTTP-контракт. Заменил MOSS-TTS на процессоре: 0,5 с против 9,3 с на короткой фразе, 2,7 ГБ видеопамяти |
+| [sidecar/gamemode.py](sidecar/gamemode.py) | игровой режим: снять модели с видеокарты |
+| [sidecar/bus_filter.py](sidecar/bus_filter.py), [journal.py](sidecar/journal.py), [procwatch.py](sidecar/procwatch.py) | шина событий: фильтр правил, журнал, сторож процессов |
+| [sidecar/audio_out.py](sidecar/audio_out.py), [app_audio.py](sidecar/app_audio.py) | устройства вывода и громкость отдельных программ |
+| [sidecar/gpu.py](sidecar/gpu.py), [intent.py](sidecar/intent.py), [clone_worker.py](sidecar/clone_worker.py) | видеокарта, сопоставление фраз с командами, рабочий процесс клонирования |
 
-- Android SDK кастомно установлен в `C:\Android\sdk` (НЕ дефолтный путь `%LOCALAPPDATA%\Android\Sdk`).
-- `native_toolchain_c`'s NDK resolver на Windows плохо находит SDK по нестандартным путям/переменным окружения, поэтому сделан **directory junction**: `C:\Users\<user>\AppData\Local\Android\Sdk` → `C:\Android\sdk` (через `New-Item -ItemType Junction`, без админ-прав). Без этого падает `Found no Android NDK in [...]` / `Bad state: No element`.
-- `android/gradle.properties`: `android.builtInKotlin=false` и `android.newDsl=false` — это дефолты, которые сам Flutter-мигратор прописывает для существующих проектов при переходе на AGP 9. **Не включать** `android.builtInKotlin=true` — это ломает `flutter_plugin_android_lifecycle` (он самостоятельно подключает `org.jetbrains.kotlin.android`, что запрещено в режиме built-in Kotlin).
-- `android/build.gradle.kts` содержит точечный фикс: плагин `file_picker` 11.0.2 при AGP 9+ сам не подключает Kotlin-плагин (рассчитывая на built-in Kotlin), но раз `builtInKotlin=false`, его Kotlin-исходники не компилируются → ошибка `FilePickerPlugin cannot find symbol`. Фикс — явно применить `org.jetbrains.kotlin.android` только для `file_picker` через `subprojects { if (project.name == "file_picker") apply(plugin = ...) }`.
-- `AndroidManifest.xml` обязательно содержит: `INTERNET` (нужен и для HTTP-чата, и для скачивания моделей), `RECORD_AUDIO` + `BLUETOOTH`/`BLUETOOTH_ADMIN`/`BLUETOOTH_CONNECT` (нужны `speech_to_text`), плюс `<queries>` с `android.speech.RecognitionService` (обязательно для targetSdk 30+). Без этих разрешений голосовой ввод тихо зависает на «подключение микрофона».
-- На устройствах без Google Play Services (многие Huawei) распознавание речи **зависит от сети** — без интернета/Wi-Fi голосовой ввод не работает или работает нестабильно. Это не баг приложения.
-- Если Gradle-демон падает с `Gradle build daemon disappeared unexpectedly` во время тяжёлой нативной CMake-компиляции (частое явление при первой компиляции fllama под несколько ABI) — обычно достаточно `cd android && ./gradlew --stop`, затем повторить сборку.
+## Станция `npc`
 
-### Шрифт
+Ubuntu 24.04, AMD Radeon (Navi 44, 16 ГБ), доступ `ssh npc` (Tailscale `100.79.130.7`,
+в локальной сети `192.168.50.50`). Всё, что тяжелее ноутбука, живёт там в контейнерах.
 
-Глобальный `fontFamily` темы (`_buildTheme`/`_buildGrayTheme`) — **Nunito**, а не `google_fonts`-пакет: файл вариативного шрифта (`assets/fonts/Nunito-VariableFont_wght.ttf`, лицензия OFL, скачан напрямую из `google/fonts` на GitHub) подключён как обычный asset в `pubspec.yaml` с несколькими `weight:`-записями на один и тот же файл — это сознательно, чтобы не тянуть шрифт по сети при первом запуске (`google_fonts` по умолчанию так делает), что противоречило бы офлайн-позиционированию приложения.
+| Контейнер | Порт | Что делает |
+|---|---|---|
+| `evs-qwen` | 8760 | клон-голос Qwen3-TTS на видеокарте (студия озвучки) |
+| `evs-image` | 8770 | генерация картинок (Animagine XL) **и арбитр видеокарты** |
+| `evs-stt` | 9876 | распознавание GigaAM |
+| `ollama` | 11434 | языковая модель (`gemma-chat`, семейство gemma3:12b) |
+| `evs-updates` | 8099 | раздача обновлений приложения (nginx) |
+| `evs-netwatch` | — | замер потерь пакетов по хопам, пишет `/data/netwatch.csv` — диагностика для Nexus Relay |
+| `nexus-ntfy`, `homeassistant`, `mosquitto`, `music-assistant` | — | умный дом, к ассистенту отношения не имеют |
 
-### Иконки
+Выкладка серверов — скриптами `server/*/deploy-*.sh`: их копируют на станцию и
+запускают там. Каждый заканчивается **настоящей проверкой** (синтез прогоняется через
+распознавание), а не «сервер ответил 200».
 
-**Внутри приложения и снаружи — намеренно разные знаки.** Не «сводить их к одному»: так решено осознанно (2.10.3).
+### Видеокарта одна — отсюда арбитр
 
-- **В приложении — Genesis** (кольцо/горизонт событий): заставка запуска, марка в левом верхнем углу, «О программе». Рисуется кодом ([lib/src/genesis_logo.dart](lib/src/genesis_logo.dart)), не картинкой. Мастера-растры для мобильных/веб-таргетов — [assets/icon/icon.png](assets/icon/icon.png), он же исходник `flutter_launcher_icons`; рендерится из того же кода командой `flutter test test/genesis_icon_test.dart`, производные растры — `python assets/icon/gen_evs_icon.py`.
-- **Системные иконки Windows — эквалайзер**, отдельный знак от автора, в двух прорисовках:
-  - [assets/icon/evs_shortcut.ico](assets/icon/evs_shortcut.ico) — детальная (градиентная подложка, ореол, тонкая рамка). Копируется как есть в `windows/runner/resources/app_icon.ico` → exe, ярлык, `SetupIconFile` установщика.
-  - [assets/icon/evs_tray.svg](assets/icon/evs_tray.svg) — упрощённая прорисовка того же знака под мелкие размеры. Из неё собирается `assets/icon/app_icon.ico` для трея (`trayManager.setIcon`).
-  - Пересборка: `python assets/icon/gen_system_icons.py`. Кадры 16/20/24/32 там не просто уменьшаются, а выравниваются по пиксельной сетке (целые ширина полосы и зазор): при обычном уменьшении на 16 px зазор выходит 0,7 px и четыре полосы сливаются в один столбик. С выравниванием контраст «штрих/зазор» на 16 px — 3.1× против 1.6×.
+Замерено: карта 16 304 МБ, вхолостую занято ~960. Языковая модель `gemma3:12b` — около
+9 000, клон-голос — около 4 000 (на длинной фразе до 8 000), генератор картинок — около
+7 000. Втроём не помещаются никогда, вдвоём — впритык.
 
-**У `flutter_launcher_icons` windows-таргет выключен** (`windows: generate: false`) — иначе `dart run flutter_launcher_icons` перезапишет системную иконку знаком Genesis из `icon.png`. По той же причине `gen_evs_icon.py` больше не пишет `.ico`. Для iOS включён `remove_alpha_ios: true` (Apple запрещает альфа-канал в иконках).
+- **`GpuArbiter`** в [lib/src/desktop_integration.dart](lib/src/desktop_integration.dart):
+  `takeForImages`/`release` и `takeForVoice`/`releaseVoice` — студия при открытии снимает
+  языковую модель с карты, при закрытии выгружает свою модель и возвращает языковую.
+  Полоса-предупреждение (`GpuNoticeBar`) живёт в оболочках, поэтому видна и после
+  закрытия студии.
+- **Заявка на карту** со стороны разговора: `holdForChat`/`releaseChat` → `POST /gpu/hold`
+  на `evs-image`. Сервер картинок ждёт конца чужого кадра, а не выдёргивает модель.
+- **`free_gpu()`** в `server/image/server.py` просит соседей освободиться перед загрузкой
+  весов: Ollama — запросом с `keep_alive: 0`, синтез — `POST /unload`.
+- Если после выгрузки память не вернулась, сервер синтеза **уходит на перезапуск**
+  (`STUCK_VRAM`, порог 1 ГБ, настраивается `EVS_TTS_STUCK_MB`). Изнутри процесса живые
+  тензоры не отнять, а «выгружен» обязано означать свободную карту.
+- `OLLAMA_KEEP_ALIVE=30m` в `/home/art/home-assistant_ai/docker-compose.yml` на станции.
+  Значение `-1` держало модель на карте вечно и приводило к зависанию станции.
 
-### Путь запуска: что нельзя возвращать на него обратно
+## Выпуск
 
-Готовность = `SidecarClient.sttState == 'ready'`, и до неё окно программы и
-виджет не показываются (см. `BootSplash.onDone`, `DesktopIntegration._show`).
-Всё, что стоит между стартом и этим моментом, платится временем запуска, и
-трижды туда уже попадала сеть. Не возвращать:
+Обновления идут **не через GitHub**, а со станции. Подробности —
+[dist/README.md](dist/README.md), коротко:
 
-- **`ComponentManager.loadManifest()` — сначала кэш, сеть фоном.** Чтобы решить,
-  какой файл движка запускать, свежий манифест не нужен. Сетевой запрос стоял
-  здесь с таймаутом 15 с.
-- **`applyStagedUpdates()` — сперва сверить версию, потом работать.** Проверка
-  sha256 и распаковка припасённого архива идут ДО старта движка; без проверки
-  маркера версии они повторялись каждый запуск, потому что удалить архив после
-  распаковки не удавалось (Windows держала файл). Замер у пользователя: 88 с из 94.
-- **`WhisperEngine._build_model()` — сначала `local_files_only=True`.** Иначе
-  faster-whisper на каждом запуске спрашивает huggingface.co про модель, которая
-  уже на диске: 1.67 с против 0.20 с.
-- **Размер модели передаётся аргументом `--model` при запуске сайдкара**, а не
-  только сообщением `stt.config` следом: иначе он грузит умолчательный `small`,
-  получает настоящий на ходу и грузит модель второй раз.
+1. Поднять `version:` в `pubspec.yaml`.
+2. `flutter build windows --release`
+3. `& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" dist\installer.iss /DAppVersion=X.Y.Z`
+   → `dist\out\NexusAnima-Setup-X.Y.Z.exe`
+4. `.\dist\sign_update.ps1 .\dist\out\NexusAnima-Setup-X.Y.Z.exe` — печатает подпись, длину и sha256.
+5. Добавить `<item>` **первым** в `dist/appcast.xml` со всеми тремя числами.
+6. `.\dist\publish-to-station.ps1 -Version X.Y.Z` — кладёт установщик на станцию и
+   переписывает ссылки в `appcast.xml`/`components.json` на её адрес.
 
-### Движки распознавания (сайдкар)
+Пересобрали exe — подпись, длина и sha256 в `appcast.xml` устарели. Не обновить их =
+WinSparkle молча откажется ставить обновление. Откат — `dist/rollback.ps1`.
 
-[sidecar/stt_engine.py](sidecar/stt_engine.py): захват с микрофона, шумодав и
-нарезка фраз по VAD — общие; распознаёт сегмент **активный движок**. Их три, и
-допустимый набор объявлен ОДИН раз — `SttEngine.ENGINES`, выбор экземпляра —
-`_engine_by_name`; на стороне Flutter то же самое в `AppState.kSttSidecarEngines`:
+### Заметки к выпуску пишутся один раз
 
-- `WhisperEngine` — faster-whisper, есть частичные результаты, есть путь на CUDA.
-- `GigaAmEngine` — sherpa-onnx (GigaAM-v3, русский), только финальные, **только
-  CPU**: sherpa-onnx собран без GPU-колёс, селектор устройства для него скрыт.
-- `RemoteSttEngine` — чужой сервер, `POST {url}/v1/audio/transcriptions`
-  (контракт OpenAI). Контракт **не свой намеренно**: такой эндпоинт отдают
-  готовые серверы (speaches, whisper.cpp server, vLLM), и своей серверной части
-  держать не придётся. Микрофон остаётся здесь — наружу уезжает готовая фраза, а
-  не поток.
+Источник один — `<description>` записи в `dist/appcast.xml`. Оттуда они расходятся:
 
-Всё распознавание идёт через `SttEngine._recognize` (звать под `_recog_lock`) —
-там же живёт фолбэк: сервер не ответил → фразу подхватывает локальный движок,
-три срыва подряд → движок меняется совсем и об этом сообщается
-`stt.engine_status` со `state: "fallback"` (не «ready» — пользователь выбирал
-сервер и должен знать, что распознаёт теперь его процессор). Прогрев холостым
-распознаванием пропускается у движков с `needs_warmup = False` — серверному
-греть нечего, это был бы лишний (а на платном API оплаченный) запрос.
+| Куда | Как попадают |
+|---|---|
+| окно обновления («вот что вы сейчас поставите») | разбор канала при проверке обновлений |
+| **история внутри программы**: окно «Что нового», список изменений в настройках, «О программе» | тот же разбор, `AppUpdater.parseHistory` → `AppState.changelog` |
+| [CHANGELOG.md](CHANGELOG.md) — журнал в репозитории | переносится руками, шаг 7 выпуска |
 
-**Локальная модель не висит в памяти, пока работает сервер** — ради этого его и
-подключают. Правила, которые нельзя разъединять:
+Канал сохраняется на диск (`<userdata>/updates/appcast-history.xml`) при каждой удачной
+проверке и поднимается оттуда при запуске — история открывается без сети и до первой
+проверки. Пока канал ни разу не прочитан, показывается встроенный `kChangelog` из
+[lib/src/models.dart](lib/src/models.dart): он отстал на 2.19.1 и оставлен **только как
+запасной** — пополнять его не нужно.
 
-- **Откат идёт на `_local_target()`, а не на Whisper.** Имя приходит снаружи
-  (`--stt-local-engine`, поле `local_engine` в `stt.config`, в настройках —
-  `AppState.sttLocalEngine`, последний выбор среди локальных). У выбравшего
-  GigaAM откат на `tiny`-Whisper был бы молчаливым ухудшением вместо страховки.
-- **Сервер не отозвался на запуске — это не ошибка запуска** (`_start_local`):
-  поднимается локальная модель и готовность объявляется ею. Раньше здесь
-  объявлялся `STATE_ERROR` при незагруженном движке — окно запуска показывало
-  провал, а первая же фраза платила загрузкой модели.
-- **Сторож `_remote_watch_loop`** раз в минуту стучится на сервер, пока выбран
-  он, а распознаём мы локально: как только сервер отвечает — возврат под
-  `_recog_lock` и `unload()` локальной модели. Без него одна сетевая икота
-  сажала бы на локальный движок до ручного переключения, а модель — в память.
-- **Выбор пользователя не переписывается.** `app.sttSidecarEngine` — это выбор,
-  `app.sttEngineLive` (из `SidecarClient.activeSttEngine`) — что работает
-  сейчас; подписи читают второе через `_sttEngineNow`. Раньше карточка настроек
-  ставила `whisper` в саму настройку — и только если была открыта.
-- Ответ кнопки «Проверить» помечен `"probe": true` и живой движок не меняет:
-  связь есть, но распознаёт по-прежнему тот же движок.
+Так было не всегда: до этого история читалась из `kChangelog`, и, поскольку его
+перестали пополнять после 2.19.1, окно «Что нового» не показывалось ни разу за 47
+выпусков — оно не находило своей версии в списке. Разбор канала прикрыт тестами в
+[test/appcast_notes_test.dart](test/appcast_notes_test.dart): ломается он молча, а
+видно это только на одном экране.
 
-## Обновления приложения
+## Имена: что понимает оба и что переименовывать нельзя
 
-Два независимых механизма, на разные случаи:
+Переименование EVS → Nexus Anima (2 сентября 2026) намеренно **не доведено до конца**.
 
-1. **Полный APK через GitHub Releases** — `AppState.checkForUpdates()`/`downloadAndInstallUpdate()` в `lib/main.dart`, кнопка в настройках («О приложении» → «Проверить обновления»). Сравнивает версию с `https://api.github.com/repos/kekw2077/mirai/releases/latest` (репозиторий **должен быть публичным** — приватный отдаёт неавторизованным запросам 404, чекер решит, что релизов нет), скачивает APK-ассет и ставит через `open_filex`. Нужен для версий, меняющих нативную часть (новый плагин, разрешения, обновление fllama и т.п.) — туда, где код-пуш не дотягивается.
-2. **Code push через Shorebird** (`shorebird.yaml`, `app_id` не секрет, закоммичен) — для обычных Dart-правок (UI, логика, как 95% правок в этом проекте) патч прилетает в фоне и применяется при следующем перезапуске приложения, без скачивания нового APK целиком. `auto_update: true` включён по умолчанию в `shorebird.yaml`, никакого кода в `lib/main.dart` для этого не нужно. Бесплатный тариф — 5000 успешных установок патча в месяц, для масштаба этого проекта (свой круг устройств) практически не достижим.
-   - CLI ставится через `~/.shorebird/bin` (отдельная копия Flutter внутри, не та, что в PATH), логин (`shorebird login`) — это персональная браузерная авторизация, нельзя сделать без участия пользователя.
-   - **Релиз** (база, на которую можно накатывать патчи) — `shorebird release android --artifact apk --platforms android`, а не `flutter build apk`. Полученный APK нужно поставить на устройство один раз — обычная `flutter build apk` сборка патчи Shorebird не получает (нет встроенного апдейтера).
-   - **Патч** к уже выпущенному релизу — `shorebird patch android --platforms=android --release-version=<x.y.z+n>` (версия должна совпадать с тем, что было в `release`). Если правка трогает что-то нативное — Shorebird сам откажется создавать патч.
+Читаются **оба** имени, старое не удалять: маркер `EVS_SIDECAR_READY`, имя движка
+`evs_sidecar.exe`, переменные `EVS_QWEN_CACHE`/`EVS_USERDATA`, установщик `EVS-Setup-*`.
 
-## Известные особенности / риски
+**Не переименовывать никогда:**
 
-- Сборка release APK компилирует fllama для нескольких ABI (arm64-v8a, armeabi-v7a, x86_64) последовательно — каждая занимает по 2-3 минуты, итоговая сборка может занимать 10+ минут.
-- На 32-битных ARM устройствах (armeabi-v7a) нативная сборка llama.cpp пропускает ARM64-специфичные оптимизации (видно в логе: `Non-ARM64 Android build (armeabi-v7a) - skipping ARM optimizations`) — ожидаемо медленнее, чем на arm64.
-- Release-сборка пока подписывается debug-ключом (`signingConfig = signingConfigs.getByName("debug")` в `android/app/build.gradle.kts`) — нормально для побочной установки (sideload) на другие телефоны, но не для публикации в Play Store.
+- `evs:sha256` в `appcast.xml` — каждая установленная сборка ищет этот литерал;
+- `AppId` в `dist/installer.iss` — GUID связывает установку Anima с заменяемой EVS;
+- мьютекс `EVS-SingleInstance-Mutex` — иначе запустятся две копии на один микрофон;
+- `elevatedTaskName` → папка `EVS\cmd_*` в планировщике задач.
 
-## Полезные команды
+## Данные — только на диске установки
 
-```bash
-flutter analyze                       # проверка типов/линт
-flutter run -d windows                # быстрый прогон на десктопе (без нужды в Android-окружении)
-flutter devices                       # список устройств, включая телефон по USB
-flutter run -d <device-id>            # debug-сборка + установка на устройство
-flutter build apk --release           # релизный APK для ручной установки (build/app/outputs/flutter-apk/app-release.apk)
-shorebird release android --artifact apk --platforms android   # новая база для code push (после native-изменений)
-shorebird patch android --platforms=android --release-version=<x.y.z+n>  # код-пуш патч к этой базе
-cd android && ./gradlew --stop        # сбросить зависший/сломанный Gradle-демон
+Ничего не писать на `C:`. Корень данных портативный — `<папка установки>\userdata`;
+кэши моделей пиннятся явно (`pin_cache_to` в `qwen_tts_server.py`). Непрочитанная
+переменная окружения не даёт ошибки — она молча уводит 4 ГБ весов на системный диск.
+
+## Проверки
+
+```powershell
+flutter analyze lib/src/имя.dart      # быстрее, чем весь проект
+flutter test                          # 13 файлов тестов в test/
+flutter run -d windows                # прогон вживую
+python -m py_compile sidecar\файл.py  # синтаксис движка перед выкладкой
 ```
+
+Тесты покрывают то, что ломается молча: нарезку длинного текста (`speech_chunks_test`),
+слово-активатор, разбор заметок к выпуску, числительные, выбор отката, иконку.
+
+## Что легко нарушить
+
+- **Новое ведёт в существующее.** Новая кнопка, вкладка или стиль ссылаются на готовую
+  функцию, а не заводят вторую реализацию рядом. Если новое противоречит существующей
+  настройке — это вопрос к пользователю, а не повод выбрать самому.
+- **Путь запуска.** Готовность = движок ответил `ready`; всё, что стоит между стартом и
+  этим моментом, платится временем запуска. Сеть туда уже попадала трижды.
+- **Выбор пользователя не переписывать.** `sttSidecarEngine` — это выбор, `sttEngineLive` —
+  что работает сейчас. Подписи читают второе, настройка остаётся первой.

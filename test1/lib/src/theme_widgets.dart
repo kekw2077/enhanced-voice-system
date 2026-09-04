@@ -6,6 +6,22 @@ part of '../main.dart';
 // dialogs without a captured BuildContext.
 final GlobalKey<NavigatorState> rootNavKey = GlobalKey<NavigatorState>();
 
+/// Прокрутка без полосы.
+///
+/// Полосу рисует не виджет, а поведение прокрутки по умолчанию: на настольных
+/// системах Flutter надевает её на каждый список сам. Поэтому и убирается она
+/// одним местом на всё приложение, а не поиском полос по экранам — их в коде
+/// нет ни одной. Сама прокрутка не меняется: колесо, тачпад и клавиши работают
+/// как работали, исчезает только полоска у правого края.
+class AnimaScrollBehavior extends MaterialScrollBehavior {
+  const AnimaScrollBehavior();
+
+  @override
+  Widget buildScrollbar(
+          BuildContext context, Widget child, ScrollableDetails details) =>
+      child;
+}
+
 class MiraiApp extends StatelessWidget {
   const MiraiApp({super.key});
 
@@ -15,6 +31,7 @@ class MiraiApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       navigatorKey: rootNavKey,
+      scrollBehavior: const AnimaScrollBehavior(),
       title: 'Nexus Anima',
       theme: _buildTheme(app.appStyle, app.themeMode, app.prismAccent),
       darkTheme: _buildTheme(app.appStyle, app.themeMode, app.prismAccent),
@@ -1417,7 +1434,12 @@ class _AppDialog extends StatelessWidget {
       backgroundColor: Colors.transparent,
       elevation: 0,
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-      child: GlassSurface(
+      // Ширина ограничена: на широком окне диалог растягивался почти во весь
+      // экран, и вопрос в две строки разъезжался на тысячу с лишним пикселей.
+      // Читать такое неудобно, а выглядит как незакрытая вёрстка.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: GlassSurface(
         borderRadius: BorderRadius.circular(28),
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
         child: Column(
@@ -1444,6 +1466,7 @@ class _AppDialog extends StatelessWidget {
               ),
             ],
           ],
+          ),
         ),
       ),
     );
@@ -3123,6 +3146,33 @@ Widget animaAddButton(BuildContext context, String label, VoidCallback onTap,
                   color: _accent(context))),
         ],
       ),
+    ),
+  );
+}
+
+/// Главное действие диалога.
+///
+/// Заведена потому, что на её месте стоял стоковый `FilledButton` — единственная
+/// кнопка во всём приложении, рисовавшаяся не по своим токенам, а по цветам,
+/// которые Material выводит из затравки темы. Отсюда и вид: сплошная заливка с
+/// подписью низкого контраста, на фоне стекла читавшаяся мыльной. Здесь тот же
+/// приём, что у соседних кнопок, — прозрачная заливка акцентом, рамка и текст
+/// самим акцентом.
+Widget animaPrimaryButton(
+    BuildContext context, String label, VoidCallback onTap) {
+  final a = _accent(context);
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: a.withValues(alpha: 0.16),
+        border: Border.all(color: a.withValues(alpha: 0.38)),
+      ),
+      child: Text(label,
+          style: AnimaType.label
+              .copyWith(fontSize: 13, fontWeight: FontWeight.w700, color: a)),
     ),
   );
 }

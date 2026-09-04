@@ -271,6 +271,11 @@ const Map<String, Map<String, String>> _i18n = {
     'imgServerUrl': 'Адрес',
     'imgServerUrlDesc': 'Куда отправлять запросы на генерацию. Пусто — окно '
         '«Картинки» работать не будет.',
+    'stationToken': 'Токен агента станции',
+    'stationTokenDesc':
+        'Им берутся метрики станции — процессор, память и видеокарта в карточке '
+            '«Система». Тот же агент, что отвечает телефону, порт 8765 на этой '
+            'же машине. Пусто — метрик станции просто не будет.',
     'imgModel': 'Модель',
     'imgModelDesc': 'Имя чекпоинта на сервере. Пусто — сервер возьмёт свой '
         'основной.',
@@ -708,8 +713,8 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEnginePiper': 'Piper',
     'ttsEnginePiperHint': 'быстро, офлайн, CPU',
     'ttsEngineCosy': 'Клон (сервер)',
-    'ttsEngineCosyHint': 'ваш голос: Qwen3-TTS или Qwen3-TTS',
-    'ttsCosyUnavailable': 'Клон-сервер не отвечает — запустите локальный Qwen3-TTS или укажите адрес Qwen3-TTS',
+    'ttsEngineCosyHint': 'ваш голос, сервер живого голоса',
+    'ttsCosyUnavailable': 'Клон-голосу нечем говорить — укажите ниже адрес сервера живого голоса и образец WAV',
     'motionMode': 'Анимации интерфейса',
     'motionModeDesc':
         'Декоративные анимации (сфера, рамки, идл-волны) нагружают процессор. '
@@ -721,7 +726,7 @@ const Map<String, Map<String, String>> _i18n = {
     'cloneSectionHint':
         'Свой клонировщик, работает на этом компьютере без видеокарты. '
             'К настройкам сервера Qwen3-TTS выше отношения не имеет.',
-    'ttsCosySectionTitle': 'Qwen3-TTS — сервер клон-голоса',
+    'ttsCosySectionTitle': 'Образец голоса — общий для обоих серверов',
     'cloneTitle': 'Клон голоса (XTTS · CPU)',
     'cloneHint':
         'Временный локальный клонировщик: отвечает голосом из образца WAV. '
@@ -756,30 +761,20 @@ const Map<String, Map<String, String>> _i18n = {
             'новый длинный текст синтезируется на ходу. Сверху можно наложить '
             'Voice FX (например, пресет EDI).',
     'ttsCosyEndpoint': 'Адрес студийного сервера (Qwen3-TTS)',
-    'ttsMossEndpoint': 'Адрес сервера живого голоса (MOSS)',
-    'ttsMossHint': 'Им озвучиваются ответы в разговоре. Считает на процессоре '
-        'и видеокарту не занимает, поэтому языковая модель остаётся на ней '
-        'постоянно. Студийный сервер ниже — он поднимается на видеокарте '
-        'только на время открытой студии голоса.',
-    'cloneSrvTitle': 'Локальный сервер клона',
-    'cloneSrvDesc': 'Запускает sidecar/qwen_tts_server.py на этом компьютере. Нужен python с torch и CUDA — обычный интерпретатор не подойдёт.',
-    'cloneSrvStart': 'Запустить сервер',
-    'cloneSrvStop': 'Остановить',
-    'cloneSrvStarting': 'Запускаю…',
-    'cloneSrvRunning': 'Сервер работает',
-    'cloneSrvStopped': 'Сервер не запущен',
-    'cloneSrvNoPython': 'Не найден python с torch. Укажите путь к интерпретатору ниже.',
-    'cloneSrvNoScript': 'Не удалось развернуть скрипт сервера.',
-    'cloneSrvExited': 'Сервер завершился',
-    'cloneSrvFailed': 'Не удалось запустить сервер — подробности в журнале.',
-    'cloneSrvPython': 'Путь к python (если не нашёлся сам)',
+    'ttsLiveVoiceEndpoint': 'Адрес сервера живого голоса',
+    'ttsLiveVoiceHint': 'Им озвучиваются ответы в разговоре. Как называется модель '
+        'за этим адресом, приложение спрашивает у самого сервера — вписывать '
+        'её имя сюда незачем, оно меняется. Студийный сервер ниже отвечает за '
+        'длинные тексты в Sonora.',
     'ttsCosyCheck': 'Проверить соединение',
     'ttsCosyOnline': 'На связи',
     'ttsCosyOffline': 'Не отвечает',
     'ttsCosyFellBack': 'Клон-сервер не отвечает — заготовленные фразы играют из кэша, новые озвучит обычный голос',
     'ttsCosyChecking': 'Проверка…',
     'ttsCosyWiringHint':
-        'Настройки сохраняются. Синтез через Qwen3-TTS подключится, когда сервер будет развёрнут.',
+        'Один образец на оба сервера: этим голосом отвечает живой сервер в '
+            'разговоре и студийный — в Sonora. Адреса серверов задаются на '
+            'вкладке «Движок синтеза».',
     'ttsCosyClone': 'Клонировать по образцу',
     'ttsCosyClonePick': 'Выбрать WAV…',
     'ttsCosyCloneNone': 'Образец не выбран',
@@ -848,6 +843,7 @@ const Map<String, Map<String, String>> _i18n = {
     'vaSttOffline': 'Голосовой движок не подключён',
     'updRestart': 'Перезапустить',
     'updUpToDate': 'Актуальная версия',
+    'updHasUpdate': 'Есть обновление',
     'updReadyShort': 'Обновление',
     'updFlowDesc': 'Обновление скачается в фоне — останется перезапустить',
     'updAvailableTitle': 'Доступно обновление',
@@ -858,7 +854,9 @@ const Map<String, Map<String, String>> _i18n = {
     'updFailedManual': 'Автообновление до {v} не установилось. Скачайте установщик вручную.',
     'updDownloadManual': 'Скачать',
     'updSplashKicker': 'УСТАНОВКА ОБНОВЛЕНИЯ',
-    'updRollback': 'Вернуться назад',
+    'updRollback': 'Откатить на предыдущую версию',
+    'updRollbackTo': 'Откатить на',
+    'updRollbackDo': 'Откатить',
     'updRollbackDesc':
         'Поставить предыдущую версию {v}, если в текущей что-то сломалось',
     'updRollbackConfirm':
@@ -896,6 +894,19 @@ const Map<String, Map<String, String>> _i18n = {
     'vaWakeHeard': 'услышал, говорите!',
     'vaArmed': 'Говорите команду…',
     'vaCmdUnknown': 'Команду не понял',
+    'vaClarifyAsk': 'Не нашёл такой команды. Вы имели в виду',
+    'cmdClarify': 'Уточнять команду моделью',
+    'cmdClarifyDesc':
+        'Когда точного совпадения нет, языковая модель выбирает подходящую из '
+            'ваших же команд. Придумать новую она не может: список закрытый. '
+            'Уверенный выбор запускается сразу, неуверенный превращается в '
+            'вопрос — вслух и вариантами в переписке.',
+    'cmdLearned': 'Запомненные разборы',
+    'cmdLearnedDesc':
+        'Когда вы выбираете вариант в переспросе, ассистент запоминает: та же '
+            'плохо расслышанная фраза в следующий раз запустит ту же команду '
+            'сразу. Сейчас помнит {n}. Забыть — если запомнилось не то.',
+    'cmdLearnedForget': 'Забыть все',
     'vaStopped': 'Остановлено',
     'vaConfirmTitle': 'Выполнить команду?',
     'vaConfirmBody': 'Anima распознал команду:',
@@ -1456,6 +1467,7 @@ const Map<String, Map<String, String>> _i18n = {
     'nxAssistant': 'Ассистент',
     'nxCpu': 'Процессор',
     'nxRam': 'Оперативная память',
+    'nxGpu': 'Видеокарта',
     'nxVram': 'Видеопамять',
     'nxNoTelemetry': 'Датчики железа пока молчат',
     'prismHub': 'Центр',
@@ -1997,11 +2009,17 @@ const Map<String, Map<String, String>> _i18n = {
     'prismAutoRefresh': 'Автообновление',
     'prismEngine': 'Движок',
     'prismDetails': 'Подробности',
+    'prismVramLocal': 'Видеопамять (этот ПК)',
+    'prismThisPc': 'Этот компьютер',
+    'prismStation': 'Станция',
+    'prismOnCard': 'На карте',
+    'prismCardFree': 'свободна',
     'prismRuntime': 'Исполнение',
     'prismCpuLoad': 'Загрузка процессора',
     'prismCollecting': 'Набираю данные…',
     'nxTtsClone': 'Клон (XTTS)',
     'nxTtsSystem': 'Система',
+    'nxTtsFellBack': 'клон не отвечает',
     'nxOnline': 'онлайн',
     'nxOffline': 'оффлайн',
     'showChips': 'Показывать подсказки',
@@ -2424,6 +2442,11 @@ const Map<String, Map<String, String>> _i18n = {
     'imgServerUrl': 'Address',
     'imgServerUrlDesc': 'Where generation requests go. Empty means the Images '
         'window will not work.',
+    'stationToken': 'Station agent token',
+    'stationTokenDesc':
+        'Used to read the station metrics — CPU, memory and GPU in the '
+            '"System" card. The same agent the phone talks to, port 8765 on the '
+            'same machine. Empty means no station metrics.',
     'imgModel': 'Model',
     'imgModelDesc': 'Checkpoint name on the server. Empty lets the server pick '
         'its default.',
@@ -2860,8 +2883,8 @@ const Map<String, Map<String, String>> _i18n = {
     'ttsEnginePiper': 'Piper',
     'ttsEnginePiperHint': 'fast, offline, CPU',
     'ttsEngineCosy': 'Clone (server)',
-    'ttsEngineCosyHint': 'your voice: Qwen3-TTS or Qwen3-TTS',
-    'ttsCosyUnavailable': 'Clone server not responding — start the local Qwen3-TTS or set a Qwen3-TTS address',
+    'ttsEngineCosyHint': 'your voice, live-voice server',
+    'ttsCosyUnavailable': 'The clone has nothing to speak with — set the live-voice server address and a WAV sample below',
     'motionMode': 'Interface animations',
     'motionModeDesc':
         'Decorative animations (sphere, borders, idle waves) cost CPU. '
@@ -2873,7 +2896,7 @@ const Map<String, Map<String, String>> _i18n = {
     'cloneSectionHint':
         'Your own cloner, running on this computer with no GPU. Unrelated to '
             'the Qwen3-TTS server settings above.',
-    'ttsCosySectionTitle': 'Qwen3-TTS — voice clone server',
+    'ttsCosySectionTitle': 'Voice sample — shared by both servers',
     'cloneTitle': 'Voice clone (XTTS · CPU)',
     'cloneHint':
         'Temporary local cloner: replies in the voice from a WAV sample. Runs '
@@ -2909,30 +2932,20 @@ const Map<String, Map<String, String>> _i18n = {
             'long text is synthesized on the fly. You can layer Voice FX on top '
             '(e.g. the EDI preset).',
     'ttsCosyEndpoint': 'Studio server address (Qwen3-TTS)',
-    'ttsMossEndpoint': 'Live-voice server address (MOSS)',
-    'ttsMossHint': 'Voices the replies in conversation. Runs on the CPU and '
-        'never touches the GPU, so the language model can stay on the card. '
-        'The studio server below is loaded on the GPU only while the voice '
-        'studio is open.',
-    'cloneSrvTitle': 'Local clone server',
-    'cloneSrvDesc': 'Runs sidecar/qwen_tts_server.py on this machine. Needs a python with torch and CUDA — a plain interpreter will not do.',
-    'cloneSrvStart': 'Start server',
-    'cloneSrvStop': 'Stop',
-    'cloneSrvStarting': 'Starting…',
-    'cloneSrvRunning': 'Server is running',
-    'cloneSrvStopped': 'Server is not running',
-    'cloneSrvNoPython': 'No python with torch found. Set the interpreter path below.',
-    'cloneSrvNoScript': 'Could not unpack the server script.',
-    'cloneSrvExited': 'Server exited',
-    'cloneSrvFailed': 'Could not start the server — see the log for details.',
-    'cloneSrvPython': 'Path to python (if not found automatically)',
+    'ttsLiveVoiceEndpoint': 'Live-voice server address',
+    'ttsLiveVoiceHint': 'Voices the replies in conversation. The app asks the server '
+        'itself what model stands behind this address — no need to write its '
+        'name here, it changes. The studio server below handles long texts in '
+        'Sonora.',
     'ttsCosyCheck': 'Check connection',
     'ttsCosyOnline': 'Online',
     'ttsCosyOffline': 'Not responding',
     'ttsCosyFellBack': 'Clone server offline — cached phrases still play, new text uses the fallback voice',
     'ttsCosyChecking': 'Checking…',
     'ttsCosyWiringHint':
-        'Settings are saved. Qwen3-TTS synthesis connects once the server is deployed.',
+        'One sample for both servers: this voice answers live in conversation '
+            'and in the Sonora studio. Server addresses live on the '
+            '"Synthesis engine" tab.',
     'ttsCosyClone': 'Clone from sample',
     'ttsCosyClonePick': 'Choose WAV…',
     'ttsCosyCloneNone': 'No sample chosen',
@@ -3001,6 +3014,7 @@ const Map<String, Map<String, String>> _i18n = {
     'vaSttOffline': 'Voice engine not connected',
     'updRestart': 'Restart',
     'updUpToDate': 'Up to date',
+    'updHasUpdate': 'Update available',
     'updReadyShort': 'Update',
     'updFlowDesc': 'Downloads in the background — just restart to apply',
     'updAvailableTitle': 'Update available',
@@ -3011,7 +3025,9 @@ const Map<String, Map<String, String>> _i18n = {
     'updFailedManual': 'Auto-update to {v} did not install. Download the installer manually.',
     'updDownloadManual': 'Download',
     'updSplashKicker': 'INSTALLING UPDATE',
-    'updRollback': 'Go back',
+    'updRollback': 'Roll back to the previous version',
+    'updRollbackTo': 'Roll back to',
+    'updRollbackDo': 'Roll back',
     'updRollbackDesc':
         'Install the previous version {v}, if something broke in this one',
     'updRollbackConfirm':
@@ -3049,6 +3065,20 @@ const Map<String, Map<String, String>> _i18n = {
     'vaWakeHeard': 'heard you, go ahead!',
     'vaArmed': 'Say the command…',
     'vaCmdUnknown': 'Could not understand the command',
+    'vaClarifyAsk': 'No such command. Did you mean',
+    'cmdClarify': 'Let the model clarify the command',
+    'cmdClarifyDesc':
+        'When nothing matches exactly, the language model picks a fitting one '
+            'from YOUR commands. It cannot invent a new one — the list is '
+            'closed. A confident pick runs at once; an unsure one becomes a '
+            'question, spoken aloud and offered as choices in the chat.',
+    'cmdLearned': 'Remembered readings',
+    'cmdLearnedDesc':
+        'When you pick an option in a follow-up question, the assistant '
+            'remembers it: the same misheard phrase runs the same command '
+            'straight away next time. Remembered so far: {n}. Clear it if '
+            'something was learned wrong.',
+    'cmdLearnedForget': 'Forget all',
     'vaStopped': 'Stopped',
     'vaConfirmTitle': 'Run command?',
     'vaConfirmBody': 'Anima recognized a command:',
@@ -3602,6 +3632,7 @@ const Map<String, Map<String, String>> _i18n = {
     'nxAssistant': 'Assistant',
     'nxCpu': 'CPU',
     'nxRam': 'Memory',
+    'nxGpu': 'Video card',
     'nxVram': 'Video memory',
     'nxNoTelemetry': 'No hardware telemetry yet',
     'prismHub': 'Hub',
@@ -4130,11 +4161,17 @@ const Map<String, Map<String, String>> _i18n = {
     'prismAutoRefresh': 'Auto-refresh',
     'prismEngine': 'Engine',
     'prismDetails': 'Details',
+    'prismVramLocal': 'Video memory (this PC)',
+    'prismThisPc': 'This computer',
+    'prismStation': 'Station',
+    'prismOnCard': 'On the card',
+    'prismCardFree': 'free',
     'prismRuntime': 'Runtime',
     'prismCpuLoad': 'CPU load',
     'prismCollecting': 'Collecting data…',
     'nxTtsClone': 'Clone (XTTS)',
     'nxTtsSystem': 'System',
+    'nxTtsFellBack': 'clone not answering',
     'nxOnline': 'online',
     'nxOffline': 'offline',
     'showChips': 'Show prompt chips',

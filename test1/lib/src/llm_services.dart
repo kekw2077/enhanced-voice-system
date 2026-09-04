@@ -519,8 +519,8 @@ class RemoteLLMService implements ILLMService {
     // Top-level in Ollama's API, not an `options` entry. It only controls how
     // long the model stays resident, so it is orthogonal to sampling and
     // applies to roleplay requests too.
-    final ka = app.llmKeepAlive.trim();
-    if (ka.isNotEmpty) body['keep_alive'] = ka;
+    final ka = app.llmKeepAliveField;
+    if (ka != null) body['keep_alive'] = ka;
     // Гасим размышление вслух. Поле верхнего уровня, как и keep_alive, не часть
     // `options`. Отправляем ТОЛЬКО выключение: на моделях без размышления оно
     // безвредно (проверено — HTTP 200 и обычный ответ), а вот `think: true`

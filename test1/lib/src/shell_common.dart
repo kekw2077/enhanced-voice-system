@@ -704,6 +704,62 @@ Widget animaModelPill(BuildContext context, {double fontSize = 13}) {
 }
 
 // ==========================================================================
+// ВАРИАНТЫ ПОД РЕПЛИКОЙ
+// --------------------------------------------------------------------------
+// Ассистент не понял, какую команду просили, и переспрашивает. Голосом вопрос
+// звучит один раз, а здесь остаётся: нажал — запустилось. Виджет один на все
+// четыре оболочки, потому что четыре одинаковые кнопки разойдутся к третьей же
+// правке — как уже разошлось короткое имя модели, собранное потом обратно.
+// ==========================================================================
+
+Widget animaMessageChoices(BuildContext context, ChatMessage m) {
+  if (m.choices.isEmpty) return const SizedBox.shrink();
+  final app = context.watch<AppState>();
+  final items = <Widget>[];
+  for (final phrase in m.choices) {
+    // Каталог человек правит, и вариант из старой переписки может уже никуда
+    // не вести. Тогда кнопки просто нет: мёртвая кнопка хуже её отсутствия.
+    VoiceCommand? cmd;
+    for (final c in app.voiceCommands) {
+      if (c.phrase == phrase) {
+        cmd = c;
+        break;
+      }
+    }
+    if (cmd == null) continue;
+    final target = cmd;
+    items.add(InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: () {
+        app.buzz();
+        // Вместе с командой отдаём и то, что было сказано: выбор человека —
+        // единственное надёжное подтверждение, и его стоит запомнить.
+        unawaited(VoiceAssistant.instance
+            .runChosen(app, target, said: m.choicesFor));
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: _accent(context).withValues(alpha: 0.55)),
+          color: _accent(context).withValues(alpha: 0.10),
+        ),
+        child: Text(phrase,
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _accent(context))),
+      ),
+    ));
+  }
+  if (items.isEmpty) return const SizedBox.shrink();
+  return Padding(
+    padding: const EdgeInsets.only(top: 9),
+    child: Wrap(spacing: 8, runSpacing: 8, children: items),
+  );
+}
+
+// ==========================================================================
 // ПОДПИСИ ПОДСИСТЕМ
 // --------------------------------------------------------------------------
 // Как называется движок синтеза прямо сейчас и что писать второй строкой.
@@ -715,15 +771,34 @@ Widget animaModelPill(BuildContext context, {double fontSize = 13}) {
 /// (название движка, вторая строка).
 (String, String) animaTtsEngineLabel(AppState app) {
   if (app.cloneEnabled) return (app.t('nxTtsClone'), 'XTTS');
+  // Что ГОВОРИТ сейчас, а не что выбрано. Правило то же, что у распознавания:
+  // выбор остаётся выбором, подписи читают живое. Движок откатывается на Piper
+  // сам — при недоступном сервере, при отказе синтеза, — и карточка, читавшая
+  // только выбор, показывала «клон, онлайн» ровно тогда, когда вслух отвечал
+  // Piper. Именно с этого начинается «я всё настроил, а голос не поменялся».
+  final live = SidecarClient.instance.ttsStatus.value?.$1 ?? '';
+  final fellBack = app.ttsEngineChoice == 'clone' &&
+      (live == 'piper' || live == 'pyttsx3');
+  if (fellBack) {
+    final name = live == 'piper' && app.ttsPiperVoice.isNotEmpty
+        ? 'Piper · ${animaVoiceName(app.ttsPiperVoice)}'
+        : app.t('nxTtsSystem');
+    return (name, app.t('nxTtsFellBack'));
+  }
   if (app.ttsEngineChoice == 'clone') {
     // Название берём у самого сервера: за этим адресом может стоять любая
     // модель, и вписанное в код имя устаревает молча.
-    final name = app.cloneServerModel.isNotEmpty
-        ? app.cloneServerModel
+    //
+    // Сервер — ЖИВОЙ, а не студийный: карточка подписывает голос, каким
+    // ассистент говорит в разговоре. После разделения серверов она называла
+    // модель студии и её же состояние — то есть показывала «Qwen3-TTS, онлайн»
+    // ровно тогда, когда отвечал вслух совсем другой сервер, а то и Piper.
+    final name = app.liveVoiceModel.isNotEmpty
+        ? app.liveVoiceModel
         : app.t('nxTtsClone');
     return (
       name,
-      (app.qwenOnline ?? false) ? app.t('nxOnline') : app.t('nxOffline'),
+      (app.liveVoiceOnline ?? false) ? app.t('nxOnline') : app.t('nxOffline'),
     );
   }
   if (app.ttsPiperVoice.isEmpty) return (app.t('nxTtsSystem'), 'pyttsx3');
@@ -759,6 +834,47 @@ String animaShortModel(String m) {
   var s = m.replaceFirst('local:', '');
   if (s.contains('/')) s = s.split('/').last;
   if (s.contains('\\')) s = s.split('\\').last;
+  return s;
+}
+
+/// Короткое имя железа: «AMD Ryzen 9 5900X 12-Core Processor» -> «AMD Ryzen 9
+/// 5900X», «Intel(R) Core(TM) i7-12700K CPU @ 3.60GHz» -> «Intel Core i7-12700K».
+///
+/// Строка железа стоит рядом с подписью «Процессор ·» и числом справа, и на
+/// полное имя места не остаётся: хвост «6-Core Processor» съедал ровно ту
+/// часть, ради которой имя и показывают. Режем канцелярит, а не саму модель.
+String animaShortHardware(String raw) {
+  var s = raw.trim();
+  if (s.isEmpty) return s;
+  s = s.replaceAll(RegExp(r'\((R|r|TM|tm)\)'), '');
+  s = s.replaceAll('\u00ae', '').replaceAll('\u2122', '');
+  // «12-Core Processor», «8-Core», «Processor», «CPU @ 3.60GHz», «w/ Radeon…»
+  s = s.replaceAll(RegExp(r'\s*\d+[- ]Core(\s+Processor)?', caseSensitive: false), '');
+  s = s.replaceAll(RegExp(r'\s*\bProcessor\b', caseSensitive: false), '');
+  s = s.replaceAll(RegExp(r'\s*\bCPU\b\s*@.*$', caseSensitive: false), '');
+  s = s.replaceAll(RegExp(r'\s*\bCPU\b', caseSensitive: false), '');
+  s = s.replaceAll(RegExp(r'\s+'), ' ');
+  s = s.trim();
+  // Вендор убирается только тогда, когда марка называет его сама: «Ryzen» без
+  // «AMD» и «GeForce» без «NVIDIA» читаются ровно так же, а строка становится
+  // на треть короче — в узкой карточке это разница между именем и огрызком.
+  // «AMD Radeon» -> «Radeon», но «AMD GPU» останется как есть: без «AMD» там
+  // не останется ничего.
+  const implied = {
+    'AMD': ['Ryzen', 'Radeon', 'Athlon', 'EPYC'],
+    'NVIDIA': ['GeForce', 'RTX', 'GTX', 'Quadro'],
+    'Intel': ['Core', 'Xeon', 'Arc', 'Pentium', 'Celeron'],
+  };
+  for (final e in implied.entries) {
+    final prefix = '${e.key} ';
+    if (!s.toUpperCase().startsWith(prefix.toUpperCase())) continue;
+    final rest = s.substring(prefix.length).trim();
+    final head = rest.split(' ').first;
+    if (e.value.any((w) => w.toLowerCase() == head.toLowerCase())) {
+      s = rest;
+    }
+    break;
+  }
   return s;
 }
 

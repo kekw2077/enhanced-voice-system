@@ -1481,11 +1481,12 @@ class _NexusSubsystemCards extends StatelessWidget {
       BuildContext c, AppState app, SidecarClient sc, NexusPipeline pipe) {
     final (engine, sub) = animaTtsEngineLabel(app);
     final connected = sc.status.value == SidecarStatus.connected;
-    // Qwen3-TTS health only gates the dot when clone is the engine actually
-    // in use — a clone (XTTS) override makes clone reachability irrelevant.
+    // Здоровье сервера красит огонёк только когда клон-голос и правда выбран,
+    // а «сервер» тут — ЖИВОЙ: им озвучивается разговор. Студийный
+    // к этому огоньку отношения не имеет — он спит, пока не открыта Sonora.
     final cosyOk = app.cloneEnabled ||
         app.ttsEngineChoice != 'clone' ||
-        (app.qwenOnline ?? false);
+        (app.liveVoiceOnline ?? false);
     final dot = (!connected || !sc.ttsAvailable)
         ? _danger(c)
         : (cosyOk ? _success(c) : _warn(c));
@@ -1883,6 +1884,7 @@ class _NexusChatColumnState extends State<_NexusChatColumn> {
             AnimaTypingText(m.content,
                 style: AnimaType.body
                     .copyWith(fontSize: 13.5, color: _txt(context))),
+          animaMessageChoices(context, m),
           if (!waiting)
             Padding(
               padding: const EdgeInsets.only(top: 6),

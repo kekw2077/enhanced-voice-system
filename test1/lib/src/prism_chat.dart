@@ -521,6 +521,7 @@ class _PrismMessageState extends State<_PrismMessage> {
               style: PrismType.body.copyWith(
                   color: ai ? _body(context) : Colors.white, height: 1.55),
             ),
+            animaMessageChoices(context, m),
           ],
         ),
       ),

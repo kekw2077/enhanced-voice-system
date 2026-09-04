@@ -191,6 +191,31 @@ class AppState extends ChangeNotifier {
   double? updateDownloadProgress;
   String? lastSeenVersion;
 
+  /// История выпусков для окна «Что нового» и экранов со списком изменений.
+  ///
+  /// Приходит из канала обновлений — там заметки пишутся при выпуске, и там же
+  /// их читает окно обновления. Встроенный `kChangelog` остаётся запасным:
+  /// первый запуск и работа без сети должны показывать хоть что-то.
+  List<ChangelogEntry> changelog = kChangelog;
+  bool _changelogFromFeed = false;
+  bool _changelogCacheRead = false;
+
+  /// Принять историю из канала. Пустую не принимаем: обрезанный ответ сервера
+  /// не должен стирать то, что уже показывается.
+  void adoptChangelog(List<ChangelogEntry> entries) {
+    if (entries.isEmpty) return;
+    _changelogFromFeed = true;
+    changelog = entries;
+    notifyListeners();
+  }
+
+  /// Поднять историю из сохранённого канала — один раз за запуск.
+  Future<void> ensureChangelog() async {
+    if (_changelogFromFeed || _changelogCacheRead) return;
+    _changelogCacheRead = true;
+    adoptChangelog(await AppUpdater.cachedHistory());
+  }
+
   Personalization persona = Personalization();
 
   // EVS desktop additions.
@@ -243,6 +268,21 @@ class AppState extends ChangeNotifier {
         ? '${llmKeepAliveMinutes}m'
         : llmKeepAlivePreset;
   }
+
+  /// То же значение, но в том виде, в каком его понимает Ollama: ЧИСЛО или
+  /// строка длительности. `null` — поле не отправлять вовсе.
+  ///
+  /// «Всегда» хранится как «-1», и это не длительность. Строку Ollama разбирает
+  /// через time.ParseDuration, а «-1» без единицы для него ошибка —
+  /// `missing unit in duration "-1"`, ответ 400. Числом же -1 означает ровно то
+  /// самое «держать вечно». Одно место на обоих отправителей — на чат и на
+  /// возврат модели после студии: строкой «-1» они получали 400 оба, но чат об
+  /// этом кричал, а прогрев молчал, и выглядело это как «модель не вернулась».
+  Object? get llmKeepAliveField {
+    final v = llmKeepAlive.trim();
+    if (v.isEmpty) return null;
+    return int.tryParse(v) ?? v;
+  }
   // Размышление вслух у моделей вроде Qwen3. Ollama кладёт рассуждения в
   // отдельное поле, до пользователя они не доходят — но время съедают целиком.
   // Замер на станции, один и тот же вопрос: 27,7 с с размышлением против 2,3 с
@@ -262,6 +302,16 @@ class AppState extends ChangeNotifier {
   // был вдвое меньше, всё сходилось — отсюда прежнее «нет». Теперь
   // невыгруженный голос означает отказ генерации с нехваткой памяти.
   String imageServerUrl = '';
+
+  /// Название процессора этого компьютера. Пусто, пока не спросили или если
+  /// спросить не вышло, — тогда строка называется просто «Процессор».
+  String cpuModel = '';
+
+  /// Токен агента станции (`pc-agent`, порт 8765) — того самого, что уже
+  /// отдаёт метрики телефону. Адрес не спрашиваем: агент живёт на той же
+  /// машине, что и языковая модель, и порт у него свой. Пусто — метрик станции
+  /// просто нет, и блок в карточке не рисуется.
+  String stationToken = '';
 
   // --- Сеть: агент канала на станции ---------------------------------------
   // Адрес агента nexus-relay и его токен. Агент меряет канал до арендованного
@@ -372,7 +422,6 @@ class AppState extends ChangeNotifier {
   String pttLabel = '';
   String sttLanguage = 'auto'; // 'auto' | 'ru' | 'en'
   String whisperModel = 'small'; // tiny | base | small | medium (sidecar)
-  String sttEngine = 'whisper'; // 'whisper' (sidecar) | 'windows' (speech_to_text)
   // Sidecar recognition engine (TZ1): which model the sidecar uses. Distinct
   // from sttEngine above (sidecar-vs-native backend).
   String sttSidecarEngine = 'whisper'; // 'whisper' | 'gigaam' | 'remote'
@@ -433,6 +482,34 @@ class AppState extends ChangeNotifier {
   }
 
   double cmdThreshold = 0.65; // 0..1 fuzzy phrase-match threshold
+
+  /// Спрашивать ли языковую модель, когда команда не нашлась.
+  ///
+  /// Модель не придумывает команд и не запускает ничего своего: ей дают
+  /// сказанную фразу и СПИСОК КОМАНД ЧЕЛОВЕКА, а она лишь выбирает из него
+  /// номер — или отвечает «ни одна». Правило «не добавил — значит не команда»
+  /// от этого не меняется, а «команда не найдена» перестаёт быть тупиком.
+  bool cmdClarify = true;
+
+  /// Разборы, подтверждённые самим человеком: нормализованная фраза, которую
+  /// не удалось разобрать, -> фраза команды, выбранной им в переспросе.
+  ///
+  /// Смысл в том, что распознавание ошибается ОДИНАКОВО. Одно и то же слово
+  /// оно коверкает одним и тем же способом раз за разом, и переспрашивать про
+  /// «валорам» во второй, третий и десятый раз — значит каждый раз заново
+  /// платить обращением к модели за ответ, который уже был дан.
+  ///
+  /// Запоминается ТОЛЬКО явный выбор человека — нажатие по варианту. Уверенная
+  /// догадка модели сюда не попадает: она не подтверждение, а всего лишь
+  /// догадка, и запомнить её значило бы закрепить возможную ошибку навсегда.
+  /// Ключи хранятся уже нормализованными (тем же `_norm`, что и разбор команд),
+  /// значения — фразами, а не ссылками: каталог человек правит, и запись про
+  /// удалённую команду должна просто не найти себе пары, а не сломать разбор.
+  Map<String, String> cmdLearned = {};
+
+  /// Сколько разборов помнить. Ограничение не ради памяти — записи крошечные, —
+  /// а ради того, чтобы случайная ошибка не жила вечно: старые вытесняются.
+  static const int cmdLearnedMax = 200;
   String cmdConfirm = 'risky'; // 'always' | 'risky' | 'never'
   // Разбор фоновых событий. Включён: без него шина есть, но её не видно и не
   // слышно, а весь смысл в том, что она замечает происходящее сама.
@@ -527,19 +604,29 @@ class AppState extends ChangeNotifier {
   String ttsEngineChoice = 'piper'; // 'piper' | 'clone'
   String qwenEndpoint = '';
 
-  /// Адрес сервера живого клон-голоса — MOSS-TTS-Nano, считает на процессоре.
+  /// Адрес сервера, который озвучивает РАЗГОВОР — живого голоса.
+  ///
+  /// Имя по роли, а не по модели: за этим адресом стоял MOSS на
+  /// процессоре, теперь XTTS-v2 на видеокарте, и менять из-за этого
+  /// поля в коде — та же ошибка, что была с cosyvoice. Как называется
+  /// модель, приложение спрашивает у самого сервера.
   ///
   /// Отдельный от [qwenEndpoint] намеренно, и это главная развязка всей схемы:
   /// Qwen живёт на видеокарте и поднимается только под открытую студию, а
   /// живые ответы ассистента идут сюда и карту не занимают вовсе. Раньше
   /// сервер был один на обе роли, и языковой модели не оставалось места.
-  String mossEndpoint = '';
-  // Интерпретатор для локального сервера синтеза (sidecar/qwen_tts_server.py).
-  // Пусто — искать самим: серверу нужен python с torch+CUDA, а он живёт в
-  // отдельном venv и в установочный пакет не попадает (torch ~5 ГБ).
-  String cloneServerPython = '';
+  String liveVoiceEndpoint = '';
   // Transient (not persisted): null = unknown, true/false = last check result.
   bool? qwenOnline;
+
+  /// То же самое про сервер живого голоса. Отдельное поле, потому что
+  /// серверов теперь два и лежат они порознь: студийный может спать на карте,
+  /// пока живой отвечает, и наоборот. Одно общее «онлайн» на оба врало бы в
+  /// обе стороны — а именно им подписан движок синтеза в карточке подсистем.
+  bool? liveVoiceOnline;
+
+  /// Как сервер живого голоса называет свою модель — из его же ответа.
+  String liveVoiceModel = '';
 
   /// Как сервер клон-голоса называет свою модель. Берётся из его же ответа на
   /// проверку связи, а не пишется в коде: сервер один, а модель за ним может
@@ -738,6 +825,10 @@ class AppState extends ChangeNotifier {
     // Detect device RAM in the background (no await — the context-size ceiling
     // falls back to a safe default until it resolves).
     unawaited(_detectDeviceRam());
+    // История выпусков — с диска, из сохранённого канала. Дешёвое чтение файла,
+    // зато экран истории и окно «Что нового» готовы до первой проверки
+    // обновлений, которая случится в лучшем случае через несколько секунд.
+    unawaited(ensureChangelog());
     lang = prefs.getString('lang') ?? 'ru';
     // Any legacy value (system/light/gray) migrates to the single dark theme.
     final tm = prefs.getString('themeMode') ?? 'dark';
@@ -777,6 +868,7 @@ class AppState extends ChangeNotifier {
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     imageServerUrl = prefs.getString('imageServerUrl') ?? '';
+    stationToken = prefs.getString('stationToken') ?? '';
     relayUrl = prefs.getString('relayUrl') ?? '';
     relayToken = prefs.getString('relayToken') ?? '';
     cznExePath = prefs.getString('cznExePath') ?? '';
@@ -880,7 +972,6 @@ class AppState extends ChangeNotifier {
         await prefs.setString('whisperModel', whisperModel);
       }
     }
-    sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     sttRemoteUrl = prefs.getString('sttRemoteUrl') ?? '';
     sttRemoteModel = prefs.getString('sttRemoteModel') ?? 'whisper-1';
@@ -903,6 +994,8 @@ class AppState extends ChangeNotifier {
         ? List<String>.from(kDefaultStopWords)
         : sw;
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
+    cmdClarify = prefs.getBool('cmdClarify') ?? true;
+    cmdLearned = _decodeLearned(prefs.getString('cmdLearned') ?? '');
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
     busEnabled = prefs.getBool('busEnabled') ?? true;
     busGames = BusGame.listFrom(prefs.getString('busGames') ?? '');
@@ -952,10 +1045,11 @@ class AppState extends ChangeNotifier {
     _migrateCosyKeys();
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
     qwenEndpoint = prefs.getString('qwenEndpoint') ?? '';
-    cloneServerPython = prefs.getString('cloneServerPython') ?? '';
     qwenVoice = prefs.getString('qwenVoice') ?? '';
     voiceSamplePath = prefs.getString('voiceSamplePath') ?? '';
-    mossEndpoint = prefs.getString('mossEndpoint') ?? '';
+    liveVoiceEndpoint = prefs.getString('liveVoiceEndpoint') ??
+        prefs.getString('mossEndpoint') ??
+        '';
     voiceSampleText =
         prefs.getString('voiceSampleText') ?? '';
     qwenSpeed = prefs.getDouble('qwenSpeed') ?? 1.0;
@@ -1079,16 +1173,18 @@ class AppState extends ChangeNotifier {
         llmNumPredict, llmTemperature,
         llmTopP, llmTopK, llmRepeatPenalty, llmMinP,
         llmKeepAlive, llmThinking, updateServerUrl,
-        imageServerUrl, imageModel, imageLoras, imageFacePass, imageHires,
+        imageServerUrl, stationToken,
+        imageModel, imageLoras, imageFacePass, imageHires,
         imageFreeVoiceToo,
         searchModel, chatModel, apiKey, selectedModel, inferenceMode,
         autostart, minimizeToTray, closeToTray, inputDeviceId, extraMicIds.join(','),
         jsonEncode(deviceDenoise), listenMode, pttKeys.join(','), pttLabel,
-        sttLanguage, whisperModel, sttEngine,
+        sttLanguage, whisperModel,
         sttSidecarEngine, sttRemoteUrl, sttRemoteModel, sttRemoteKey,
         sttLocalEngine,
         denoiseMode, sttDevice, cmdMode, wakeWord, stopWords.join(','),
-        cmdThreshold, cmdConfirm, busEnabled, BusGame.listTo(busGames),
+        cmdThreshold, cmdClarify, cmdConfirm, busEnabled,
+        BusGame.listTo(busGames),
         busDuckMusic, musicApp, musicDuck, devHeadphones, devSpeakers,
         cmdEnabled, chatEnabled, vizType, showVizBg,
         showPartial, overlayMode, startupShowWindow, overlaySize, vizAccent,
@@ -1098,7 +1194,6 @@ class AppState extends ChangeNotifier {
         voiceResponses, announceReady, ttsPiperVoice, ttsRate, ttsVolume,
         ttsInterpEnabled, ttsInterpMode, ttsInterpModel, ttsEngineChoice,
         qwenEndpoint, qwenVoice, voiceSamplePath,
-        cloneServerPython,
         voiceSampleText, qwenSpeed, cloneLanguage,
         qwenEmotion,
         qwenInstruct, qwenDevice,
@@ -1184,6 +1279,7 @@ class AppState extends ChangeNotifier {
     await prefs.setBool('llmThinking', llmThinking);
     await prefs.setString('updateServerUrl', updateServerUrl);
     await prefs.setString('imageServerUrl', imageServerUrl);
+    await prefs.setString('stationToken', stationToken);
     await prefs.setString('relayUrl', relayUrl);
     await prefs.setString('relayToken', relayToken);
     await prefs.setString('cznExePath', cznExePath);
@@ -1221,7 +1317,6 @@ class AppState extends ChangeNotifier {
     await prefs.setString('pttLabel', pttLabel);
     await prefs.setString('sttLanguage', sttLanguage);
     await prefs.setString('whisperModel', whisperModel);
-    await prefs.setString('sttEngine', sttEngine);
     await prefs.setString('sttSidecarEngine', sttSidecarEngine);
     await prefs.setString('sttRemoteUrl', sttRemoteUrl);
     await prefs.setString('sttRemoteModel', sttRemoteModel);
@@ -1240,6 +1335,8 @@ class AppState extends ChangeNotifier {
     await prefs.setString('wakeWord', wakeWord);
     await prefs.setStringList('stopWords', stopWords);
     await prefs.setDouble('cmdThreshold', cmdThreshold);
+    await prefs.setBool('cmdClarify', cmdClarify);
+    await prefs.setString('cmdLearned', jsonEncode(cmdLearned));
     await prefs.setString('cmdConfirm', cmdConfirm);
     await prefs.setBool('busEnabled', busEnabled);
     await prefs.setString('busGames', BusGame.listTo(busGames));
@@ -1282,8 +1379,10 @@ class AppState extends ChangeNotifier {
     await prefs.setString('ttsInterpModel', ttsInterpModel);
     await prefs.setString('ttsEngineChoice', ttsEngineChoice);
     await prefs.setString('qwenEndpoint', qwenEndpoint);
-    await prefs.setString('mossEndpoint', mossEndpoint);
-    await prefs.setString('cloneServerPython', cloneServerPython);
+    // Пишем и под старым ключом тоже: откат на предыдущую версию должен
+    // находить адрес живого голоса на месте, а не пустое поле.
+    await prefs.setString('liveVoiceEndpoint', liveVoiceEndpoint);
+    await prefs.setString('mossEndpoint', liveVoiceEndpoint);
     await prefs.setString('qwenVoice', qwenVoice);
     await prefs.setString('voiceSamplePath', voiceSamplePath);
     await prefs.setString('voiceSampleText', voiceSampleText);
@@ -1479,6 +1578,7 @@ class AppState extends ChangeNotifier {
     llmThinking = prefs.getBool('llmThinking') ?? false;
     updateServerUrl = prefs.getString('updateServerUrl') ?? '';
     imageServerUrl = prefs.getString('imageServerUrl') ?? '';
+    stationToken = prefs.getString('stationToken') ?? '';
     relayUrl = prefs.getString('relayUrl') ?? '';
     relayToken = prefs.getString('relayToken') ?? '';
     cznExePath = prefs.getString('cznExePath') ?? '';
@@ -1519,7 +1619,6 @@ class AppState extends ChangeNotifier {
     pttLabel = prefs.getString('pttLabel') ?? '';
     sttLanguage = prefs.getString('sttLanguage') ?? 'auto';
     whisperModel = prefs.getString('whisperModel') ?? 'small';
-    sttEngine = prefs.getString('sttEngine') ?? 'whisper';
     sttSidecarEngine = prefs.getString('sttSidecarEngine') ?? 'whisper';
     sttRemoteUrl = prefs.getString('sttRemoteUrl') ?? '';
     sttRemoteModel = prefs.getString('sttRemoteModel') ?? 'whisper-1';
@@ -1542,6 +1641,8 @@ class AppState extends ChangeNotifier {
         ? List<String>.from(kDefaultStopWords)
         : sw;
     cmdThreshold = prefs.getDouble('cmdThreshold') ?? 0.65;
+    cmdClarify = prefs.getBool('cmdClarify') ?? true;
+    cmdLearned = _decodeLearned(prefs.getString('cmdLearned') ?? '');
     cmdConfirm = prefs.getString('cmdConfirm') ?? 'risky';
     busEnabled = prefs.getBool('busEnabled') ?? true;
     busGames = BusGame.listFrom(prefs.getString('busGames') ?? '');
@@ -1591,10 +1692,11 @@ class AppState extends ChangeNotifier {
     _migrateCosyKeys();
     ttsEngineChoice = prefs.getString('ttsEngineChoice') ?? 'piper';
     qwenEndpoint = prefs.getString('qwenEndpoint') ?? '';
-    cloneServerPython = prefs.getString('cloneServerPython') ?? '';
     qwenVoice = prefs.getString('qwenVoice') ?? '';
     voiceSamplePath = prefs.getString('voiceSamplePath') ?? '';
-    mossEndpoint = prefs.getString('mossEndpoint') ?? '';
+    liveVoiceEndpoint = prefs.getString('liveVoiceEndpoint') ??
+        prefs.getString('mossEndpoint') ??
+        '';
     voiceSampleText =
         prefs.getString('voiceSampleText') ?? '';
     qwenSpeed = prefs.getDouble('qwenSpeed') ?? 1.0;
@@ -2029,8 +2131,13 @@ class AppState extends ChangeNotifier {
     // returned without a word, so both the engine chip and the "Включить
     // клон-голос" button did nothing at all. A sample is still required: there
     // is nothing to clone or replay without one.
+    // Условие про адрес — про ЖИВОЙ сервер: именно он озвучивает
+    // разговор. Стояло тут про студийный (Qwen), и это был тупик ровно для
+    // того, кто настроил всё правильно: заполнив адрес живого голоса и не
+    // заполнив студийный, человек получал мёртвый чип «клон-голос» без
+    // объяснений — выбор молча не применялся.
     if (v == 'clone' &&
-        (qwenEndpoint.trim().isEmpty ||
+        (liveVoiceEndpoint.trim().isEmpty ||
             voiceSamplePath.trim().isEmpty)) {
       return;
     }
@@ -2040,11 +2147,12 @@ class AppState extends ChangeNotifier {
     unawaited(applyCloneServer());
   }
 
-  void setMossEndpoint(String v) {
-    mossEndpoint = v.trim();
+  void setLiveVoiceEndpoint(String v) {
+    liveVoiceEndpoint = v.trim();
     _save();
     notifyListeners();
     unawaited(applyCloneServer());
+    unawaited(checkLiveVoiceServer());
   }
 
   void setQwenEndpoint(String v) {
@@ -2508,12 +2616,12 @@ class AppState extends ChangeNotifier {
   bool get cloneServerOn =>
       qwenEndpoint.trim().isNotEmpty && voiceSamplePath.trim().isNotEmpty;
 
-  /// Говорит ли ассистент клон-голосом в разговоре — MOSS-TTS-Nano на
-  /// процессоре. Отдельно от [cloneServerOn]: серверы разные, ресурсы разные,
-  /// и один вполне может работать без другого.
+  /// Говорит ли ассистент клон-голосом в разговоре. Отдельно от
+  /// [cloneServerOn]: серверы разные, ресурсы разные, и один вполне может
+  /// работать без другого.
   bool get cloneVoiceOn =>
       ttsEngineChoice == 'clone' &&
-      mossEndpoint.trim().isNotEmpty &&
+      liveVoiceEndpoint.trim().isNotEmpty &&
       voiceSamplePath.trim().isNotEmpty;
 
   /// Настройки от версий, где оба сервера синтеза назывались CosyVoice.
@@ -2590,28 +2698,32 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> applyCloneServer() async {
-    // Движку сайдкара — тот сервер, который озвучивает РАЗГОВОР. Это MOSS на
-    // процессоре, а не Qwen: Qwen поднимается только под открытую студию и
-    // всё остальное время отдаёт карту гемме.
+    // Движку сайдкара — тот сервер, который озвучивает РАЗГОВОР, а не
+    // студийный: студийный поднимается только под открытую Sonora и всё
+    // остальное время отдаёт карту языковой модели.
     final on = cloneVoiceOn;
     await SidecarClient.instance.applyCloneVoice(
       enabled: on,
-      endpoint: mossEndpoint.trim(),
+      endpoint: liveVoiceEndpoint.trim(),
       ref: voiceSamplePath.trim(),
       promptText: voiceSampleText,
       speed: qwenSpeed,
       language: cloneLanguage,
     );
     if (on) {
-      // Клон-сервер поднят только пока открыта студия голоса — всё остальное
-      // время он на паузе и отдаёт видеокарту гемме (GpuArbiter.takeForVoice /
-      // releaseVoice). Отсюда две ветки вместо прежней одной.
-      if (GpuArbiter.instance.voiceHeld) {
-        // Постоянные реплики заготавливаются один раз и потом играют
-        // мгновенно. На станции это особенно важно: живой синтез стоит около
-        // пяти секунд, а заготовленная фраза — нисколько.
-        SidecarClient.instance.prerender(clonePhrasesToRender());
-      } else {
+      // Постоянные реплики заготавливаются один раз и потом играют мгновенно.
+      // Раньше это ждало открытой студии — условие осталось от времён, когда
+      // клон-голос жил на видеокарте и будить его вне студии было нельзя.
+      // Живой голос считается на процессоре и карты не касается, а живой синтез
+      // фразы стоит секунд десять. Держать кэш пустым до открытия Sonora
+      // означало платить эти секунды за каждое «Готова слушать».
+      //
+      // Повторный вызов почти бесплатен: движок пропускает всё, что уже лежит
+      // в кэше, и считает только новое.
+      SidecarClient.instance.prerender(clonePhrasesToRender());
+      // Студийный сервер живёт на видеокарте станции и вне открытой Sonora
+      // обязан быть на паузе — иначе он занял бы карту рядом с геммой.
+      if (!GpuArbiter.instance.voiceHeld) {
         // Ставим паузу и при запуске, и после любой правки настроек: сервер
         // мог остаться разбуженным с прошлого раза — например, если
         // приложение закрыли аварийно с открытой студией.
@@ -2676,12 +2788,69 @@ class AppState extends ChangeNotifier {
     return qwenOnline ?? false;
   }
 
+  /// Отвечает ли сервер ЖИВОГО голоса. Тот же разговор, что и с студийным, —
+  /// контракт у них общий до последнего поля, — но состояние своё.
+  /// Спросить у Windows название процессора — один раз за запуск.
+  ///
+  /// Через реестр, а не через WMI: `wmic` объявлен устаревшим и на свежих
+  /// сборках его может не быть вовсе, а эта ветка реестра лежит на месте с
+  /// девяностых. Запуск процесса — вне пути запуска приложения: строка нужна
+  /// одной карточке, и ждать её никто не должен.
+  Future<void> loadCpuModel() async {
+    if (cpuModel.isNotEmpty || !io.Platform.isWindows) return;
+    try {
+      final r = await io.Process.run('reg', [
+        'query',
+        r'HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0',
+        '/v',
+        'ProcessorNameString',
+      ]);
+      final out = (r.stdout ?? '').toString();
+      final m = RegExp(r'ProcessorNameString\s+REG_SZ\s+(.+)').firstMatch(out);
+      final name = (m?.group(1) ?? '').trim();
+      if (name.isNotEmpty) {
+        cpuModel = name;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Не вышло — строка останется без имени, и это не повод для сообщения.
+    }
+  }
+
+  Future<bool> checkLiveVoiceServer() async {
+    final url = liveVoiceEndpoint.trim();
+    if (url.isEmpty) {
+      liveVoiceOnline = false;
+      liveVoiceModel = '';
+      notifyListeners();
+      return false;
+    }
+    try {
+      final res = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
+      liveVoiceOnline = res.statusCode > 0;
+      liveVoiceModel = _cloneModelFrom(res.body);
+    } catch (_) {
+      liveVoiceOnline = false;
+      // Движок не переключаем и здесь: заготовленные фразы играют из кэша и
+      // при спящем сервере, а несохранённое падает на Piper пофразно.
+    }
+    notifyListeners();
+    return liveVoiceOnline ?? false;
+  }
+
   // One-shot probe at launch: if Qwen3-TTS is the saved engine or an endpoint is
   // configured, verify reachability so an unavailable server auto-reverts to
   // Piper (§3.2) instead of leaving the app "stuck" on an unreachable engine.
   Future<void> checkQwenOnStartup() async {
     if (ttsEngineChoice == 'clone' || qwenEndpoint.trim().isNotEmpty) {
       await checkQwenServer();
+    }
+    // Живой сервер спрашивается отдельно и по своему условию: он держит голос
+    // разговора, и знать про него надо даже когда студийного адреса нет вовсе.
+    if (ttsEngineChoice == 'clone' || liveVoiceEndpoint.trim().isNotEmpty) {
+      await checkLiveVoiceServer();
     }
   }
 
@@ -2761,6 +2930,156 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Спросить модель, какую из СВОИХ команд человек имел в виду.
+  ///
+  /// Возвращает (номер с единицы, уверена ли) — либо `null`, если спросить не
+  /// удалось или ответ не разобрался. Ноль в номере означает «ни одна из них»,
+  /// и это законный ответ: догадка любой ценой хуже честного «не понял».
+  ///
+  /// Запрос устроен как у интерпретатора озвучки — одиночный, без потока и с
+  /// коротким сроком: он стоит между сказанной фразой и запуском, и ждать его
+  /// человек будет молча.
+  /// Разобрать сохранённые разборы. Битую запись молча выбрасываем: помнить
+  /// прошлые ответы — удобство, и терять из-за него настройки нельзя.
+  static Map<String, String> _decodeLearned(String raw) {
+    if (raw.trim().isEmpty) return {};
+    try {
+      final j = jsonDecode(raw);
+      if (j is! Map) return {};
+      final out = <String, String>{};
+      j.forEach((k, v) {
+        if (k is String && v is String && k.isNotEmpty && v.isNotEmpty) {
+          out[k] = v;
+        }
+      });
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Запомнить, что за фразой [key] человек имел в виду команду [phrase].
+  ///
+  /// Повторный выбор перезаписывает прежний — человек передумал или ошибся в
+  /// прошлый раз, и последнее слово всегда за ним. Запись при этом переезжает
+  /// в конец: вытесняем по давности, а подтверждённое заново давним не бывает.
+  void learnCommand(String key, String phrase) {
+    final k = key.trim();
+    if (k.isEmpty || phrase.trim().isEmpty) return;
+    cmdLearned.remove(k);
+    cmdLearned[k] = phrase;
+    while (cmdLearned.length > cmdLearnedMax) {
+      cmdLearned.remove(cmdLearned.keys.first);
+    }
+    unawaited(_save());
+    notifyListeners();
+  }
+
+  /// Забыть один разбор или все сразу.
+  ///
+  /// Нужно потому, что запомненный разбор перестаёт спрашивать: если он
+  /// однажды закрепился неверно, переспроса, в котором можно было бы выбрать
+  /// другое, больше не будет. Без этой двери ошибка стала бы вечной.
+  void forgetLearned([String? key]) {
+    if (key == null) {
+      if (cmdLearned.isEmpty) return;
+      cmdLearned = {};
+    } else if (cmdLearned.remove(key) == null) {
+      return;
+    }
+    unawaited(_save());
+    notifyListeners();
+  }
+
+  Future<(int, bool)?> guessCommand(String said, List<String> phrases) async {
+    final base = baseUrl;
+    // Та же модель, что ответила бы в переписке: заводить для разбора команд
+    // отдельную настройку — значит однажды получить разбор моделью, которой на
+    // сервере уже нет.
+    final conv = current;
+    final model = conv != null ? _effectiveModelFor(this, conv) : selectedModel;
+    if (serverUrl.trim().isEmpty || model.isEmpty || phrases.isEmpty) {
+      return null;
+    }
+    final list = [
+      for (var i = 0; i < phrases.length; i++) '${i + 1}. ${phrases[i]}',
+    ].join('\n');
+    const system =
+        'Ты — разборщик голосовых команд. Человек сказал фразу, но среди его '
+        'команд точного совпадения не нашлось. Выбери, какую команду из списка '
+        'он имел в виду. Ничего не придумывай и не предлагай своего: если ни '
+        'одна не подходит — ответь номером 0. Ответь ТОЛЬКО объектом JSON без '
+        'пояснений: {"i": номер, "sure": true или false}. sure=true — если '
+        'уверен и команду можно выполнить сразу; sure=false — если это догадка '
+        'и лучше переспросить.';
+    try {
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (apiKey.isNotEmpty) headers['Authorization'] = 'Bearer $apiKey';
+      final res = await http
+          .post(Uri.parse('$base/api/chat'),
+              headers: headers,
+              body: jsonEncode({
+                'model': model,
+                'stream': false,
+                'think': false,
+                'messages': [
+                  {'role': 'system', 'content': system},
+                  {'role': 'user',
+                    'content': 'Фраза: «$said»\nКоманды:\n$list'},
+                ],
+                'options': {'temperature': 0.0},
+                if (llmKeepAliveField != null) 'keep_alive': llmKeepAliveField,
+              }))
+          // Тот же срок, что у интерпретатора озвучки, и по той же причине:
+          // запрос стоит между сказанной фразой и действием, и человек ждёт
+          // его молча. Не успели — отвечаем как раньше, без уточнения.
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+      final msg = data is Map ? data['message'] : null;
+      final content = msg is Map ? msg['content'] : null;
+      if (content is! String) return null;
+      // Модель почти всегда добавляет что-нибудь вокруг JSON, поэтому берём
+      // первую фигурную скобку и последнюю, а не разбираем ответ целиком.
+      final a = content.indexOf('{'), b = content.lastIndexOf('}');
+      if (a < 0 || b <= a) return null;
+      final j = jsonDecode(content.substring(a, b + 1));
+      if (j is! Map) return null;
+      final i = (j['i'] as num?)?.toInt() ?? int.tryParse('${j['i']}') ?? 0;
+      final sure = j['sure'] == true;
+      if (i < 0 || i > phrases.length) return null;
+      return (i, sure);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Положить в переписку вопрос ассистента с вариантами под ним.
+  ///
+  /// Именно в переписку, а не всплывающим окном: варианты нужно успеть
+  /// прочитать, а голосовой вопрос звучит один раз и не ждёт. Здесь же он
+  /// остаётся, если человек отвлёкся.
+  /// [said] — сказанное, на которое эти варианты отвечают. Оно едет вместе с
+  /// репликой, чтобы нажатие по варианту можно было запомнить: в этот момент —
+  /// и только в этот — точно известно, что за плохо расслышанной фразой стояла
+  /// именно выбранная команда.
+  void postChoices(String text, List<String> choices, {String said = ''}) {
+    current ??= () {
+      final c = Conversation(id: _uuid.v4(), title: t('newChat'));
+      conversations.insert(0, c);
+      return c;
+    }();
+    final conv = current!;
+    conv.messages.add(ChatMessage(
+        role: 'assistant',
+        content: text,
+        choices: List<String>.from(choices),
+        choicesFor: said));
+    conv.updatedAt = DateTime.now();
+    unawaited(_save());
+    notifyListeners();
+  }
+
   /// Model name for the outgoing remote request, applying the optional per-mode
   /// override. A turn counts as "search" when live web results were pulled for
   /// it (pendingWebContext) — the only search-vs-chat distinction this app has.
@@ -2775,6 +3094,15 @@ class AppState extends ChangeNotifier {
     final override = isSearch ? searchModel : chatModel;
     if (override.isNotEmpty && models.contains(override)) return override;
     return _effectiveModelFor(this, conv);
+  }
+
+  void setStationToken(String v) {
+    stationToken = v.trim();
+    _save();
+    notifyListeners();
+    // Спрашиваем сразу: человек вставил токен и вправе тут же увидеть, принят
+    // он или нет, а не гадать до следующего опроса через пятнадцать секунд.
+    unawaited(StationMonitor.instance.refresh(this));
   }
 
   void setAutostart(bool v) {
@@ -2910,11 +3238,6 @@ class AppState extends ChangeNotifier {
     SidecarClient.instance.setSttModel(v);
   }
 
-  void setSttEngine(String v) {
-    sttEngine = v;
-    _save();
-    notifyListeners();
-  }
 
   // Switch the sidecar recognition engine (whisper | gigaam | remote). Applies
   // live for preview (the card shows loading/ready/error); the choice persists
@@ -3104,6 +3427,12 @@ class AppState extends ChangeNotifier {
 
   void setCmdThreshold(double v) {
     cmdThreshold = v;
+    _save();
+    notifyListeners();
+  }
+
+  void setCmdClarify(bool v) {
+    cmdClarify = v;
     _save();
     notifyListeners();
   }
@@ -3356,11 +3685,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setCloneServerPython(String v) {
-    cloneServerPython = v.trim();
-    _save();
-    notifyListeners();
-  }
 
   void setGoogleKey(String v) {
     googleKey = v.trim();
@@ -4531,7 +4855,11 @@ class AppState extends ChangeNotifier {
     lastSeenVersion = current;
     await prefs.setString('lastSeenVersion', current);
     if (previous == null) return null; // fresh install, nothing to announce
-    for (final entry in kChangelog) {
+    // Заметки к своей версии лежат в канале обновлений — том самом файле, из
+    // которого эта версия и приехала. Раньше искали во встроенном списке, он
+    // отстал на 2.19.1, и окно «Что нового» с тех пор молчало.
+    await ensureChangelog();
+    for (final entry in changelog) {
       if (entry.version == current) return entry;
     }
     return null;

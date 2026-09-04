@@ -465,7 +465,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // on always-listening (wake-word mode). Reflects the real state: STT offline,
   // listening (+ last heard phrase), thinking, or running.
   Widget _vaIndicator(AppState app) {
-    if (app.cmdMode != 'wakeword' || app.sttEngine != 'whisper') {
+    if (app.cmdMode != 'wakeword') {
       return const SizedBox.shrink();
     }
     return ValueListenableBuilder<SidecarStatus>(
@@ -1184,6 +1184,7 @@ class _ChatScreenState extends State<ChatScreen> {
               m.content,
               style: AnimaType.body.copyWith(color: fg),
             ),
+          animaMessageChoices(context, m),
         ],
       ),
     );

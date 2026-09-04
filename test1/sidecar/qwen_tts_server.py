@@ -15,8 +15,11 @@ GPU-load control (the point of this server): there is no driver-level "use 50% o
 the GPU" knob, so load is shaped by four real levers, all driven from EVS
 settings:
 
-  * idle unload   — drop the model out of VRAM after N idle seconds (0 = never).
-                    While unloaded the GPU is completely free.
+  * idle unload   — after N idle seconds the server leaves altogether (0 = never)
+                    and its supervisor brings it back on the next phrase. Not a
+                    plain unload: dropping the model frees VRAM but not host RAM,
+                    which torch keeps — see _idle_leave(). Unsupervised (running
+                    on the user's own PC) it degrades to unloading in place.
   * vram cap      — torch.cuda.set_per_process_memory_fraction(): a hard ceiling
                     on what this process may allocate.
   * throttle      — sleep proportionally after each synthesis (duty cycle), so
@@ -353,13 +356,53 @@ class QwenTtsEngine:
     def _idle_loop(self) -> None:
         while not self._stop.wait(5.0):
             try:
-                if (self.idle_unload_sec > 0 and self._model is not None
-                        and not self._loading and self._last_used > 0
-                        and time.time() - self._last_used > self.idle_unload_sec):
-                    _log(f"idle > {self.idle_unload_sec}s")
-                    self.unload()
+                if self.idle_unload_sec <= 0 or self._loading:
+                    continue
+                if self._last_used <= 0:
+                    continue        # ни разу не звали — освобождать нечего
+                if time.time() - self._last_used <= self.idle_unload_sec:
+                    continue
+                if self.paused:
+                    # Игровой режим уже снял модель с карты. Уходить нельзя:
+                    # перезапуск стёр бы саму паузу, и сервер вернулся бы
+                    # непоставленным — полез бы на карту посреди игры.
+                    if self.loaded:
+                        self.unload()
+                    continue
+                self._idle_leave()
             except Exception:
                 pass
+
+    def _idle_leave(self) -> None:
+        """Уйти целиком, а не просто снять модель с карты.
+
+        Замер на станции: выгрузка возвращает видеопамять, но не хостовую.
+        Сервер, не работавший часами, держал гигабайт — и весь он лежал в
+        подкачке: в резиденте у процесса оставалось двадцать мегабайт, то есть
+        система вытеснила его на диск целиком, но освободить не могла. Держит
+        эту память не модель, а torch со своими кэшами, и отнять её изнутри
+        процесса нечем — ровно та же история, что у соседнего XTTS.
+
+        Уход дёшев: контейнер поднимает `--restart unless-stopped` за секунды,
+        а первая фраза после простоя и так оплачивала загрузку модели — к ней
+        добавляется только старт процесса. Если поднимать некому (сервер
+        запущен на компьютере пользователя, а не на станции), остаёмся жить и
+        ограничиваемся выгрузкой: немой ассистент до перезапуска руками хуже
+        занятой памяти.
+        """
+        if not _supervised():
+            _log(f"простой дольше {self.idle_unload_sec}s — отпускаю карту "
+                 f"(перезапустить некому, остаюсь в памяти)")
+            self.unload()
+            return
+        _log(f"простой дольше {self.idle_unload_sec}s — ухожу, память вернётся "
+             f"станции (поднимусь на первой же фразе)")
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os._exit(0)
 
     # ---- synthesis ------------------------------------------------------
     def synthesize(self, text: str, ref_wav: bytes, ref_text: str,

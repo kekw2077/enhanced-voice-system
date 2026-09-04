@@ -157,9 +157,18 @@ def _ensure_rules(path: str) -> str:
     if not os.path.exists(path):
         seed = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "rules.yaml")
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        shutil.copyfile(seed, path)
-        log_stage("rules seeded at " + path)
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            shutil.copyfile(seed, path)
+            log_stage("rules seeded at " + path)
+        except Exception as e:
+            # Образец мог не доехать в сборке — и это стоило всей шины: ошибка
+            # копирования вылетала из открытия журнала, а вместе с ним не
+            # рождались ни фильтр, ни сторож процессов. Ни одного события, ни
+            # одного переключения звука, и в настройках пусто без объяснений.
+            # Правила — не условие работы: без них шина всё ещё журнал, ради
+            # которого она и затевалась.
+            log_stage("rules seed failed: " + str(e))
     return path
 
 
@@ -802,7 +811,24 @@ def _watch_parent() -> None:
     threading.Thread(target=_watch, daemon=True).start()
 
 
+def _utf8_output() -> None:
+    """Писать вывод в UTF-8, чем бы ни была консоль.
+
+    Приложение читает наш поток как UTF-8, а на русской Windows консольная
+    кодировка — cp866, и кириллица уезжала туда байтами, которые с той стороны
+    разбирались как мусор и пропадали. В журнале оставались огрызки вида
+    «apply:  1  ( 4)» вместо «поколение 1 устарело (текущее 4)» — то есть
+    сообщения, которые для того и заводились, чтобы было что читать.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
 def main() -> None:
+    _utf8_output()
     ap = argparse.ArgumentParser(description="EVS voice/ML sidecar")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=0, help="0 = pick a free port")

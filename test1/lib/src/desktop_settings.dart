@@ -4029,7 +4029,6 @@ class _DesktopSettingsState extends State<DesktopSettings> {
     'micSensitivity': _Pages.sttSensitivity,
     'micGain': _Pages.sttSensitivity,
     'recognitionLanguage': _Pages.stt,
-    'sttEngine': _Pages.stt,
     'engRemoteName': _Pages.stt,
     'cardDenoise': _Pages.sttSensitivity,
     'cardLocalModels': _Pages.sttSensitivity,
@@ -4710,15 +4709,26 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               ),
             );
           case UpdateStatus.ready:
-            return animaGhostButton(context, 
-                '${app.t('updRestart')} · ${AppUpdater.instance.availableVersion}',
-                Icons.restart_alt,
-                onTap: () => AppUpdater.instance.applyAndRestart());
+            // Значок слева — состояние, кнопка справа — действие. Раньше
+            // состояние И было кнопкой: зелёное «Актуальная версия» нажималось
+            // и запускало проверку, о чём догадаться было неоткуда.
+            return Row(mainAxisSize: MainAxisSize.min, children: [
+              _compBadge(app.t('updHasUpdate'), _info(context)),
+              const SizedBox(width: 10),
+              animaGhostButton(
+                  context,
+                  '${app.t('updRestart')} · '
+                      '${AppUpdater.instance.availableVersion}',
+                  Icons.restart_alt,
+                  onTap: () => AppUpdater.instance.applyAndRestart()),
+            ]);
           case UpdateStatus.upToDate:
-            return InkWell(
-              onTap: () => AppUpdater.instance.checkAndDownload(),
-              child: _compBadge(app.t('updUpToDate'), _success(context)),
-            );
+            return Row(mainAxisSize: MainAxisSize.min, children: [
+              _compBadge(app.t('updUpToDate'), _success(context)),
+              const SizedBox(width: 10),
+              animaGhostButton(context, app.t('checkUpdate'), Icons.refresh,
+                  onTap: () => AppUpdater.instance.checkAndDownload()),
+            ]);
           case UpdateStatus.error:
             return animaGhostButton(context, app.t('retry'), Icons.refresh,
                 onTap: () => AppUpdater.instance.checkAndDownload());
@@ -4941,7 +4951,29 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             onChanged: (v) => app.setCmdThreshold(v / 100),
           ),
         ),
-        animaRow(context, 
+        // Рядом с порогом намеренно: обе настройки про одно — что делать с
+        // фразой, которая не совпала точно. Порог решает, насколько близко
+        // считать своим, а это — звать ли на помощь модель, когда не сошлось.
+        animaRow(context,
+          label: app.t('cmdClarify'),
+          desc: app.t('cmdClarifyDesc'),
+          control: animaToggle(
+              context, app.cmdClarify, (v) => app.setCmdClarify(v)),
+        ),
+        // Запомненные разборы показываем только когда они есть: пустая строка
+        // «помню 0 фраз» с мёртвой кнопкой рядом — это шум, а не настройка.
+        // Кнопка здесь обязательна и не для порядка: запомненный разбор больше
+        // не переспрашивает, и без неё однажды закрепившаяся ошибка осталась бы
+        // навсегда — выбрать другой вариант было бы уже негде.
+        if (app.cmdLearned.isNotEmpty)
+          animaRow(context,
+            label: app.t('cmdLearned'),
+            desc: app.t('cmdLearnedDesc')
+                .replaceFirst('{n}', '${app.cmdLearned.length}'),
+            control: animaPrimaryButton(
+                context, app.t('cmdLearnedForget'), () => app.forgetLearned()),
+          ),
+        animaRow(context,
           stacked: true,
           label: app.t('cmdConfirm'),
           control: animaSegmentedWide<String>(context, [
@@ -5427,6 +5459,18 @@ class _DesktopSettingsState extends State<DesktopSettings> {
                       initial: app.imageServerUrl,
                       hint: 'http://100.79.130.7:8770',
                       onChanged: app.setImageServerUrl)),
+              // Токен агента станции — рядом с адресом генератора картинок,
+              // потому что это одна и та же машина. Адреса у агента не
+              // спрашиваем: он на том же хосте, что и языковая модель, и порт
+              // у него свой.
+              animaRow(context,
+                  stacked: true,
+                  label: app.t('stationToken'),
+                  desc: app.t('stationTokenDesc'),
+                  control: _PlainField(
+                      initial: app.stationToken,
+                      hint: '••••••••',
+                      onChanged: app.setStationToken)),
               // Не поле для ввода, а список с сервера. Имя чекпоинта раньше
               // набирали руками, и опечатка в нём ничего не подсвечивала: всё
               // выглядело настроенным, а генерация падала с «нет файла модели».
@@ -6100,7 +6144,9 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           icon: Icons.description_outlined, title: app.t('changelog'), rows: [
         // The changelog is a page of its own now, so it can list far more than
         // the three entries that used to fit next to the version card.
-        for (final e in kChangelog.take(12)) _clItem(e),
+        // Записи берутся из канала обновлений (`AppState.changelog`), а не из
+        // встроенного списка: заметки пишутся один раз, при выпуске.
+        for (final e in app.changelog.take(12)) _clItem(e),
       ])),
     ];
   }
@@ -6121,9 +6167,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
           TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: Text(app.t('cancel'))),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(app.t('updRollback'))),
+          const SizedBox(width: 6),
+          // Коротко: заголовок окна уже сказал, о чём спрашивают, а
+          // подтверждающая кнопка рядом с «Отмена» должна читаться с одного
+          // взгляда. И своей кнопкой, а не стоковой: та рисовалась мимо
+          // токенов темы и на стекле выглядела мыльной.
+          animaPrimaryButton(context, app.t('updRollbackDo'),
+              () => Navigator.pop(context, true)),
         ],
       ),
     );
@@ -6153,9 +6203,13 @@ class _DesktopSettingsState extends State<DesktopSettings> {
               : animaRow(context,
                   label: app.t('updRollback'),
                   desc: app.t('updRollbackDesc').replaceAll('{v}', prev),
+                  // На кнопке — только версия: подпись строки слева уже
+                  // сказала, что это откат, и повторять её в третий раз на
+                  // одном экране незачем. «Вернуться назад» тут стояло и вовсе
+                  // не про то — так называют шаг назад по экранам.
                   control: animaGhostButton(
                       context,
-                      '${app.t('updRollback')} · $prev',
+                      '${app.t('updRollbackTo')} $prev',
                       Icons.settings_backup_restore,
                       onTap: () => _confirmRollback(app, prev))),
         ),
@@ -6234,30 +6288,21 @@ class _DesktopSettingsState extends State<DesktopSettings> {
             desc: app.t('sidecarComponentDesc'),
             control: _sidecarComponentControl(app),
           ),
-          animaRow(context, 
-            stacked: true,
-            label: app.t('sttEngine'),
-            desc: app.t('sttEngineDesc'),
-            control: animaSegmentedWide<String>(context, 
-              [('windows', 'Windows STT'), ('whisper', app.t('localEngineName'))],
-              app.sttEngine,
-              (v) => app.setSttEngine(v),
-            ),
+          // Переключателя «Windows STT / локальный движок» здесь больше нет.
+          // За «Windows STT» стоял системный распознаватель мобильного экрана
+          // диктовки, до которого из интерфейса давно не добраться, — то есть
+          // выбор вёл в никуда: сайдкара не ждали, индикатор прятался, а
+          // распознавания не было вовсе. Движки выбираются ниже карточками:
+          // Whisper, GigaAM и сервер.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+            child: Text(app.t('cardSttModel'),
+                style: TextStyle(
+                    color: _body(context),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
           ),
-          // The local engine (whisper|gigaam) picker only applies to the local
-          // backend — hidden when Windows STT is chosen so GigaAM/Whisper aren't
-          // shown as "models" under an unrelated engine.
-          if (app.sttEngine == 'whisper') ...[
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
-              child: Text(app.t('cardSttModel'),
-                  style: TextStyle(
-                      color: _body(context),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700)),
-            ),
-            _SttEngineCards(app),
-          ],
+          _SttEngineCards(app),
           // Шумоподавление, чувствительность и модели к ним переехали в свой
           // раздел — «Чувствительность и шумоподавление». Здесь остаётся то,
           // что отвечает на вопрос «чем и на каком языке распознаём».
@@ -6876,18 +6921,19 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
       TextEditingController(text: widget.app.qwenEndpoint);
 
   /// Адрес сервера живого голоса. Отдельное поле, а не второе значение в том
-  /// же: серверы разные и по модели, и по железу — MOSS считает на процессоре
-  /// постоянно, Qwen поднимается на видеокарте под открытую студию.
-  late final TextEditingController _moss =
-      TextEditingController(text: widget.app.mossEndpoint);
+  /// же: серверы разные и по модели, и по назначению — живой отвечает в
+  /// разговоре постоянно, студийный поднимается под открытую Sonora.
+  late final TextEditingController _liveVoice =
+      TextEditingController(text: widget.app.liveVoiceEndpoint);
   bool _checking = false;
+  bool _liveVoiceChecking = false;
 
   AppState get app => widget.app;
 
   @override
   void dispose() {
     _ep.dispose();
-    _moss.dispose();
+    _liveVoice.dispose();
     super.dispose();
   }
 
@@ -6936,12 +6982,17 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
     // status refreshes on every change.
     context.watch<AppState>();
     final cosyOnline = app.qwenOnline == true;
+    final liveVoiceOnline = app.liveVoiceOnline == true;
     // Selectable as soon as an endpoint AND a voice sample exist — being
     // reachable RIGHT NOW is not a requirement. Gating on the live probe was a
     // dead end: the pre-rendered phrase cache only plays while a cloning engine
     // is selected, so a stopped server made its own cache unreachable and left
     // no way back in the UI.
-    final cosyConfigured = app.qwenEndpoint.trim().isNotEmpty &&
+    //
+    // Адрес здесь — ЖИВОГО сервера: он и озвучивает разговор. Стоял студийный,
+    // и чип оставался серым у того, кто заполнил ровно то поле, которым голос
+    // и считается.
+    final cosyConfigured = app.liveVoiceEndpoint.trim().isNotEmpty &&
         app.voiceSamplePath.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6962,7 +7013,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
             child: Text(app.t('ttsCosyUnavailable'),
                 style: TextStyle(fontSize: 11.5, color: _warn(context))),
           )
-        else if (!cosyOnline)
+        else if (!liveVoiceOnline)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
             child: Text(app.t('ttsCosyFellBack'),
@@ -6972,16 +7023,71 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
         // разговор случается каждый день, студия куда реже.
         animaRow(context,
           stacked: true,
-          label: app.t('ttsMossEndpoint'),
+          label: app.t('ttsLiveVoiceEndpoint'),
           control: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _RemoteField(
-                controller: _moss,
-                onChanged: app.setMossEndpoint,
+                controller: _liveVoice,
+                onChanged: app.setLiveVoiceEndpoint,
               ),
+              const SizedBox(height: 8),
+              // Та же кнопка и тот же огонёк, что у студийного адреса ниже:
+              // вопрос «а он вообще отвечает?» возникает к живому серверу
+              // чаще, потому что им говорят каждый день.
+              Row(children: [
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: _liveVoiceChecking
+                      ? null
+                      : () async {
+                          setState(() => _liveVoiceChecking = true);
+                          await app.checkLiveVoiceServer();
+                          if (mounted) setState(() => _liveVoiceChecking = false);
+                        },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _stroke(context)),
+                      color: _stroke(context),
+                    ),
+                    child: Text(
+                        _liveVoiceChecking
+                            ? app.t('ttsCosyChecking')
+                            : app.t('ttsCosyCheck'),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: _body(context))),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                if (app.liveVoiceOnline != null)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: liveVoiceOnline
+                                ? _success(context)
+                                : _danger(context))),
+                    const SizedBox(width: 6),
+                    Text(
+                        liveVoiceOnline
+                            ? app.t('ttsCosyOnline')
+                            : app.t('ttsCosyOffline'),
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: liveVoiceOnline
+                                ? _success(context)
+                                : _danger(context))),
+                  ]),
+              ]),
               const SizedBox(height: 5),
-              Text(app.t('ttsMossHint'),
+              Text(app.t('ttsLiveVoiceHint'),
                   style: TextStyle(fontSize: 11, color: _faint(context))),
             ],
           ),
@@ -7050,120 +7156,7 @@ class _TtsEngineCardState extends State<_TtsEngineCard> {
             ],
           ),
         ),
-        // Управление локальным сервером клона: раньше его поднимали руками из
-        // консоли, хотя приложение уже умеет с ним разговаривать.
-        animaRow(context,
-          stacked: true,
-          label: app.t('cloneSrvTitle'),
-          desc: app.t('cloneSrvDesc'),
-          control: _CloneServerControl(app),
-        ),
       ],
-    );
-  }
-}
-
-// Кнопка «запустить/остановить» + состояние. Сам процесс ведёт CloneServer
-// (desktop_integration.dart): он же кладёт его в ProcessJob, чтобы модель не
-// осталась висеть в видеопамяти, если приложение упадёт.
-class _CloneServerControl extends StatefulWidget {
-  const _CloneServerControl(this.app);
-  final AppState app;
-  @override
-  State<_CloneServerControl> createState() => _CloneServerControlState();
-}
-
-class _CloneServerControlState extends State<_CloneServerControl> {
-  late final TextEditingController _py;
-
-  @override
-  void initState() {
-    super.initState();
-    _py = TextEditingController(text: widget.app.cloneServerPython);
-  }
-
-  @override
-  void dispose() {
-    _py.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = widget.app;
-    final srv = CloneServer.instance;
-    return AnimatedBuilder(
-      animation: Listenable.merge([srv.state, srv.problem]),
-      builder: (context, _) {
-        final st = srv.state.value;
-        final busy = st == CloneServerState.starting;
-        final running = st == CloneServerState.running;
-        final (label, color) = switch (st) {
-          CloneServerState.running => (app.t('cloneSrvRunning'), _success(context)),
-          CloneServerState.starting => (app.t('cloneSrvStarting'), _warn(context)),
-          CloneServerState.failed => (srv.problem.value, _danger(context)),
-          CloneServerState.stopped => (app.t('cloneSrvStopped'), _faint(context)),
-        };
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(children: [
-              InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: busy
-                    ? null
-                    : () => unawaited(
-                        running ? srv.stop(app) : srv.start(app)),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                        color: running ? _danger(context) : _stroke(context)),
-                    color: running ? Colors.transparent : _stroke(context),
-                  ),
-                  child: Text(
-                    running ? app.t('cloneSrvStop') : app.t('cloneSrvStart'),
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: running ? _danger(context) : _body(context)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Flexible(
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(
-                      width: 7,
-                      height: 7,
-                      decoration:
-                          BoxDecoration(shape: BoxShape.circle, color: color)),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: color)),
-                  ),
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 10),
-            Text(app.t('cloneSrvPython'),
-                style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: _sectionLabel(context))),
-            const SizedBox(height: 5),
-            _RemoteField(
-              controller: _py,
-              onChanged: app.setCloneServerPython,
-            ),
-          ],
-        );
-      },
     );
   }
 }

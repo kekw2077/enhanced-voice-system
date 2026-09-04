@@ -714,7 +714,7 @@ class AboutVersionScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          for (final entry in kChangelog)
+          for (final entry in app.changelog)
             Container(
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(16),

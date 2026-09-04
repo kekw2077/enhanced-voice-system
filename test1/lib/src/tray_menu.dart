@@ -536,6 +536,7 @@ class _TrayMenuAppState extends State<TrayMenuApp> with WindowListener {
       value: app,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
+        scrollBehavior: const AnimaScrollBehavior(),
         color: Colors.transparent,
         theme: ThemeData(
           useMaterial3: true,

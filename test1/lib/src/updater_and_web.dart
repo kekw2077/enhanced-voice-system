@@ -347,6 +347,10 @@ class AppUpdater {
   final ValueNotifier<String> rollbackVersion = ValueNotifier('');
   _FeedItem? _rollbackItem;
   List<String> releaseNotes = const [];
+  // Канал обновлений, сохранённый рядом с самими обновлениями. История выпусков
+  // должна открываться и без сети, и до первой проверки — иначе экран истории
+  // пуст ровно у того, кто только что поставил программу.
+  static const String _kFeedCacheName = 'appcast-history.xml';
   String? lastError;
   String? _installerPath;
   String _promptedVersion = '';
@@ -511,6 +515,11 @@ class AppUpdater {
           .timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) throw Exception('feed HTTP ${res.statusCode}');
       final feed = utf8.decode(res.bodyBytes);
+      // История выпусков снимается с этой же загрузки и сохраняется на диск:
+      // отдельный запрос за тем же самым файлом был бы данью форме, а без
+      // сохранения история пропадала бы при каждом запуске без сети.
+      _app?.adoptChangelog(parseHistory(feed));
+      unawaited(_cacheFeed(feed));
       // The way back is learned on the same fetch as the way forward, and
       // before the up-to-date return below. That ordering matters: when the
       // CURRENT version is the problem there is no update to offer, and this
@@ -582,6 +591,14 @@ class AppUpdater {
     // Already dismissed with "Later" on a previous run — don't nag again; the
     // passive top-bar pill still lets them update when they want.
     if (_declinedVersion == availableVersion) return;
+    // Пока идёт запуск, спрашивать нечего: на экране карточка загрузки, за ней
+    // поднимается главное окно, и предложение обновиться всплывало поверх
+    // обоих — три окна разом на пустом месте. Откладываем до готовности; её
+    // объявляет BootSplash.onDone, оттуда и придёт promptIfPending.
+    if (BootSplash.instance.active) {
+      _promptPending = true;
+      return;
+    }
     () async {
       // The chat window often starts hidden (the floating widget is the only
       // visible surface) — a dialog shown now would go unseen. Defer until
@@ -1162,6 +1179,41 @@ del "%~f0" >nul 2>&1
   static List<String> appcastNotes(String xml) =>
       _newestItem(xml)?.notes ?? const [];
 
+  /// Вся история выпусков из канала: версия и её заметки.
+  ///
+  /// Источник заметок один — `appcast.xml`, он же показывается в окне
+  /// обновления. Второй список тех же заметок в коде (`kChangelog`) разъехался
+  /// бы молча — он и разъехался: последняя запись в нём 2.19.1, и с тех пор
+  /// окно «Что нового» не показывалось ни разу, потому что своей версии в
+  /// списке не находило. Пока канал не прочитан, остаётся встроенный список:
+  /// он старый, но это лучше пустого экрана.
+  ///
+  /// Записи без пунктов пропускаются: у самых первых выпусков описания нет, и
+  /// пустая карточка с одним номером версии — не история, а мусор.
+  static List<ChangelogEntry> parseHistory(String xml) => [
+        for (final i in _feedItems(xml))
+          if (i.notes.isNotEmpty) ChangelogEntry(i.version, i.notes),
+      ];
+
+  /// Прочитать сохранённый канал. Пусто — если его ещё ни разу не скачивали.
+  static Future<List<ChangelogEntry>> cachedHistory() async {
+    try {
+      final f = io.File(await updateDownloadPath(_kFeedCacheName));
+      if (await f.exists()) return parseHistory(await f.readAsString());
+    } catch (_) {}
+    return const [];
+  }
+
+  /// Сохранить канал на диск. Молча: неудача здесь стоит устаревшей истории,
+  /// а не сломанного обновления, ради которого канал и качали.
+  static Future<void> _cacheFeed(String xml) async {
+    try {
+      final f = io.File(await updateDownloadPath(_kFeedCacheName));
+      await f.parent.create(recursive: true);
+      await f.writeAsString(xml);
+    } catch (_) {}
+  }
+
   static List<_FeedItem> _feedItems(String rawXml) {
     final out = <_FeedItem>[];
     // Comments go first, and not for tidiness. The feed's header comment
@@ -1368,6 +1420,15 @@ class ComponentManager {
   /// равно применяется на следующем запуске. Раньше запрос стоял на пути
   /// запуска с таймаутом 15 секунд: полторы секунды в лучшем случае и до
   /// пятнадцати, если до GitHub не достучаться.
+  /// Запрос свежего манифеста, пока он ещё в пути. Нужен [stageUpdate]: без
+  /// него обновление компонента откладывалось на лишний запуск. Порядок был
+  /// такой: приложение стартует по КЭШУ манифеста, тут же уходит спрашивать
+  /// свежий — и параллельно решает, надо ли что-то припасать. Решало по
+  /// старому: версия совпала сама с собой, припасать нечего. Свежий манифест
+  /// доезжал секундой позже и ложился в кэш, но им уже никто не пользовался до
+  /// следующего запуска. Так один выпуск компонента стоил трёх перезапусков.
+  Future<void>? _manifestFetch;
+
   Future<void> loadManifest() async {
     final sep = io.Platform.pathSeparator;
     final cache = io.File('${await _componentsDir()}${sep}manifest.json');
@@ -1381,7 +1442,8 @@ class ComponentManager {
     if (fromCache) {
       // Кэш есть — стартуем по нему, а свежий подтянем в фоне: он повлияет на
       // stageUpdate (припасти обновление к следующему запуску), не на этот.
-      unawaited(_fetchManifest(cache));
+      _manifestFetch = _fetchManifest(cache);
+      unawaited(_manifestFetch);
       await refreshStates();
       return;
     }
@@ -1551,6 +1613,11 @@ class ComponentManager {
   // an archive component that silently KILLED its update path, leaving installs
   // stuck on an old sidecar forever: the "clone never works" bug.)
   Future<void> stageUpdate(String id) async {
+    // Сперва дождаться свежего манифеста, если он ещё едет: решать «надо ли
+    // обновлять» по кэшу значит всегда отвечать «нет».
+    try {
+      await _manifestFetch;
+    } catch (_) {}
     final info = _manifest[id];
     if (info == null || info.url.isEmpty) return;
     if (await installedPath(id) == null) return; // nothing installed to update

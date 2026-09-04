@@ -81,7 +81,7 @@ def started(app, output="speakers", music=True):
               payload={"output": output, "music": music})
 
 
-check("правила загрузились", len(f.rules), 4)
+check("правила загрузились", len(f.rules), 6)
 check("игра из списка «переключать»: звук ушёл и музыка приглушена",
       f.feed(started("valorant.exe")),
       "acted:game-audio-switch;acted:music-duck")
@@ -99,6 +99,17 @@ check("проигрыватель уже закрыт — возвращать �
       f.feed(ev("app.stopped", subject={"app": "valorant.exe"},
                 payload={"music": False})),
       "unmatched")
+# Возврат звука после игры. Симметрия входу: там условие «звук на колонках»,
+# здесь «звук в наушниках» — и оба существуют ради одного, не трогать вывод,
+# который человек за это время переставил сам.
+check("игра закрылась из наушников — звук вернулся на колонки",
+      f.feed(ev("app.stopped", subject={"app": "valorant.exe"},
+                payload={"output": "headphones", "music": True})),
+      "acted:game-audio-restore;acted:music-restore")
+check("звук и так на колонках — возвращать нечего",
+      f.feed(ev("app.stopped", subject={"app": "valorant.exe"},
+                payload={"output": "speakers", "music": True})),
+      "acted:music-restore")
 check("незарегистрированная игра шину не трогает",
       f.feed(started("solitaire.exe")), "unmatched")
 

@@ -1,58 +1,111 @@
-# EVS — Windows updates (WinSparkle / auto_updater)
+# Обновления Nexus Anima (WinSparkle / auto_updater)
 
-This replaces Shorebird (mobile-only, Dart-patches-only) with a real desktop
-updater. EVS ships **full installers**, so updates can include native changes
-(new plugins, `dart:ffi`, the Python sidecar) — not just Dart code.
+Приложение обновляется **полными установщиками**, а не патчами кода — поэтому в
+обновление могут входить и нативные изменения: новый плагин, `dart:ffi`, движок на
+Python. Установщик компактный, тяжёлые компоненты догружаются отдельно.
 
-## How it works
+## Как это работает
 
-1. The app embeds the **DSA public key** (`dsa_pub.pem`) via
+1. В сборку зашит **открытый ключ DSA** (`dsa_pub.pem`) через
    `windows/runner/Runner.rc`.
-2. On launch (Windows only) `DesktopIntegration.init` calls
-   `autoUpdater.setFeedURL(...)` + `setScheduledCheckInterval(6h)`. The
-   «Проверить обновления» button in Settings → «О приложении» triggers an
-   immediate check (`DesktopIntegration.checkForUpdates`).
-3. WinSparkle fetches [`appcast.xml`](appcast.xml), compares `sparkle:version`
-   to the installed build, and if newer, downloads the signed installer,
-   **verifies its DSA signature** against the embedded public key, and runs it.
+2. При запуске `DesktopIntegration.init` вызывает `autoUpdater.setFeedURL(...)` и
+   ставит проверку раз в 6 часов. Кнопка «Проверить обновления» в настройках
+   («О приложении») запускает проверку сразу.
+3. WinSparkle читает `appcast.xml`, сравнивает `sparkle:version` с установленной
+   версией и, если новее, скачивает установщик, **проверяет его DSA-подпись** и
+   запускает.
 
-Feed URL: `https://raw.githubusercontent.com/kekw2077/enhanced-voice-system/main/test1/dist/appcast.xml`
-(defined in `DesktopIntegration.updateFeedUrl`). Override at runtime with the
-`EVS_UPDATE_FEED` environment variable — used by the local staging test below
-and handy for a self-hosted feed.
+**Откуда берётся канал** — `DesktopIntegration.effectiveFeedUrl`, по убыванию
+приоритета:
 
-## Local staging test (watch an update happen, no publishing)
+1. переменная окружения `ANIMA_UPDATE_FEED` (или старая `EVS_UPDATE_FEED`) — для
+   отладки и локальной проверки;
+2. **свой сервер обновлений из настроек** — обычный рабочий путь: домашняя станция,
+   `http://100.79.130.7:8099`;
+3. зашитый адрес на GitHub (`raw.githubusercontent.com/.../test1/dist/appcast.xml`) —
+   запасной, если свой сервер не задан.
 
-WinSparkle only offers an update when the feed advertises a **higher**
-`sparkle:version` than the installed build. To see the full download+install
-flow locally:
+## Выпуск новой версии
+
+Выпуск идёт **на станцию**, а не в GitHub Releases.
+
+1. **Поднять** `version:` в `pubspec.yaml` (например `3.2.5+115`).
+2. **Собрать**:
+   ```powershell
+   flutter build windows --release
+   ```
+3. **Сделать установщик** (нужен [Inno Setup 6](https://jrsoftware.org/isdl.php),
+   у нас стоит в `%LOCALAPPDATA%\Programs\Inno Setup 6`):
+   ```powershell
+   & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" dist\installer.iss /DAppVersion=3.2.5
+   ```
+   → `dist\out\NexusAnima-Setup-3.2.5.exe`
+4. **Подписать** и получить числа:
+   ```powershell
+   .\dist\sign_update.ps1 .\dist\out\NexusAnima-Setup-3.2.5.exe
+   ```
+   Печатает подпись, длину и sha256 — все три идут в `appcast.xml`.
+5. **Дописать** `<item>` **первым** в [appcast.xml](appcast.xml): `sparkle:version`,
+   `url`, `length`, `sparkle:dsaSignature`, `evs:sha256`, `pubDate` и заметки к
+   выпуску. Ссылку писать в обычном виде (на GitHub) — скрипт выкладки перепишет её
+   на адрес станции сам.
+6. **Выложить**:
+   ```powershell
+   .\dist\publish-to-station.ps1 -Version 3.2.5
+   .\dist\publish-to-station.ps1 -Version 3.2.5 -WithSidecar   # + движок, 112 МБ
+   ```
+   Скрипт кладёт установщик на станцию, переписывает ссылки в `appcast.xml` и
+   `components.json` на её адрес и проверяет, что выложенное действительно отдаётся.
+   Хранится последние две версии (`-Keep`).
+7. **Перенести заметки** в [CHANGELOG.md](../CHANGELOG.md) — те же пункты, что и в
+   `appcast.xml`, новой записью сверху. Журнал в репозитории и заметки в окне
+   обновления должны говорить одно и то же.
+
+Историю **внутри программы** обновлять не нужно: окно «Что нового», список изменений в
+настройках и «О программе» читают тот же канал. Заметки к выпуску пишутся один раз — в
+`appcast.xml`, на шаге 5.
+
+**Пересобрали exe — подпись, длина и sha256 устарели.** Не обновить их в `appcast.xml`
+значит выпустить обновление, которое WinSparkle молча откажется ставить: подпись не
+сойдётся, и пользователь не увидит даже ошибки.
+
+## Откат
 
 ```powershell
-# 1. Serve a "newer" appcast + the installer from a temp folder.
-#    Copy dist/appcast.xml to a staging copy, bump sparkle:version to 1.0.1,
-#    point the enclosure url at http://localhost:8000/EVS-Setup-1.0.0.exe, and
-#    re-sign is NOT needed (same file, same signature/length).
-cd dist\out
-python -m http.server 8000        # serves this folder (installer + staging appcast)
-
-# 2. In another shell, launch the INSTALLED EVS pointed at the local feed:
-$env:EVS_UPDATE_FEED = "http://localhost:8000/appcast-staging.xml"
-& "$env:ProgramFiles\EVS\evs.exe"
-# Settings -> О приложении -> «Проверить обновления» -> WinSparkle offers 1.0.1,
-# verifies the signature against the embedded key, downloads and runs it.
+.\dist\rollback.ps1                  # что доступно на станции
+.\dist\rollback.ps1 -Version 3.2.2   # поставить её поверх текущей
 ```
 
-This proves the whole chain (fetch → version compare → DSA verify → download →
-install) without touching the production feed.
+Нужен там, где кнопка в настройках не поможет: приложение не стартует, окно не
+рисуется или сломано ровно то место, где эта кнопка живёт. Станция хранит каждый
+выложенный установщик, поэтому откатываться есть на что.
 
-## Keys
+## Проверка канала без выкладки
 
-- `dsa_pub.pem` — committed, embedded in the build. Safe to share.
-- `dsa_priv.pem` — **git-ignored, secret.** Used only to sign installers.
-  **Back it up.** If lost, no existing install can ever upgrade again
-  (you'd have to ship a new app with a new key out-of-band).
+WinSparkle предложит обновление, только если в канале версия **выше** установленной.
+Полный прогон (скачивание + проверка подписи + установка) локально:
 
-Regenerate (only if compromised) with Git's openssl:
+```powershell
+# 1. Раздать «новый» appcast и установщик из временной папки.
+#    Скопировать dist/appcast.xml, поднять в копии sparkle:version, направить
+#    enclosure url на http://localhost:8000/NexusAnima-Setup-<версия>.exe.
+#    Переподписывать НЕ нужно: файл тот же, подпись и длина те же.
+cd dist\out
+python -m http.server 8000
+
+# 2. В другом окне запустить установленную копию с этим каналом:
+$env:ANIMA_UPDATE_FEED = "http://localhost:8000/appcast-staging.xml"
+& "$env:LOCALAPPDATA\Programs\Nexus Anima\anima.exe"
+```
+
+## Ключи
+
+- `dsa_pub.pem` — в репозитории, зашит в сборку. Открытый, делиться можно.
+- `dsa_priv.pem` — лежит в `test1/`, **в git не попадает, секретный**. Им подписываются
+  установщики. **Сделайте резервную копию.** Потеря ключа означает, что ни одна уже
+  установленная копия больше никогда не обновится — только переустановка вручную.
+
+Перевыпуск ключа (только если скомпрометирован) — openssl из состава Git:
 
 ```powershell
 $ssl = "C:\Program Files\Git\usr\bin\openssl.exe"
@@ -62,60 +115,33 @@ Remove-Item dsaparam.pem
 & $ssl dsa -in dsa_priv.pem -pubout -out dsa_pub.pem
 ```
 
-## Releasing a new version
+## Компоненты (движок голоса)
 
-1. **Bump** `version:` in `pubspec.yaml` (e.g. `1.0.1+2`).
-2. **Build** the release:
-   ```powershell
-   flutter build windows --release
-   ```
-3. **Make the installer** (needs [Inno Setup 6](https://jrsoftware.org/isdl.php)):
-   ```powershell
-   iscc dist\installer.iss /DAppVersion=1.0.1
-   ```
-   → `dist\out\EVS-Setup-1.0.1.exe`
-4. **Sign** it and read off the length:
-   ```powershell
-   .\dist\sign_update.ps1 .\dist\out\EVS-Setup-1.0.1.exe
-   ```
-5. **Upload** the `.exe` to a GitHub Release (tag e.g. `desktop-v1.0.1`).
-6. **Edit** [`appcast.xml`](appcast.xml): add a new `<item>` at the top with the
-   real `url`, `length`, `sparkle:version` and `sparkle:dsaSignature`.
-7. **Commit** `appcast.xml` on the `desktop` branch. Within ~minutes
-   (raw.githubusercontent cache) installed copies will see the update.
+Тяжёлые части в установщик **не входят** — иначе он весил бы не 17 МБ, а больше сотни,
+и столько же весило бы каждое обновление. Они описаны в
+[components.json](components.json), приложение скачивает их и проверяет по sha256.
 
-> The appcast and installer are hosted on GitHub — no server to run. Hosting
-> can move to GitHub Pages/Releases later without app changes (just update
-> `updateFeedUrl`).
+- **sidecar** (`evs_sidecar.zip`, ~112 МБ) — распознавание (Whisper/GigaAM), VAD,
+  шумодав, синтез (Piper + системный), разбор команд, шина событий.
 
-## Components (sidecar + voice clone) — downloaded on demand
-
-Heavy native pieces are **not** bundled in the installer (which keeps it ~15 MB
-and every update small). They live as GitHub release assets, described by
-[`components.json`](components.json), and the app downloads + sha256-verifies
-them into its data folder (`ComponentManager`).
-
-- **sidecar** (`evs_sidecar.exe`, ~95 MB) — STT (Whisper/GigaAM) / VAD / denoise
-  / TTS (Piper + system) / intent. Piper voices are downloaded separately via the
-  in-app model manager into `<userdata>/models/`.
-
-To (re)publish the sidecar component:
+Пересобрать и выложить движок:
 
 ```powershell
-# 1. Build the exe and refresh components.json (sha256 + size):
 cd sidecar
-.\build_exe.ps1 -ComponentVersion 2          # bump version when the exe changes
-
-# 2. Upload the zip to the components release (create the tag once).
-#    ВСЕГДА с --repo: origin смотрит на kekw2077/mirai — чужой проект, и без
-#    флага ассет уедет туда, а установленные копии будут качать из ниоткуда.
-gh release create desktop-components --title "EVS components" --notes "On-demand components" --repo kekw2077/enhanced-voice-system 2>$null
-gh release upload desktop-components .\dist\evs_sidecar.zip --clobber --repo kekw2077/enhanced-voice-system
-
-# 3. Commit dist\components.json on the `desktop` branch (the app reads it from
-#    raw.githubusercontent, ~5 min cache).
+.\build_exe.ps1 -ComponentVersion 31        # поднять номер, если exe изменился
+cd ..
+.\dist\publish-to-station.ps1 -Version <текущая> -WithSidecar
 ```
 
-The Whisper model itself is fetched by faster-whisper on first use into the
-app's data folder (`HF_HOME`), so changing the Whisper size just downloads that
-size on demand.
+Имя файла движка остаётся `evs_sidecar.zip`/`evs_sidecar.exe` намеренно: компонент
+живёт своим циклом выпуска, у установленных копий сейчас старое имя, и приложение
+понимает оба (`anima_sidecar.exe` и `evs_sidecar.exe`).
+
+## Что нельзя переименовывать
+
+- `evs:sha256` в `appcast.xml` — каждая установленная сборка ищет этот литерал.
+  Переименование «наведёт порядок» ровно в том обновлении, которое перестанет
+  приходить.
+- `AppId` в [installer.iss](installer.iss) — GUID связывает установку Anima с
+  заменяемой EVS. Смена GUID означает вторую программу рядом, а не обновление.
+- `AppMutex` — тот же мьютекс, что у приложения (`EVS-SingleInstance-Mutex`).

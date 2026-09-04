@@ -1679,6 +1679,7 @@ class _NocturDialogTabState extends State<_NocturDialogTab> {
               ],
             ),
           ),
+          animaMessageChoices(context, m),
           const SizedBox(height: 6),
           Text(
             metaParts.join('  ·  '),

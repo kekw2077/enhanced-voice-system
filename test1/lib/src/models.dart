@@ -13,6 +13,23 @@ class ChatMessage {
   String thinking;
   final DateTime time;
   final List<String> attachments;
+
+  /// Варианты ответа под репликой: фразы команд, из которых можно выбрать
+  /// нажатием. Нужны там, где ассистент не уверен, что именно у него попросили,
+  /// и переспрашивает — голосом и здесь же, в переписке.
+  ///
+  /// Хранятся строками, а не ссылками на команды: каталог человек правит, и
+  /// удалённая команда не должна ломать старую переписку — кнопка просто не
+  /// найдёт себе пары и ничего не сделает.
+  final List<String> choices;
+
+  /// Что именно было сказано, когда эти варианты предложили.
+  ///
+  /// Хранится, чтобы выбор человека можно было запомнить: нажатие по варианту
+  /// — единственный момент, когда точно известно, что за плохо распознанной
+  /// фразой стояла именно эта команда. Дальше та же фраза сработает без
+  /// переспроса. Пусто у обычных реплик и у старых переписок.
+  final String choicesFor;
   ChatMessage({
     String? id,
     required this.role,
@@ -20,9 +37,12 @@ class ChatMessage {
     this.thinking = '',
     DateTime? time,
     List<String>? attachments,
+    List<String>? choices,
+    this.choicesFor = '',
   }) : id = id ?? const Uuid().v4(),
        time = time ?? DateTime.now(),
-       attachments = attachments ?? [];
+       attachments = attachments ?? [],
+       choices = choices ?? [];
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -31,6 +51,8 @@ class ChatMessage {
     if (thinking.isNotEmpty) 'thinking': thinking,
     'time': time.toIso8601String(),
     'attachments': attachments,
+    if (choices.isNotEmpty) 'choices': choices,
+    if (choicesFor.isNotEmpty) 'choicesFor': choicesFor,
   };
   factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
     id: j['id'] as String?,
@@ -43,6 +65,10 @@ class ChatMessage {
             ?.map((e) => e.toString())
             .toList() ??
         [],
+    choices:
+        (j['choices'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        [],
+    choicesFor: j['choicesFor'] as String? ?? '',
   );
 }
 

@@ -309,16 +309,21 @@ class _PrismSubsystems extends StatelessWidget {
             animation: Listenable.merge([
               SystemMonitor.instance.stats,
               SidecarClient.instance.gpuInfo,
+              StationMonitor.instance.stats,
             ]),
             builder: (context, _) {
               final s = SystemMonitor.instance.stats.value;
               final live = s.totalRamBytes > 0;
               final gpu = SidecarClient.instance.gpuInfo.value;
               final hasVram = gpu.$1 && gpu.$3 > 0;
+              final st = StationMonitor.instance.stats.value;
               final rows = <Widget>[
                 if (live)
                   _PrismMetric(
-                    name: app.t('nxCpu'),
+                    name: app.cpuModel.isEmpty
+                        ? app.t('nxCpu')
+                        : '${app.t('nxCpu')} · '
+                            '${animaShortHardware(app.cpuModel)}',
                     value: '${(s.cpu * 100).round()}%',
                     fraction: s.cpu,
                   ),
@@ -330,11 +335,48 @@ class _PrismSubsystems extends StatelessWidget {
                     fraction: s.ram,
                   ),
                 if (hasVram)
+                  // «Видеокарта» плюс модель, а не одна модель: строка рядом с
+                  // «Процессор» и «Оперативная память» должна называть то же,
+                  // что и они, — что это за железо, а не только чьё оно.
                   _PrismMetric(
-                    name: gpu.$2.isEmpty ? app.t('nxVram') : gpu.$2,
+                    name: gpu.$2.isEmpty
+                        ? app.t('nxGpu')
+                        : '${app.t('nxGpu')} · ${animaShortHardware(gpu.$2)}',
                     value: '${(gpu.$4 / 1024).toStringAsFixed(1)} / '
                         '${(gpu.$3 / 1024).round()} ГБ',
                     fraction: (gpu.$4 / gpu.$3).clamp(0.0, 1.0),
+                  ),
+              ];
+              // Станция — ниже полосы и под своей подписью. Числа выше про этот
+              // компьютер, и без подписей это читалось как одна машина: карта
+              // местная, а языковая модель на ней не живёт вовсе.
+              final far = <Widget>[
+                if (st.ramTotalMb > 0)
+                  _PrismMetric(
+                    name: st.cpuModel.isEmpty
+                        ? app.t('nxCpu')
+                        : '${app.t('nxCpu')} · '
+                            '${animaShortHardware(st.cpuModel)}',
+                    value: '${(st.cpuPercent * 100).round()}%',
+                    fraction: st.cpuPercent,
+                  ),
+                if (st.ramTotalMb > 0)
+                  _PrismMetric(
+                    name: app.t('nxRam'),
+                    value: '${(st.ramUsedMb / 1024).toStringAsFixed(1)} / '
+                        '${(st.ramTotalMb / 1024).round()} ГБ',
+                    fraction: (st.ramUsedMb / st.ramTotalMb).clamp(0.0, 1.0),
+                  ),
+                if (st.vramTotalMb > 0)
+                  _PrismMetric(
+                    name: st.gpuName.isEmpty
+                        ? app.t('nxGpu')
+                        : '${app.t('nxGpu')} · '
+                            '${animaShortHardware(st.gpuName)}',
+                    value: '${(st.vramUsedMb / 1024).toStringAsFixed(1)} / '
+                        '${(st.vramTotalMb / 1024).round()} ГБ',
+                    fraction:
+                        (st.vramUsedMb / st.vramTotalMb).clamp(0.0, 1.0),
                   ),
               ];
               if (rows.isEmpty) {
@@ -347,9 +389,27 @@ class _PrismSubsystems extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Подпись появляется только вместе со второй половиной: пока
+                  // станция молчит, «Этот компьютер» разделяет карточку надвое
+                  // без всякой второй части.
+                  if (far.isNotEmpty) ...[
+                    _prismGroupLabel(context, app.t('prismThisPc')),
+                    const SizedBox(height: 13),
+                  ],
                   for (var i = 0; i < rows.length; i++) ...[
                     if (i > 0) const SizedBox(height: 15),
                     rows[i],
+                  ],
+                  if (far.isNotEmpty) ...[
+                    const SizedBox(height: 18),
+                    Container(height: 1, color: _prismChip(context)),
+                    const SizedBox(height: 16),
+                    _prismGroupLabel(context, app.t('prismStation')),
+                    const SizedBox(height: 13),
+                    for (var i = 0; i < far.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 15),
+                      far[i],
+                    ],
                   ],
                 ],
               );
@@ -360,6 +420,17 @@ class _PrismSubsystems extends StatelessWidget {
     );
   }
 }
+
+/// Подпись группы внутри карточки. Мельче и тише заголовка панели: это не
+/// вторая карточка, а половина одной.
+Widget _prismGroupLabel(BuildContext context, String text) => Text(
+      text.toUpperCase(),
+      style: PrismType.label.copyWith(
+          color: _sub(context),
+          fontSize: 10.5,
+          letterSpacing: 1.1,
+          fontWeight: FontWeight.w700),
+    );
 
 String _prismGb(int bytes, {int digits = 1}) =>
     (bytes / (1024 * 1024 * 1024)).toStringAsFixed(digits);

@@ -847,6 +847,194 @@ String _sttEngineNow(AppState app) {
   return live;
 }
 
+/// Что происходит на СТАНЦИИ: её видеокарта и что на ней лежит.
+///
+/// Отдельно от [SystemMonitor] намеренно: тот читает железо этого компьютера
+/// через kernel32, а здесь два чужих сервера по сети. Смешивать их в одну
+/// метрику нельзя — именно из-за такой путаницы карточка «Нейросеть» показывала
+/// местную карту под моделью, которая считается за сто километров отсюда.
+class StationStats {
+  const StationStats({
+    this.ok = false,
+    this.cpuModel = '',
+    this.cpuPercent = 0,
+    this.ramUsedMb = 0,
+    this.ramTotalMb = 0,
+    this.gpuName = '',
+    this.vramUsedMb = 0,
+    this.vramTotalMb = 0,
+    this.model = '',
+    this.modelVramMb = 0,
+  });
+
+  /// Ответил ли хоть кто-нибудь. Ложь — рисовать нечего: полоска на выдуманном
+  /// проценте хуже отсутствующей строки.
+  final bool ok;
+
+  /// Имена железа. Отдельно от чисел, потому что и приходят они отдельно:
+  /// агент станции считает загрузку, а как называется процессор — не знает.
+  final String cpuModel, gpuName;
+
+  final double cpuPercent;
+  final int ramUsedMb, ramTotalMb, vramUsedMb, vramTotalMb;
+
+  /// Языковая модель, лежащая на карте станции, и сколько она занимает.
+  final String model;
+  final int modelVramMb;
+}
+
+class StationMonitor {
+  StationMonitor._();
+  static final StationMonitor instance = StationMonitor._();
+
+  final ValueNotifier<StationStats> stats = ValueNotifier(const StationStats());
+  bool _busy = false;
+  Timer? _timer;
+
+  /// Опрос станции на всё приложение, а не по таймеру на каждом экране.
+  ///
+  /// Заводится там же, где [SystemMonitor], и по той же причине: метрику
+  /// показывают уже два экрана, и два таймера на одни и те же два запроса
+  /// разошлись бы периодами при первой правке. Пятнадцать секунд — это сеть и
+  /// два чужих сервера, а не регистр ядра: чаще незачем, реже — и уже не видно,
+  /// как модель встала на карту.
+  void start(AppState app) {
+    if (_timer != null) return;
+    unawaited(refresh(app));
+    _timer = Timer.periodic(
+        const Duration(seconds: 15), (_) => unawaited(refresh(app)));
+  }
+
+  void stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  /// Адрес агента станции. Хост берётся у языковой модели — она на той же
+  /// машине, — а порт у агента свой и не меняется. Отдельного поля для адреса
+  /// нет намеренно: два поля под один сервер человек однажды заполнит
+  /// по-разному, и разбираться придётся уже с этим.
+  String _agentBase(AppState app) {
+    var host = app.serverUrl.trim();
+    if (host.isEmpty) return '';
+    host = host.replaceFirst(RegExp(r'^https?://'), '');
+    host = host.split('/').first.split(':').first;
+    return host.isEmpty ? '' : 'http://$host:8765';
+  }
+
+  /// Спросить станцию. Источников два, и это не дублирование.
+  ///
+  /// Числа берёт агент станции (`pc-agent`, порт 8765) — он для того и заведён,
+  /// им же пользуется телефон, и живёт он отдельно от голоса и картинок. Имена
+  /// железа он не считает: в его ответе есть загрузка процессора, но не его
+  /// название. Их добирает сервер живого голоса, который и так на связи.
+  ///
+  /// Любой из двух может молчать. Тогда пропадают только те строки, которых
+  /// нет, — а не весь блок.
+  Future<void> refresh(AppState app) async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      var ok = false;
+      var cpu = 0.0;
+      var ramUsed = 0, ramTotal = 0, vramUsed = 0, vramTotal = 0;
+      var cpuModel = '', gpuName = '', model = '';
+      var modelMb = 0;
+
+      final agent = _agentBase(app);
+      final token = app.stationToken.trim();
+      if (agent.isNotEmpty && token.isNotEmpty) {
+        try {
+          final r = await http.get(Uri.parse('$agent/metrics'),
+              headers: {'Authorization': 'Bearer $token'}).timeout(
+              const Duration(seconds: 6));
+          if (r.statusCode == 200) {
+            final j = jsonDecode(r.body) as Map;
+            cpu = ((j['cpu'] as num?)?.toDouble() ?? 0) / 100.0;
+            final ramPct = (j['ram'] as num?)?.toDouble() ?? 0;
+            ramTotal = (((j['ramTotalBytes'] as num?)?.toInt() ?? 0) / 1048576)
+                .round();
+            ramUsed = (ramTotal * ramPct / 100).round();
+            final g = j['gpu'];
+            if (g is Map && g['present'] == true) {
+              gpuName = (g['name'] ?? '').toString();
+              vramUsed =
+                  (((g['vramUsedBytes'] as num?)?.toInt() ?? 0) / 1048576)
+                      .round();
+              vramTotal =
+                  (((g['vramTotalBytes'] as num?)?.toInt() ?? 0) / 1048576)
+                      .round();
+            }
+            ok = true;
+          }
+        } catch (_) {}
+      }
+
+      // Сервер голоса: названия железа, а при молчащем агенте — и числа.
+      final voice = app.liveVoiceEndpoint.trim();
+      if (voice.isNotEmpty) {
+        try {
+          final u = voice.startsWith('http') ? voice : 'http://$voice';
+          final r =
+              await http.get(Uri.parse(u)).timeout(const Duration(seconds: 6));
+          if (r.statusCode == 200) {
+            final h = (jsonDecode(r.body) as Map)['host'];
+            if (h is Map) {
+              cpuModel = (h['cpu_model'] ?? '').toString();
+              if (gpuName.isEmpty) gpuName = (h['gpu_name'] ?? '').toString();
+              if (!ok) {
+                cpu = ((h['cpu_percent'] as num?)?.toDouble() ?? 0) / 100.0;
+                ramUsed = (h['ram_used_mb'] as num?)?.toInt() ?? 0;
+                ramTotal = (h['ram_total_mb'] as num?)?.toInt() ?? 0;
+                vramUsed = (h['vram_used_mb'] as num?)?.toInt() ?? 0;
+                vramTotal = (h['vram_total_mb'] as num?)?.toInt() ?? 0;
+                ok = ramTotal > 0;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Что именно лежит на карте — у Ollama, тем же запросом, что и выгрузка
+      // в арбитре: /api/ps перечисляет резидентные модели.
+      final srv = app.serverUrl.trim();
+      if (srv.isNotEmpty) {
+        try {
+          final u = srv.startsWith('http') ? srv : 'http://$srv';
+          final r = await http
+              .get(Uri.parse('$u/api/ps'))
+              .timeout(const Duration(seconds: 6));
+          if (r.statusCode == 200) {
+            final list = (jsonDecode(r.body) as Map)['models'];
+            if (list is List && list.isNotEmpty && list.first is Map) {
+              final m = list.first as Map;
+              model = (m['model'] ?? m['name'] ?? '').toString();
+              modelMb =
+                  (((m['size_vram'] as num?)?.toInt() ?? 0) / 1048576).round();
+            }
+            ok = true;
+          }
+        } catch (_) {}
+      }
+
+      stats.value = StationStats(
+        ok: ok,
+        cpuModel: cpuModel,
+        cpuPercent: cpu.clamp(0.0, 1.0),
+        ramUsedMb: ramUsed,
+        ramTotalMb: ramTotal,
+        gpuName: gpuName,
+        vramUsedMb: vramUsed,
+        vramTotalMb: vramTotal,
+        model: model,
+        modelVramMb: modelMb,
+      );
+    } finally {
+      _busy = false;
+    }
+  }
+}
+
 /// Кто сейчас занимает видеокарту станции.
 ///
 /// Карта одна на 16 ГБ, и на ней уже живут языковая модель (~8 ГБ) и синтез
@@ -970,12 +1158,14 @@ class GpuArbiter {
     // Модель голоса поднимается сразу, а не на первой реплике: пауза в
     // пятнадцать секунд посреди проверки голоса читается как поломка.
     await _post(app.qwenEndpoint, '/load');
-    // Раз сервер всё равно поднят — самое время дозаготовить фразы. Вне
-    // студии он на паузе, и другого случая наполнить кэш не представится, а
-    // именно из кэша ассистент говорит вашим голосом всё остальное время.
-    try {
-      SidecarClient.instance.prerender(app.clonePhrasesToRender());
-    } catch (_) {}
+    // Заготовку постоянных реплик отсюда убрали намеренно, и вот почему.
+    // Написана она была тогда, когда сервер был один на обе роли: разбудить
+    // его можно было только открытой студией, и другого случая наполнить кэш
+    // действительно не представлялось. Теперь ролей две. Заготовка идёт через
+    // сервер ЖИВОГО голоса (`applyCloneServer` отдаёт сайдкару именно его) и
+    // делается там же — при запуске и после любой правки настроек, не дожидаясь
+    // студии. Здесь она осталась бы худшим из возможных моментов: студийная
+    // модель как раз занимает карту, и живая полезла бы на неё вторым слоем.
   }
 
   /// Вернуть карту языковой модели после студии голоса. Зовётся из `dispose()`
@@ -1193,16 +1383,26 @@ class GpuArbiter {
     final model = app.selectedModel.trim();
     if (server.isEmpty || model.isEmpty) return;
     final url = server.startsWith('http') ? server : 'http://$server';
+    final ka = app.llmKeepAliveField;
     try {
-      await http
+      final r = await http
           .post(Uri.parse('$url/api/generate'),
               headers: {'Content-Type': 'application/json'},
               body: jsonEncode({
                 'model': model,
-                if (app.llmKeepAlive.trim().isNotEmpty)
-                  'keep_alive': app.llmKeepAlive.trim(),
+                if (ka != null) 'keep_alive': ka,
               }))
           .timeout(const Duration(seconds: 180));
+      // Отказ сервера здесь не исключение: http.post возвращает 400 обычным
+      // ответом, и прежняя проверка ловила только обрыв связи. Возврат модели
+      // на карту после студии проваливался беззвучно — ни строки в журнале, ни
+      // намёка на экране, а выглядело как «модель просто не загрузилась».
+      if (r.statusCode != 200) {
+        unawaited(appendLog(
+            'errors',
+            'GPU: не вернулась языковая модель — HTTP ${r.statusCode}: '
+            '${r.body.trim()}'));
+      }
     } catch (e) {
       unawaited(appendLog('errors', 'GPU: не вернулась языковая модель — $e'));
     }
@@ -1268,6 +1468,11 @@ class DesktopIntegration with WindowListener, TrayListener {
       unawaited(TrayMenuServer.instance.start(a, onPick: _trayAction));
       if (a.startupShowWindow) unawaited(_show());
       unawaited(_rebuildTrayMenu()); // «Загрузка…» → обычное меню
+      // Отложенное на время запуска предложение обновиться. С запасом в
+      // полторы секунды: окно только что показали, и диалог, прилетевший в
+      // тот же кадр, читается как часть запуска, а не как вопрос.
+      unawaited(Future.delayed(const Duration(milliseconds: 1500),
+          AppUpdater.instance.promptIfPending));
     };
     // Ambient-animation gating: subscribe the policy to the activity signals
     // (assistant speech/thinking, wake hits, loud mic) once per launch.
@@ -1301,13 +1506,10 @@ class DesktopIntegration with WindowListener, TrayListener {
       await hotKeyManager.register(hk, keyDownHandler: (_) => _show());
 
       SystemMonitor.instance.start(app);
+      StationMonitor.instance.start(app);
+      unawaited(app.loadCpuModel());
       unawaited(MicMeter.instance.start(deviceId: app.inputDeviceId));
       unawaited(_bootstrapSidecar(app));
-      // Распознавание отдано системному движку — сигнала `ready` от сайдкара не
-      // будет вовсе, и окну загрузки ждать нечего.
-      if (app.sttEngine != 'whisper') {
-        unawaited(BootSplash.instance.finish());
-      }
       VoiceAssistant.instance.attach(app);
       // Push-to-Talk: опрос клавиатуры включается сам, когда выбран режим «по
       // нажатию» и назначена комбинация.
@@ -1539,14 +1741,6 @@ class DesktopIntegration with WindowListener, TrayListener {
       await SidecarClient.instance.stop();
     } catch (_) {}
     try {
-      // Сервер клона держит модель в VRAM — просим освободить её штатно, пока
-      // процесс ещё жив; ProcessJob потом просто добьёт остаток.
-      final app = _app;
-      if (app != null && CloneServer.instance.isRunning) {
-        await CloneServer.instance.stop(app);
-      }
-    } catch (_) {}
-    try {
       await windowManager.setPreventClose(false);
       await windowManager.destroy();
     } catch (_) {}
@@ -1683,201 +1877,6 @@ class DesktopIntegration with WindowListener, TrayListener {
       case 'quit':
         _quit();
         break;
-    }
-  }
-}
-
-// ==================== ЛОКАЛЬНЫЙ СЕРВЕР СИНТЕЗА ====================
-// Кнопка «запустить/остановить» для sidecar/qwen_tts_server.py — того самого
-// сервера клон-голоса на видеокарте, который до сих пор поднимали руками из
-// консоли. Приложение с ним и так умеет разговаривать (движок озвучки
-// «Клон (сервер)» шлёт HTTP на qwenEndpoint) — здесь добавляется только
-// управление его жизненным циклом, без единого нового протокола.
-//
-// Почему не просто Process.start: сервер держит модель в VRAM, и осиротевший
-// процесс занимал бы видеопамять до перезагрузки. ProcessJob (см. выше) кладёт
-// его в Job Object с KILL_ON_JOB_CLOSE — он умрёт вместе с приложением даже
-// при аварийном завершении.
-
-enum CloneServerState { stopped, starting, running, failed }
-
-class CloneServer {
-  CloneServer._();
-  static final CloneServer instance = CloneServer._();
-
-  final ValueNotifier<CloneServerState> state =
-      ValueNotifier(CloneServerState.stopped);
-
-  /// Причина отказа для подписи под кнопкой (пусто, если всё хорошо).
-  final ValueNotifier<String> problem = ValueNotifier('');
-
-  io.Process? _proc;
-  bool _busy = false;
-
-  bool get isRunning => state.value == CloneServerState.running;
-
-  /// Порт из адреса в настройках; 8760 — тот же дефолт, что у самого скрипта.
-  static int portOf(String endpoint) {
-    final p = Uri.tryParse(endpoint.trim())?.port ?? 0;
-    return p == 0 ? 8760 : p;
-  }
-
-  /// Скрипт лежит в ассетах и разворачивается рядом с данными: в установленной
-  /// версии папки sidecar/ нет, а держать вторую копию в репозитории — верный
-  /// способ забыть про неё при правке.
-  Future<String?> _ensureScript() async {
-    try {
-      final dir = io.Directory(
-          '${await appDataRoot()}${io.Platform.pathSeparator}tts-server');
-      if (!await dir.exists()) await dir.create(recursive: true);
-      final f = io.File(
-          '${dir.path}${io.Platform.pathSeparator}qwen_tts_server.py');
-      final data = await rootBundle.load('sidecar/qwen_tts_server.py');
-      final bytes = data.buffer.asUint8List();
-      // Перезаписываем только при отличии — иначе каждый запуск трогает файл.
-      if (!await f.exists() || (await f.length()) != bytes.length) {
-        await f.writeAsBytes(bytes, flush: true);
-      }
-      return f.path;
-    } catch (e) {
-      unawaited(appendLog('errors', 'CloneServer script: $e'));
-      return null;
-    }
-  }
-
-  /// Интерпретатор с torch+CUDA. Сначала — заданный руками, иначе ищем сами.
-  Future<String?> resolvePython(AppState app) async {
-    final manual = app.cloneServerPython.trim();
-    if (manual.isNotEmpty) {
-      return await io.File(manual).exists() ? manual : null;
-    }
-    final sep = io.Platform.pathSeparator;
-    final candidates = <String>[];
-    // Рядом с приложением и вверх по дереву — так найдётся venv из репозитория
-    // на машине разработки.
-    var dir = io.File(io.Platform.resolvedExecutable).parent;
-    for (var i = 0; i < 7; i++) {
-      candidates.add('${dir.path}${sep}sidecar$sep.venv-gpu${sep}Scripts'
-          '${sep}python.exe');
-      final parent = dir.parent;
-      if (parent.path == dir.path) break;
-      dir = parent;
-    }
-    try {
-      candidates.add('${await appDataRoot()}${sep}tts-server$sep.venv'
-          '${sep}Scripts${sep}python.exe');
-    } catch (_) {}
-    for (final c in candidates) {
-      if (await io.File(c).exists()) return c;
-    }
-    return null;
-  }
-
-  Future<void> start(AppState app) async {
-    if (_busy || isRunning) return;
-    _busy = true;
-    problem.value = '';
-    state.value = CloneServerState.starting;
-    try {
-      final py = await resolvePython(app);
-      if (py == null) {
-        problem.value = app.t('cloneSrvNoPython');
-        state.value = CloneServerState.failed;
-        return;
-      }
-      final script = await _ensureScript();
-      if (script == null) {
-        problem.value = app.t('cloneSrvNoScript');
-        state.value = CloneServerState.failed;
-        return;
-      }
-      final port = portOf(app.qwenEndpoint);
-      // Веса (~4 ГБ) кладём в общий кэш на диске установки, а не в профиль
-      // пользователя на C: — сервер уважает ANIMA_QWEN_CACHE.
-      //
-      // Имя переменной задаётся под обоими написаниями: сервер приезжает
-      // отдельным компонентом, и тот, что уже стоит у человека, читает пока
-      // только старое. Промах здесь означал бы четыре гигабайта весов,
-      // скачанных на системный диск, — ровно то, чего это место избегает.
-      final env = <String, String>{};
-      try {
-        final cache =
-            '${await componentsDirPath()}${io.Platform.pathSeparator}hf-cache';
-        env['ANIMA_QWEN_CACHE'] = cache;
-        env['EVS_QWEN_CACHE'] = cache;
-      } catch (_) {}
-      _proc = await io.Process.start(
-        py,
-        [script, '--port', '$port'],
-        runInShell: false,
-        environment: env,
-      );
-      ProcessJob.instance.add(_proc!.pid); // умрёт вместе с приложением
-      final up = Completer<void>();
-      // Сервер печатает всё в stderr с префиксом [qwen-tts]; строка про
-      // listening — его аналог EVS_SIDECAR_READY у сайдкара.
-      _proc!.stderr
-          .transform(const Utf8Decoder(allowMalformed: true))
-          .transform(const LineSplitter())
-          .listen((line) {
-        final t = line.trim();
-        if (t.isEmpty) return;
-        unawaited(appendLog('tts-server', t));
-        if (!up.isCompleted && t.contains('listening on http')) up.complete();
-      });
-      _proc!.exitCode.then((code) {
-        _proc = null;
-        if (!up.isCompleted) {
-          problem.value = '${app.t('cloneSrvExited')} ($code)';
-          state.value = CloneServerState.failed;
-        } else {
-          state.value = CloneServerState.stopped;
-        }
-      });
-      // Импорт torch на холодную занимает десятки секунд — таймаут щедрый.
-      await up.future.timeout(const Duration(seconds: 180));
-      state.value = CloneServerState.running;
-      if (app.qwenEndpoint.trim().isEmpty) {
-        app.setQwenEndpoint('http://127.0.0.1:$port');
-      }
-      unawaited(app.checkQwenServer());
-    } catch (e) {
-      unawaited(appendLog('errors', 'CloneServer start: $e'));
-      if (state.value != CloneServerState.failed) {
-        problem.value = app.t('cloneSrvFailed');
-        state.value = CloneServerState.failed;
-      }
-      try {
-        _proc?.kill();
-      } catch (_) {}
-      _proc = null;
-    } finally {
-      _busy = false;
-    }
-  }
-
-  Future<void> stop(AppState app) async {
-    if (_busy) return;
-    _busy = true;
-    try {
-      // Сначала попросить освободить VRAM штатно: /unload сервер умеет, а
-      // при kill его finally уже не отработает.
-      final ep = app.qwenEndpoint.trim();
-      if (ep.isNotEmpty) {
-        try {
-          await http
-              .post(Uri.parse('$ep/unload'))
-              .timeout(const Duration(seconds: 3));
-        } catch (_) {}
-      }
-      try {
-        _proc?.kill();
-      } catch (_) {}
-      _proc = null;
-      state.value = CloneServerState.stopped;
-      problem.value = '';
-    } finally {
-      _busy = false;
     }
   }
 }

@@ -30,6 +30,10 @@ class SidecarClient {
   String _ttsEngine = 'pyttsx3';
   String _ttsVoice = '';
   String _ttsVoiceDir = '';
+  /// Как ПОДКЛЮЧЁННЫЙ движок назвал свои движки синтеза. Не значения, а имена:
+  /// по ним выбирается имя клон-голоса в `tts.config` (см. [_cloneEngineKey]).
+  Set<String> _ttsEngineKeys = const {};
+
   final ValueNotifier<Map<String, bool>> ttsEngines =
       ValueNotifier(const {'pyttsx3': false, 'piper': false});
   final ValueNotifier<(String engine, String voice, String state, String? msg)?>
@@ -306,10 +310,17 @@ class SidecarClient {
               engines.value = {
                 'whisper': e['whisper'] == true,
                 'gigaam': e['gigaam'] == true,
+                // Сервер распознавания — такой же движок, как и два местных, и
+                // карточка подсистем спрашивает про него тем же ключом. Без
+                // этой строки ответ был «не загружен» всегда: выбран сервер, а
+                // в списке его нет — значит вечное «подключение…» при живом и
+                // отвечающем сервере.
+                'remote': e['remote'] == true,
               };
               engineGpu.value = {
                 'whisper': e['whisper_gpu'] == true,
                 'gigaam': e['gigaam_gpu'] == true,
+                'remote': e['remote_gpu'] == true,
               };
             }
             final g = c?['gpu'];
@@ -325,12 +336,24 @@ class SidecarClient {
             }
             final te = c?['tts_engines'];
             if (te is Map) {
+              // Ключи запоминаются отдельно от значений: «clone: false» и
+              // «про clone не слышал» — разные ответы, а карта с готовым
+              // набором ключей их не различает. По этому набору выбирается имя
+              // движка клон-голоса, см. [_cloneEngineKey].
+              _ttsEngineKeys = te.keys.map((k) => '$k').toSet();
               ttsEngines.value = {
                 'pyttsx3': te['pyttsx3'] == true,
                 'piper': te['piper'] == true,
                 'xtts': te['xtts'] == true,
-                'clone': te['clone'] == true,
+                'clone': te['clone'] == true || te['cosyvoice'] == true,
               };
+              // Настройки клон-голоса ушли ДО этого места — сразу на открытии
+              // связи, когда имён движков ещё никто не называл. Там выбиралось
+              // имя по умолчанию, и старый движок читал его как незнакомое, то
+              // есть молча говорил Piper до первой правки настроек. Теперь,
+              // узнав имена, переспрашиваем — второй раз стоит одного
+              // сообщения, а первый стоил всего клон-голоса.
+              if (_cosyEnabled) unawaited(_pushCosy());
             }
             break;
           case 'stt.partial':
@@ -487,12 +510,27 @@ class SidecarClient {
             _busRecentWaiters.clear();
             break;
           case 'tts.status':
-            ttsStatus.value = (
-              m['engine'] as String? ?? '',
-              m['voice'] as String? ?? '',
-              m['state'] as String? ?? '',
-              m['message'] as String?,
-            );
+            final wasEngine = ttsStatus.value?.$1 ?? '';
+            final nowEngine = m['engine'] as String? ?? '';
+            final ttsState = m['state'] as String? ?? '';
+            final ttsMsg = m['message'] as String?;
+            ttsStatus.value = (nowEngine, m['voice'] as String? ?? '',
+                ttsState, ttsMsg);
+            // Смена голоса — событие, а не украшение карточки. Чаще всего она
+            // означает, что выбранный клон не поднялся и говорит запасной, а
+            // заметить это постфактум можно было только по чужому логу движка.
+            // Теперь это видно в journal приложения, со временем и причиной.
+            if (ttsState == 'error') {
+              unawaited(appendLog(
+                  'sidecar',
+                  'Озвучка: движок «$nowEngine» не поднялся'
+                  '${(ttsMsg ?? '').isEmpty ? '' : ' — $ttsMsg'}'));
+            } else if (ttsState == 'ready' &&
+                nowEngine.isNotEmpty &&
+                nowEngine != wasEngine) {
+              unawaited(
+                  appendLog('sidecar', 'Озвучка: говорит «$nowEngine»'));
+            }
             break;
           case 'stt.device':
             deviceStatus.value = (
@@ -893,6 +931,21 @@ class SidecarClient {
     await _pushCosy();
   }
 
+  /// Имя клон-голоса, под которым его знает подключённый движок.
+  ///
+  /// До 3.2.4 движок звал его «cosyvoice» — по модели, которой там давно нет.
+  /// Приложение и движок обновляются порознь: движок качается отдельным
+  /// компонентом, и обновление приложения его не трогает. Новое имя старому
+  /// движку читалось как незнакомое, а незнакомое у него означает Piper — то
+  /// есть выбранный клон-голос молча превращался в обычный, без единого
+  /// сообщения. Спрашиваем у самого движка, каким именем он его зовёт.
+  String get _cloneEngineKey =>
+      (_ttsEngineKeys.isNotEmpty &&
+              !_ttsEngineKeys.contains('clone') &&
+              _ttsEngineKeys.contains('cosyvoice'))
+          ? 'cosyvoice'
+          : 'clone';
+
   Future<void> _pushCosy() async {
     if (_cosyEnabled) {
       final cacheDir = await _cloneCacheDir();
@@ -911,7 +964,7 @@ class SidecarClient {
           // и на коротких фразах ошибается.
           'language': _cosyLanguage,
         },
-        'engine': 'clone',
+        'engine': _cloneEngineKey,
       });
     } else {
       // Hand the engine back to Piper. Also the cure for the sidecar's
@@ -1354,8 +1407,10 @@ class VoiceAssistant {
     // button-triggered, so the app doesn't capture audio non-stop by surprise.
     // Push-to-Talk тоже не слушает постоянно — микрофон открывает удержание
     // клавиши (pttPress), в этом весь смысл режима.
+    // Условия про «движок распознавания = whisper» здесь больше нет: выбор
+    // «Windows STT» убран, и слушает всегда движок. Само условие означало
+    // «распознаём не сайдкаром» — а других способов не осталось.
     final want = connected &&
-        app.sttEngine == 'whisper' &&
         app.cmdMode == 'wakeword' &&
         app.listenMode != 'ptt';
     if (want) {
@@ -1565,10 +1620,37 @@ class VoiceAssistant {
     // 1) The user's command catalog (fuzzy match) — the ONLY thing that runs a
     //    command. No built-in/auto-interpreted launches: if the user didn't add
     //    it, it's not a command.
-    final (match, score) = _matchCommand(app, command);
-    if (match != null) {
-      await _runCommand(app, match, utterance: command);
+    // Один разбор на всё дальнейшее: и на запуск, и на список ближайших для
+    // уточнения. Второй проход по каталогу здесь означал бы, что предложенные
+    // варианты считаются не тем же способом, что и запущенная команда.
+    final ranked = _rankCommands(app, command);
+    final score = ranked.isEmpty ? 0.0 : ranked.first.$2;
+    if (ranked.isNotEmpty && score >= app.cmdThreshold) {
+      await _runCommand(app, ranked.first.$1, utterance: command);
       return;
+    }
+    // 1a) Разбор, который человек уже подтвердил своими руками.
+    //
+    // Идёт ПОСЛЕ каталога и ДО модели, и оба порядка не случайны. После
+    // каталога — потому что точное совпадение всегда вернее памяти о прошлой
+    // ошибке. До модели — потому что весь смысл в том, чтобы не спрашивать
+    // второй раз то, на что ответ уже дан: распознавание коверкает слово
+    // одинаково, и «валорам» вместо «валорант» вернётся снова и снова.
+    if (await _runLearned(app, command)) return;
+    // Команда не нашлась. Прежде чем ответить «не найдена» или увести фразу в
+    // переписку — спросить модель, что имелось в виду.
+    //
+    // Порог здесь разный, и это не придирка. Без чата альтернатива уточнению —
+    // тупик «команда не найдена», поэтому пробуем всегда. С включённым чатом
+    // альтернатива — нормальный разговор, и гонять каждую реплику через разбор
+    // команд значило бы платить лишним обращением к модели за каждый вопрос о
+    // погоде. Поэтому там уточняем, только если сказанное хоть чем-то похоже
+    // на команду из каталога.
+    if (app.cmdClarify &&
+        app.cmdEnabled &&
+        ranked.isNotEmpty &&
+        (!app.chatEnabled || score >= 0.3)) {
+      if (await _clarifyCommand(app, command, ranked)) return;
     }
     // No command matched. In commands-only mode (chat disabled) tell the user
     // instead of falling back to a chat turn.
@@ -1601,13 +1683,11 @@ class VoiceAssistant {
     // 2) Everything else is normal speech → a regular (visible) chat turn.
     _toast('${app.t('vaThinking')} $command');
     if (app.voiceResponses) {
-      // Просим сервер клон-голоса поднять модель ПРЯМО СЕЙЧАС, не дожидаясь
-      // первого предложения. Модель отдаёт видеопамять по простою, и первая
-      // реплика после паузы иначе стоит пятнадцать секунд загрузки. А здесь
-      // впереди ещё целый ответ языковой модели — прогрев прячется за ним
-      // целиком. Не ждём: сорвавшийся прогрев ничего не ломает, синтез
-      // загрузит модель сам, как и раньше.
-      unawaited(warmCloneServer(app));
+      // Просим сервер ЖИВОГО голоса подняться ПРЯМО СЕЙЧАС, не дожидаясь
+      // первого предложения: по простою он уходит целиком, и первая реплика
+      // после паузы иначе стоит и старта процесса, и загрузки модели. Не ждём:
+      // сорвавшийся прогрев ничего не ломает, синтез поднимет сервер сам.
+      unawaited(warmLiveVoice(app));
       // Queued sidecar TTS: stream the reply and speak each sentence as soon as
       // it arrives — first audio starts almost immediately instead of after the
       // whole reply. A voice "stop" interrupts stream + TTS queue.
@@ -1619,11 +1699,22 @@ class VoiceAssistant {
     }
   }
 
-  /// Попросить сервер клон-голоса поднять модель заранее. Пусто — тихо выходим:
-  /// сервер не настроен, прогревать нечего.
-  Future<void> warmCloneServer(AppState app) async {
+  /// Попросить сервер ЖИВОГО голоса поднять модель заранее. Пусто — тихо
+  /// выходим: сервер не настроен, прогревать нечего.
+  ///
+  /// Именно живого, а не студийного, и это не мелочь. Студийный сервер за
+  /// озвучку ответов не отвечает вовсе: он поднимается только под открытую
+  /// Sonora, когда человек сам просит превратить текст в речь, и уходит с
+  /// карты, как только Sonora закрывают. Прогревать его к ответу ассистента
+  /// значило бы будить его посреди разговора — то есть сажать четыре гигабайта
+  /// на карту рядом с языковой моделью ровно тогда, когда она отвечает.
+  ///
+  /// Живому же прогрев нужен как никогда: по простою он уходит целиком и на
+  /// первой фразе платит и стартом процесса, и загрузкой модели. Здесь впереди
+  /// ещё целый ответ языковой модели, и прогрев прячется за ним без остатка.
+  Future<void> warmLiveVoice(AppState app) async {
     if (app.ttsEngineChoice != 'clone') return;
-    final base = app.qwenEndpoint.trim();
+    final base = app.liveVoiceEndpoint.trim();
     if (base.isEmpty) return;
     final url = base.replaceAll(RegExp(r'/+$'), '');
     try {
@@ -1654,6 +1745,100 @@ class VoiceAssistant {
     }
     await _runCommand(app, match, utterance: text);
     return app.speakFor(match);
+  }
+
+  /// Запуск команды выбором в переписке.
+  ///
+  /// Тот же путь, что и у сказанной вслух: подтверждение опасного, озвучка
+  /// результата, запись в журнал. Нажатие — это ответ на вопрос ассистента, а
+  /// не второй способ запускать команды в обход правил.
+  /// [said] — фраза, на которую отвечали этим выбором. Если она известна, выбор
+  /// запоминается: в следующий раз та же фраза запустит эту же команду сразу,
+  /// без переспроса и без обращения к модели.
+  Future<void> runChosen(AppState app, VoiceCommand cmd,
+      {String said = ''}) async {
+    final key = _learnKey(said);
+    if (key.isNotEmpty && key != _learnKey(cmd.phrase)) {
+      // Совпадающий ключ не запоминаем: там каталог и так справится, а запись
+      // была бы мёртвой — до неё дело просто не дойдёт.
+      app.learnCommand(key, cmd.phrase);
+      unawaited(appendLog(
+          'commands', 'ЗАПОМНИЛ: «$said» -> ${cmd.phrase}'));
+    }
+    await _runCommand(app, cmd, utterance: cmd.phrase);
+  }
+
+  /// Ключ запомненного разбора: та же нормализация, что и у сравнения с
+  /// каталогом. Иначе память жила бы по своим правилам и промахивалась мимо
+  /// собственных записей на первом же лишнем пробеле.
+  String _learnKey(String s) => NumberWords.canonical(_norm(s));
+
+  /// Запустить команду по разбору, запомненному с прошлого раза.
+  ///
+  /// Возвращает true, если фраза обработана здесь. Запись про удалённую или
+  /// выключенную команду не воскрешает её, а тихо вычищается: каталог человек
+  /// правит, и память о нём не должна пережить сам каталог.
+  Future<bool> _runLearned(AppState app, String said) async {
+    if (!app.cmdEnabled) return false;
+    final key = _learnKey(said);
+    if (key.isEmpty) return false;
+    final phrase = app.cmdLearned[key];
+    if (phrase == null) return false;
+    VoiceCommand? cmd;
+    for (final c in app.voiceCommands) {
+      if (c.enabled && c.phrase == phrase) {
+        cmd = c;
+        break;
+      }
+    }
+    if (cmd == null) {
+      app.forgetLearned(key);
+      unawaited(appendLog(
+          'commands', 'ЗАБЫЛ: «$said» -> «$phrase» (команды больше нет)'));
+      return false;
+    }
+    unawaited(appendLog('commands', 'ПО ПАМЯТИ: «$said» -> ${cmd.phrase}'));
+    await _runCommand(app, cmd, utterance: said);
+    return true;
+  }
+
+  /// Спросить модель, что имелось в виду, когда каталог не дал совпадения.
+  ///
+  /// Возвращает true, если фраза обработана здесь и дальше её вести не надо.
+  /// Модель выбирает ТОЛЬКО из каталога — придумать команду она не может по
+  /// устройству запроса, и правило «не добавил — значит не команда» остаётся в
+  /// силе. Уверенный выбор запускается сразу, неуверенный превращается в
+  /// вопрос: голосом и вариантами в переписке.
+  Future<bool> _clarifyCommand(
+      AppState app, String said, List<(VoiceCommand, double)> ranked) async {
+    final top = ranked.take(6).toList();
+    if (top.isEmpty) return false;
+    final phrases = [for (final e in top) e.$1.phrase];
+    final guess = await app.guessCommand(said, phrases);
+    if (guess == null) return false;
+    final (i, sure) = guess;
+    if (i <= 0 || i > top.length) {
+      unawaited(appendLog('commands', 'УТОЧНЕНИЕ: модель не узнала «$said»'));
+      return false;
+    }
+    final cmd = top[i - 1].$1;
+    if (sure) {
+      unawaited(appendLog(
+          'commands', 'УТОЧНЕНИЕ → ${cmd.phrase} (уверенно) из «$said»'));
+      await _runCommand(app, cmd, utterance: said);
+      return true;
+    }
+    // Не уверена — спрашиваем. Вариантов даём несколько: модель могла выбрать
+    // не то, и соседние строки списка ровно для этого случая и нужны.
+    final ask = '${app.t('vaClarifyAsk')} «${cmd.phrase}»?';
+    app.postChoices(ask, phrases.take(4).toList(), said: said);
+    _toast(ask);
+    VizOverlayServer.instance.note(ask, kind: 'info');
+    if (app.voiceResponses) _speak(app, ask);
+    unawaited(appendLog(
+        'commands', 'УТОЧНЕНИЕ ? ${cmd.phrase} из «$said»'));
+    state.value = _listening ? VaState.listening : VaState.idle;
+    return true;
   }
 
   // Execute a catalog/interpreted command with the usual safety policies.
@@ -1726,10 +1911,23 @@ class VoiceAssistant {
   // if below threshold) AND the best score reached — the score is logged when
   // routing to chat so we can diagnose "exact command went to chat" reports.
   (VoiceCommand?, double) _matchCommand(AppState app, String text) {
+    final ranked = _rankCommands(app, text);
+    if (ranked.isEmpty) return (null, 0);
+    final (best, bestScore) = ranked.first;
+    return (bestScore >= app.cmdThreshold ? best : null, bestScore);
+  }
+
+  /// Весь каталог, отсортированный по близости к сказанному.
+  ///
+  /// Выделено из [_matchCommand] не ради красоты: когда команда не нашлась,
+  /// нужен не лучший ответ, а НЕСКОЛЬКО ближайших — их предлагают человеку и
+  /// показывают модели. Второй такой же перебор рядом разошёлся бы с этим при
+  /// первой же правке правил сравнения, и «похожие варианты» перестали бы
+  /// совпадать с тем, что запускается.
+  List<(VoiceCommand, double)> _rankCommands(AppState app, String text) {
     final t = NumberWords.canonical(_norm(text));
     final tTokens = t.split(' ').where((e) => e.isNotEmpty).toSet();
-    VoiceCommand? best;
-    double bestScore = 0;
+    final out = <(VoiceCommand, double)>[];
     for (final c in app.voiceCommands) {
       // Выключенная команда не участвует в разборе вовсе: иначе тумблер в
       // каталоге ничего бы не значил, а фраза продолжала бы срабатывать.
@@ -1775,14 +1973,10 @@ class VoiceAssistant {
           s = math.max(s, 0.95);
         }
       }
-      if (s > bestScore) {
-        bestScore = s;
-        best = c;
-      }
+      out.add((c, s));
     }
-    final matched =
-        (best != null && bestScore >= app.cmdThreshold) ? best : null;
-    return (matched, bestScore);
+    out.sort((a, b) => b.$2.compareTo(a.$2));
+    return out;
   }
 
   void _speak(AppState app, String text) {

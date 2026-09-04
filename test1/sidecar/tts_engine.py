@@ -605,6 +605,18 @@ class TtsEngine:
         # failed render (0 = right now). Keeps a dead server from being probed on
         # every single utterance while still recovering on its own.
         self._clone_retry_at = 0.0
+        # Задержку аудиовыхода пишем в лог один раз: она не меняется, а
+        # знать её надо, когда снова заговорят про обрезанные хвосты.
+        self._latency_logged = False
+        # Номер поколения выбора движка. Применение идёт в отдельном потоке и
+        # для Piper занимает почти секунду, а для клон-голоса — миллисекунды.
+        # При запуске эти два потока идут одновременно: сайдкар применяет свой
+        # умолчательный движок, приложение тут же присылает выбранный. Клон
+        # успевал стать активным, а следом медленный Piper дозагружался и
+        # затирал его собой — в логе оставалось «apply: clone ACTIVE», а
+        # говорил Piper, и к серверу синтеза не уходило ни одного запроса.
+        # Поток, чьё поколение устарело, свой результат больше не записывает.
+        self._apply_seq = 0
 
         self._queue: "queue.Queue" = queue.Queue()
         self._worker: threading.Thread | None = None
@@ -630,7 +642,9 @@ class TtsEngine:
         """Attach the connection's emit callback and apply the desired engine/
         voice (from CLI/config), reporting readiness."""
         self._on_event = on_event
-        threading.Thread(target=self._apply_blocking, daemon=True).start()
+        self._apply_seq += 1
+        threading.Thread(target=self._apply_blocking,
+                         args=(self._apply_seq,), daemon=True).start()
 
     def _emit(self, msg: dict) -> None:
         if self._on_event is not None:
@@ -649,18 +663,31 @@ class TtsEngine:
 
     # ---- engine / voice selection -------------------------------------
 
+    # Имена движков, под которыми их знали прежние версии приложения. Пара
+    # «cosyvoice» -> «clone» осталась от переименования: имя было названием
+    # модели, а выбор всегда означал роль — «говорить клоном голоса». Приложение
+    # и движок обновляются порознь (движок качается отдельным компонентом), и
+    # без этой таблицы новое имя от свежего приложения старому движку читалось
+    # бы как незнакомое — то есть молча превращалось в Piper.
+    _ALIASES = {"cosyvoice": "clone"}
+
     def set_engine(self, name: str) -> None:
+        name = self._ALIASES.get(name, name)
         self._desired = name if name in self._engines else "piper"
         self._clone_retry_at = 0.0  # explicit choice deserves an immediate try
         _log(f"set_engine: requested '{name}' -> desired '{self._desired}'")
-        threading.Thread(target=self._apply_blocking, daemon=True).start()
+        self._apply_seq += 1
+        threading.Thread(target=self._apply_blocking,
+                         args=(self._apply_seq,), daemon=True).start()
 
     def set_clone_config(self, exe=None, ref=None, lang=None) -> None:
         _log(f"set_clone_config: exe={'set' if exe else 'empty'} "
              f"ref={'set' if ref else 'empty'} lang={lang}")
         self._clone.set_config(exe=exe, ref=ref, lang=lang)
         if self._desired == "xtts":
-            threading.Thread(target=self._apply_blocking, daemon=True).start()
+            self._apply_seq += 1
+        threading.Thread(target=self._apply_blocking,
+                         args=(self._apply_seq,), daemon=True).start()
 
     def set_cosy_config(self, endpoint=None, ref=None, prompt_text=None,
                         speed=None, language=None) -> None:
@@ -669,7 +696,9 @@ class TtsEngine:
                               language=language)
         self._clone_retry_at = 0.0
         if self._desired == "clone":
-            threading.Thread(target=self._apply_blocking, daemon=True).start()
+            self._apply_seq += 1
+        threading.Thread(target=self._apply_blocking,
+                         args=(self._apply_seq,), daemon=True).start()
 
     def set_cache(self, cache_dir=None, voice_fp=None, engine=None) -> None:
         """Phrase-cache location + the active voice's fingerprint (so different
@@ -686,11 +715,23 @@ class TtsEngine:
         self._piper.set_voice(voice_dir, voice_id)
         # Re-apply so a running Piper picks the new voice (or Piper becomes
         # available now that a voice was downloaded).
-        threading.Thread(target=self._apply_blocking, daemon=True).start()
+        self._apply_seq += 1
+        threading.Thread(target=self._apply_blocking,
+                         args=(self._apply_seq,), daemon=True).start()
 
-    def _apply_blocking(self) -> None:
+    def _stale(self, seq) -> bool:
+        """Успел ли выбор смениться, пока этот поток грузил движок."""
+        if seq is None or seq == self._apply_seq:
+            return False
+        _log(f"apply: поколение {seq} устарело (текущее {self._apply_seq}) — "
+             f"результат не применяю")
+        return True
+
+    def _apply_blocking(self, seq=None) -> None:
         want = self._desired
         if want == "pyttsx3":
+            if self._stale(seq):
+                return
             self._active = self._pyttsx3
             self._active_name = "pyttsx3"
             self._emit_status("pyttsx3", "", "ready")
@@ -702,6 +743,8 @@ class TtsEngine:
             if not eng.available:
                 _log(f"apply: '{want}' unavailable "
                      f"({eng.unavailable_reason()}) -> pyttsx3 fallback")
+                if self._stale(seq):
+                    return
                 self._active = self._pyttsx3
                 self._active_name = "pyttsx3"
                 self._emit_status(want, "", "error", eng.unavailable_reason())
@@ -719,6 +762,8 @@ class TtsEngine:
                 self._emit_status(want, self._voice, "ready")
             except Exception as e:
                 self._switching = False
+                if self._stale(seq):
+                    return
                 self._active = self._pyttsx3
                 self._active_name = "pyttsx3"
                 _log(f"apply: '{want}' load failed ({e}) -> pyttsx3 fallback")
@@ -728,6 +773,8 @@ class TtsEngine:
         # Piper requested but no usable voice -> fall back to pyttsx3 quietly
         # (this is the normal "no voice downloaded yet" state).
         if want == "piper" and not self._piper.available:
+            if self._stale(seq):
+                return
             self._active = self._pyttsx3
             self._active_name = "pyttsx3"
             self._emit_status("pyttsx3", "", "ready")
@@ -738,12 +785,16 @@ class TtsEngine:
         try:
             if not self._piper.is_loaded:
                 self._piper.load()
+            if self._stale(seq):
+                return
             self._active = self._piper
             self._active_name = "piper"
             self._switching = False
             self._emit_status("piper", self._voice, "ready")
         except Exception as e:  # rollback to the system voice
             self._switching = False
+            if self._stale(seq):
+                return
             self._active = self._pyttsx3
             self._active_name = "pyttsx3"
             self._emit_status("piper", self._voice, "error", str(e))
@@ -1101,6 +1152,14 @@ class TtsEngine:
 
             data = np.asarray(data, dtype=np.float32)
             data = self._apply_fx(data, int(sr))
+            # Тишина в хвост. Звуковое устройство при остановке потока теряет
+            # то, что ещё лежит в его буфере, — на слух это ровно «фразу
+            # обрезало на последнем слоге». Своей тишины у синтеза мало:
+            # замер по клон-голосу дал 159-189 мс в конце фразы, и этого не
+            # хватало. Треть секунды нулей стоит ничего и гарантирует, что
+            # обрежется тишина, а не речь.
+            tail = np.zeros(int(int(sr) * 0.30), dtype=np.float32)
+            data = np.concatenate([data, tail])
             chunk = max(1, int(sr) // 30)
             stream = sd.OutputStream(samplerate=int(sr), channels=1,
                                      dtype="float32")
@@ -1115,6 +1174,22 @@ class TtsEngine:
                         rms = float(np.sqrt(np.mean(buf * buf)))
                         on_level(min(1.0, rms * 8.0))
             finally:
+                # Дать устройству доиграть то, что уже принято. Треть секунды
+                # тишины в хвосте оказалась мало: `stop()` обрывает поток
+                # вместе с содержимым аппаратного буфера, а его глубина у
+                # разных драйверов разная — WASAPI в общем режиме держит и по
+                # полсекунды. Спрашиваем у самого потока, сколько он забирает
+                # вперёд, и столько же ждём. Прерывание голосом сюда не
+                # попадает: там ждать нечего, там наоборот надо замолчать.
+                if not self._stop.is_set():
+                    try:
+                        lat = float(getattr(stream, "latency", 0.0) or 0.0)
+                    except Exception:
+                        lat = 0.0
+                    if not self._latency_logged:
+                        self._latency_logged = True
+                        _log(f"аудиовыход: задержка устройства {lat * 1000:.0f} мс")
+                    time.sleep(min(1.5, lat + 0.25))
                 stream.stop()
                 stream.close()
             return True
